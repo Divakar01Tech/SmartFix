@@ -1,0 +1,37 @@
+{
+  "nav": {
+    "brand": "SmartFix Partner",
+    "dashboard": "Job Dashboard",
+    "earnings": "Earnings & Wallet",
+    "profile": "KYC & Profile",
+    "logout": "Logout"
+  },
+  "dashboard": {
+    "onlineToggleOn": "You are ONLINE & Available for Jobs 🟢",
+    "onlineToggleOff": "You are OFFLINE 🔴",
+    "activeJobs": "Active Assigned Jobs",
+    "newRequests": "New Job Requests",
+    "acceptJob": "Accept Job Request ✅",
+    "declineJob": "Decline Request ❌",
+    "updateStatus": "Update Job Status",
+    "earningsTitle": "Today's Payout Earnings"
+  },
+  "statuses": {
+    "PendingDispatch": "Searching Captain",
+    "Pending": "Pending Response",
+    "Accepted": "Accepted",
+    "Confirmed": "Confirmed",
+    "EnRoute": "En Route",
+    "Arrived": "Arrived at Location",
+    "WorkInProgress": "Work In Progress",
+    "Completed": "Completed",
+    "Paid": "Paid",
+    "Reviewed": "Reviewed",
+    "Cancelled": "Cancelled",
+    "SLABreached": "SLA Breached"
+  },
+  "common": {
+    "callCustomer": "Call Customer",
+    "navigateLocation": "GPS Directions"
+  }
+}

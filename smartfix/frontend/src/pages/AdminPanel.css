@@ -1,0 +1,17 @@
+.admin-panel-page {
+  background-color: #f8fafc;
+  min-height: calc(100vh - 120px);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

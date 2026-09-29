@@ -1,0 +1,47 @@
+.admin-sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-width);
+  background: var(--bg-card); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 100;
+}
+.sidebar-brand {
+  display: flex; align-items: center; gap: 12px;
+  padding: 22px 20px; border-bottom: 1px solid var(--border);
+}
+.brand-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--primary); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 16px var(--primary-glow);
+}
+.brand-name { font-size: 0.95rem; font-weight: 800; color: var(--text-primary); }
+.brand-sub  { font-size: 0.68rem; color: var(--primary-light); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.sidebar-user {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+}
+.admin-avatar {
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center;
+}
+.admin-name { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); }
+.admin-role { font-size: 0.7rem; color: var(--accent); font-weight: 600; }
+.sidebar-nav { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  text-decoration: none; color: var(--text-secondary);
+  font-size: 0.875rem; font-weight: 500; transition: all var(--transition);
+}
+.nav-item:hover { background: var(--bg-surface); color: var(--text-primary); }
+.nav-item.active { background: var(--primary-glow); color: var(--primary-light); font-weight: 700; border: 1px solid var(--border-strong); }
+.sidebar-bottom { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.version-info { font-size: 0.7rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+.logout-btn {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: 1px solid var(--border); color: var(--text-secondary);
+  padding: 9px 14px; border-radius: var(--radius-sm);
+  cursor: pointer; font-family: inherit; font-size: 0.82rem; font-weight: 500;
+  transition: all var(--transition);
+}
+.logout-btn:hover { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.08); }

@@ -1,0 +1,21 @@
+{
+  "name": "smartfix-production",
+  "version": "1.0.0",
+  "description": "SmartFix / HandyBook MERN production rules, skills, and configuration bundle for Antigravity",
+  "author": "SmartFix Team",
+  "skills": [
+    "smartfix-mern-development",
+    "smartfix-auth-security",
+    "smartfix-worker-matching",
+    "smartfix-maps-tracking",
+    "smartfix-booking-system",
+    "smartfix-payment"
+  ],
+  "rules": [
+    "architecture.md",
+    "security.md",
+    "mongodb.md",
+    "api.md",
+    "testing.md"
+  ]
+}
