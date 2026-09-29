@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Environment variables — NEVER commit any .env file
+.env
+.env.example
+.env.local
+.env.development
+.env.development.local
+.env.production
+.env.production.local
+.env.test
+.env.test.local
+config/firebase-service-account.json
+firebase-service-account.json
+service-account.json
+*service-account*.json
+!service-account.example.json
+
+# Build & Logs
+dist/
+logs/
+*.log
+
+# SSL Certificates
+certs/
+*.pem
