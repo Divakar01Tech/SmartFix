@@ -51,6 +51,17 @@ export function AuthProvider({ children }) {
     return userData;
   };
 
+  // Google Sign-In: receives Firebase idToken from the frontend pop-up
+  const googleLogin = async (idToken) => {
+    const res = await authAPI.googleAuth(idToken);
+    const { token, user: userData } = res.data;
+    localStorage.setItem('hb_token', token);
+    localStorage.setItem('hb_user', JSON.stringify(userData));
+    setUser(userData);
+    socket.emit('join-user', userData.id);
+    return userData;
+  };
+
   const sendOtp = async (phone, purpose = 'login') => {
     const res = await authAPI.sendOtp({ phone, purpose });
     return res.data;
@@ -81,7 +92,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, loginWithOtp, register, sendOtp, verifyOtp, resetPassword, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithOtp, googleLogin, register, sendOtp, verifyOtp, resetPassword, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );

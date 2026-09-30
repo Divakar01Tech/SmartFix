@@ -4,9 +4,11 @@ const { register, login, getMe, resetPassword, updateProfile, deleteAccount, upl
 const { sendOtp, verifyOtp } = require('../controllers/otpController');
 const { protect } = require('../middleware/authMiddleware');
 const { otpSendRateLimiter, otpVerifyRateLimiter } = require('../middleware/rateLimiter');
+const { googleAuth } = require('../controllers/googleAuthController');
 
 router.post('/register', register);
 router.post('/login', login);
+router.post('/google', googleAuth);  // ← Google OAuth Sign-In
 router.post('/send-otp', otpSendRateLimiter, sendOtp);
 router.post('/verify-otp', otpVerifyRateLimiter, verifyOtp);
 

@@ -94,43 +94,37 @@ const LocationPickerMap = ({ onAddressSelect, onLocationSelect, initialAddress }
 
   const renderLeafletTileLayer = () => {
     switch (mapType) {
+      case 'roadmap':
+        return (
+          <TileLayer
+            key="google-roadmap"
+            attribution="&copy; Google Maps"
+            url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
+          />
+        );
       case 'satellite':
         return (
           <TileLayer
-            key="satellite"
-            attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP"
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            key="google-satellite"
+            attribution="&copy; Google Maps"
+            url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
           />
-        );
-      case 'hybrid':
-        return (
-          <>
-            <TileLayer
-              key="hybrid-base"
-              attribution="Tiles &copy; Esri"
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            />
-            <TileLayer
-              key="hybrid-labels"
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-            />
-          </>
         );
       case 'terrain':
         return (
           <TileLayer
-            key="terrain"
-            attribution='Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Style: OpenTopoMap'
-            url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+            key="google-terrain"
+            attribution="&copy; Google Maps"
+            url="https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}"
           />
         );
-      case 'roadmap':
+      case 'hybrid':
       default:
         return (
           <TileLayer
-            key="roadmap"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            key="google-hybrid"
+            attribution="&copy; Google Maps"
+            url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
           />
         );
     }
@@ -155,40 +149,71 @@ const LocationPickerMap = ({ onAddressSelect, onLocationSelect, initialAddress }
       </div>
 
       <div className="picker-map-frame" style={{ position: 'relative' }}>
-        {/* Map Layer Switcher Control */}
-        <div className="map-layer-selector">
+        <div className="map-floating-controls" style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 1000, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             type="button"
-            className={`map-layer-btn ${mapType === 'roadmap' ? 'active' : ''}`}
-            onClick={() => setMapType('roadmap')}
-            title="Street / Road Map View"
+            className={`floating-gps-btn ${gpsActive ? 'active' : ''}`}
+            onClick={handleFetchLiveLocation}
+            disabled={locating}
+            title="Center My Location"
+            style={{ 
+              display: 'flex', alignItems: 'center', gap: '6px', 
+              background: gpsActive ? '#2563eb' : 'rgba(255, 255, 255, 0.94)', 
+              color: gpsActive ? '#ffffff' : '#334155',
+              border: gpsActive ? '1px solid #2563eb' : '1px solid rgba(226, 232, 240, 0.9)',
+              padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600,
+              boxShadow: '0 4px 14px rgba(15, 23, 42, 0.12)', cursor: 'pointer' 
+            }}
           >
-            🗺️ Street
+            <Navigation size={14} className={locating ? 'spin-icon' : ''} />
+            <span>{locating ? 'Locating...' : 'My Location'}</span>
           </button>
-          <button
-            type="button"
-            className={`map-layer-btn ${mapType === 'satellite' ? 'active' : ''}`}
-            onClick={() => setMapType('satellite')}
-            title="Pure Satellite View"
-          >
-            🛰️ Satellite
-          </button>
-          <button
-            type="button"
-            className={`map-layer-btn ${mapType === 'hybrid' ? 'active' : ''}`}
-            onClick={() => setMapType('hybrid')}
-            title="Satellite + Street Labels"
-          >
-            🌍 Hybrid
-          </button>
-          <button
-            type="button"
-            className={`map-layer-btn ${mapType === 'terrain' ? 'active' : ''}`}
-            onClick={() => setMapType('terrain')}
-            title="Topographic Terrain View"
-          >
-            🏔️ Terrain
-          </button>
+
+          <div className="floating-layer-switcher" style={{ 
+            display: 'flex', gap: '2px', background: 'rgba(255, 255, 255, 0.94)', 
+            padding: '3px', borderRadius: '20px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.12)',
+            border: '1px solid rgba(226, 232, 240, 0.9)' 
+          }}>
+            <button
+              type="button"
+              className={`layer-tab ${mapType === 'hybrid' ? 'active' : ''}`}
+              onClick={() => setMapType('hybrid')}
+              style={{
+                border: 'none', background: mapType === 'hybrid' ? '#2563eb' : 'transparent',
+                color: mapType === 'hybrid' ? '#ffffff' : '#64748b',
+                padding: '4px 10px', borderRadius: '14px', fontSize: '0.78rem', fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              🌍 Satellite Hybrid
+            </button>
+            <button
+              type="button"
+              className={`layer-tab ${mapType === 'roadmap' ? 'active' : ''}`}
+              onClick={() => setMapType('roadmap')}
+              style={{
+                border: 'none', background: mapType === 'roadmap' ? '#2563eb' : 'transparent',
+                color: mapType === 'roadmap' ? '#ffffff' : '#64748b',
+                padding: '4px 10px', borderRadius: '14px', fontSize: '0.78rem', fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              🗺️ Street Map
+            </button>
+            <button
+              type="button"
+              className={`layer-tab ${mapType === 'terrain' ? 'active' : ''}`}
+              onClick={() => setMapType('terrain')}
+              style={{
+                border: 'none', background: mapType === 'terrain' ? '#2563eb' : 'transparent',
+                color: mapType === 'terrain' ? '#ffffff' : '#64748b',
+                padding: '4px 10px', borderRadius: '14px', fontSize: '0.78rem', fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              🏔️ Terrain
+            </button>
+          </div>
         </div>
 
         {hasGoogleKey && isLoaded ? (

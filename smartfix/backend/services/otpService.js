@@ -81,8 +81,11 @@ const generateOtp = async (phone, purpose = 'login') => {
     console.log(`🔑 [DEV MODE] OTP Code for ${formattedPhone}: ${rawOtp}`);
   }
 
-  // 7. Send SMS via Fast2SMS
-  const smsResult = await sendSmsOtp(formattedPhone, rawOtp);
+  // 7. Send SMS via Fast2SMS (skip if in mock mode)
+  let smsResult = { success: true, provider: 'Mock' };
+  if (process.env.OTP_MOCK_MODE !== 'true') {
+    smsResult = await sendSmsOtp(formattedPhone, rawOtp);
+  }
 
   return {
     success: true,

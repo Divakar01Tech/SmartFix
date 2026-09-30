@@ -20,7 +20,7 @@ const Booking = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
   const { startCall } = useCall();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   // AI Diagnosis State
   const [problemDesc, setProblemDesc] = useState('');

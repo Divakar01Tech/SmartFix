@@ -10,13 +10,26 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: [true, 'Phone number is required'],
-      unique: true,
-      match: [/^(\+91)?[6-9]\d{9}$/, 'Enter a valid 10-digit Indian phone number'],
+      // Google-auth users get a placeholder; real phone users get Indian number format
+      // Unique sparse index is declared via userSchema.index() below
+    },
+    email: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      default: '',
+    },
+    googleUid: {
+      type: String,
+      default: '',
+      // sparse index defined below
+    },
+    avatar: {
+      type: String,
+      default: '',
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
       minlength: 6,
       select: false, // never return password by default
     },
@@ -282,9 +295,11 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password before saving
+// Hash password before saving (skip for Google OAuth placeholder passwords)
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password') || !this.password) return next();
+  // Don't re-hash already-hashed Google placeholder passwords stored as plain marker strings
+  if (this.password.startsWith('google_oauth_') && !this.isNew) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();
@@ -298,5 +313,9 @@ userSchema.methods.comparePassword = async function (enteredPassword) {
 // 2dsphere index for location-based search
 userSchema.index({ locationPoint: '2dsphere' });
 userSchema.index({ currentLocation: '2dsphere' });
+// Sparse unique indexes for optional fields
+userSchema.index({ phone: 1 }, { unique: true, sparse: true });
+userSchema.index({ googleUid: 1 }, { unique: true, sparse: true });
+userSchema.index({ email: 1 }, { sparse: true });
 
 module.exports = mongoose.model('User', userSchema);

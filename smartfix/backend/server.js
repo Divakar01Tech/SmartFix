@@ -55,13 +55,7 @@ app.use(express.json());
 app.use(httpLogger);
 app.set('io', io);
 
-// Initialize WebSocket Location Tracking & SLA Breach Sweeper
-initLocationSocket(io);
-initSlaBreachCron(io);
-initRebookingCron(io);
-initProxyCron();
-initDispatchSweeper(io);
-initReviewSummaryCron();
+
 
 app.get('/', (req, res) => {
   res.send('SmartFix API & Socket.IO server is running...');
@@ -108,16 +102,35 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
 
+// Handle port-in-use error gracefully
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n❌ Port ${PORT} is already in use!`);
+    console.error(`   Run this command to free it:  npx kill-port ${PORT}`);
+    console.error(`   Then restart:                 npm run dev\n`);
+    process.exit(1);
+  } else {
+    throw err;
+  }
+});
+
 const startServer = async () => {
   try {
     await connectDB();
     await seedServiceIntervals();
+    
+    // Initialize WebSocket Location Tracking & SLA Breach Sweeper after DB is connected
+    initLocationSocket(io);
+    initSlaBreachCron(io);
+    initRebookingCron(io);
+    initProxyCron();
+    initDispatchSweeper(io);
+    initReviewSummaryCron();
   } catch (err) {
     console.error('Initial DB connection failure:', err.message);
   }
   // SmartFix Express & Socket.IO Server (HTTPS / HTTP auto-switching)
-  server.listen(PORT, HOST, () => console.log(`SmartFix Server & Socket.IO running on ${protocol}://${HOST}:${PORT}`));
+  server.listen(PORT, HOST, () => console.log(`✅ SmartFix Server & Socket.IO running on ${protocol}://${HOST}:${PORT}`));
 };
 
 startServer();
-

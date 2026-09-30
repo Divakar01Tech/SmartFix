@@ -5,11 +5,13 @@ import { useLanguage } from '../context/LanguageContext';
 import { HOME_SERVICES } from '../data/servicesData';
 import { Phone, Lock, User, Wrench, MapPin, ShieldCheck, KeyRound, RotateCcw, CheckCircle2, Globe } from 'lucide-react';
 import OtpInput from '../components/OtpInput';
+import { auth, googleProvider } from '../firebase';
+import { signInWithPopup } from 'firebase/auth';
 import './Login.css';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { user, login, register, sendOtp, verifyOtp, resetPassword } = useAuth();
+  const { user, login, googleLogin, register, sendOtp, verifyOtp, resetPassword } = useAuth();
   const { language, setLanguage, t } = useLanguage();
 
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
@@ -313,6 +315,22 @@ const Login = () => {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    try {
+      setSubmitting(true);
+      setError('');
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      await googleLogin(idToken, role);
+      navigate(role === 'handyman' ? '/handyman-dashboard' : '/dashboard');
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Google Sign-In failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // 4. Send Forgot Password OTP
   const handleSendForgotOtp = async (e) => {
     e.preventDefault();
@@ -425,6 +443,23 @@ const Login = () => {
             onClick={() => setRole('handyman')}
           >
             🛠️ Handyman Pro
+          </button>
+        </div>
+
+        <div className="google-auth-container" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+          <button
+            type="button"
+            className="google-login-btn"
+            onClick={handleGoogleLogin}
+            disabled={submitting}
+            style={{
+              width: '100%', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+              backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px', cursor: 'pointer',
+              fontSize: '1rem', fontWeight: '500', color: '#333', transition: 'all 0.2s ease', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style={{ width: '24px', height: '24px' }} />
+            {mode === 'login' ? 'Continue with Google' : 'Sign up with Google'}
           </button>
         </div>
 
