@@ -19,13 +19,13 @@ export function calculateDistance(lat1, lon1, lat2, lon2) {
   return Math.round(distance * 10) / 10; // Round to 1 decimal place
 }
 
-// Base coordinates for Sivagangai District towns & major Tamil Nadu cities
+// Base coordinates for Tamil Nadu towns & major Tamil Nadu cities
 export const CITY_COORDINATES = {
-  'Sivagangai Town': [9.8433, 78.4809],
-  'Sivagangai, Tamil Nadu': [9.8433, 78.4809],
-  'Sivagangai': [9.8433, 78.4809],
+  'Tamil Nadu': [9.8433, 78.4809],
+  'Tamil Nadu, Tamil Nadu': [9.8433, 78.4809],
+  'Tamil Nadu': [9.8433, 78.4809],
   'Karaikudi': [9.8965, 78.7844],
-  'Karaikudi, Sivagangai': [9.8965, 78.7844],
+  'Karaikudi, Tamil Nadu': [9.8965, 78.7844],
   'Devakottai': [9.9482, 78.8247],
   'Manamadurai': [9.6953, 78.4831],
   'Kalayarkoil': [9.8517, 78.6432],
@@ -42,7 +42,7 @@ export const CITY_COORDINATES = {
 };
 
 export function getCityBase(location) {
-  if (!location) return CITY_COORDINATES['Sivagangai Town'];
+  if (!location) return CITY_COORDINATES['Tamil Nadu'];
   if (CITY_COORDINATES[location]) return CITY_COORDINATES[location];
   
   const locLower = location.toLowerCase();
@@ -51,7 +51,7 @@ export function getCityBase(location) {
       return coords;
     }
   }
-  return CITY_COORDINATES['Sivagangai Town'];
+  return CITY_COORDINATES['Tamil Nadu'];
 }
 
 // Returns deterministic lat/lng coordinates for a worker based on ID/index within 0.5km - 4km of city center
@@ -70,7 +70,7 @@ export function getWorkerCoordinates(worker, index = 0) {
   return [base[0] + latOffset, base[1] + lngOffset];
 }
 
-// Calculate distance of worker from reference center (defaults to Sivagangai Town center)
+// Calculate distance of worker from reference center (defaults to Tamil Nadu center)
 export function getWorkerDistance(worker, userLat = 9.8433, userLng = 78.4809, index = 0) {
   const [wLat, wLng] = getWorkerCoordinates(worker, index);
   return calculateDistance(userLat, userLng, wLat, wLng);

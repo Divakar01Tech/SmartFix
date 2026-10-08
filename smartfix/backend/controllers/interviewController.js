@@ -53,9 +53,11 @@ exports.submitAnswer = async (req, res) => {
 exports.getWorkerInterview = async (req, res) => {
   try {
     const { workerId } = req.params;
+    console.log('Admin requested interview for workerId:', workerId);
 
     const session = await InterviewSession.findOne({ workerId })
       .sort({ createdAt: -1 });
+    console.log('Session found:', session ? session._id : 'null');
 
     if (!session) {
       return res.status(404).json({ message: 'No skill verification interview found for this worker.' });

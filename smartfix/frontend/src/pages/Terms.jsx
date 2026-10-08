@@ -31,7 +31,7 @@ const Terms = () => {
           <div className="terms-section">
             <h2>3. Service Professional Verification & Independence</h2>
             <p>
-              Service Professionals registered on SmartFix are independent contractors, not employees or partners of SmartFix. While SmartFix performs background identity checks (Aadhaar verification) and skill assessments, Customers are encouraged to verify job specs prior to work commencement.
+              Service Professionals registered on SmartFix are independent contractors, not employees or partners of SmartFix. While SmartFix performs background identity checks (ID & Mobile verification) and skill assessments, Customers are encouraged to verify job specs prior to work commencement.
             </p>
           </div>
 

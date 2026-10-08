@@ -13,7 +13,7 @@ async function testLiveIntents() {
   const testPrompts = [
     { title: '1. Electrical Safety Emergency', query: 'My main switchboard is sparking and MCB tripped with a loud pop sound!' },
     { title: '2. Service Booking Request', query: 'I want to book an experienced plumber to fix my bathroom pipe leak tomorrow.' },
-    { title: '3. Cost & Rate Estimate', query: 'How much does AC gas refilling R32 cost in Sivagangai?' },
+    { title: '3. Cost & Rate Estimate', query: 'How much does AC gas refilling R32 cost in Tamil Nadu?' },
     { title: '4. Technician Lookup', query: 'Find available top-rated electricians near me.' },
     { title: '5. Booking Status Track', query: 'Where is the handyman I booked? Has he arrived yet?' },
     { title: '6. Tamil Regional Query', query: 'Vanakkam, kitchen tap tanni leak aagudhu, yaravadhu plumber irukangala?' },

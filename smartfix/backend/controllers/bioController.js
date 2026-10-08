@@ -1,64 +1,7 @@
 const User = require('../models/User');
 const InterviewSession = require('../models/InterviewSession');
 
-const GROK_API_KEY = process.env.GROK_API_KEY || '';
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY || '';
-
-async function callAnthropicLlm(messagesPayload, temperature = 0.4, maxTokens = 600) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
-
-  const llmMessages = messagesPayload.map((m) => {
-    // Grok supports system natively, but to be safe for openrouter fallback, we can keep the mapping if not Grok
-    return m;
-  });
-
-  try {
-    let url = 'https://openrouter.ai/api/v1/chat/completions';
-    let apiKey = OPENROUTER_API_KEY;
-    let model = process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet';
-
-    if (GROK_API_KEY) {
-      url = 'https://api.x.ai/v1/chat/completions';
-      apiKey = GROK_API_KEY;
-      model = 'grok-beta';
-    } else {
-      llmMessages.forEach(m => {
-        if (m.role === 'system') {
-          m.role = 'user';
-          m.content = `[SYSTEM INSTRUCTION]\n${m.content}`;
-        }
-      });
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: llmMessages,
-        temperature,
-        max_tokens: maxTokens,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`AI Gateway status ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data?.choices?.[0]?.message?.content || null;
-  } catch (err) {
-    clearTimeout(timeoutId);
-    console.warn('⚠️ Bio Generation AI call warning:', err.message);
-    return null;
-  }
-}
+const { askGroqJSON } = require('../services/aiService');
 
 const generateWorkerBio = async (workerId) => {
   try {
@@ -100,22 +43,16 @@ Return ONLY valid JSON in this format:
 }
 Do not use markdown formatting in your response.`;
 
-    const payload = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Worker Category: ${worker.trade || session.category}
+    const parsed = await askGroqJSON({
+      system: systemPrompt,
+      user: `Worker Category: ${worker.trade || session.category}
 Sub-services: ${(worker.subServices || []).join(', ')}
 Strongest Interview Answers:
-${bestQnA}` }
-    ];
-
-    const resultText = await callAnthropicLlm(payload, 0.4, 600);
-    if (resultText) {
-      let cleanedJson = resultText.replace(/```json/gi, '').replace(/```/g, '').trim();
-      // attempt to match a json object
-      const jsonMatch = cleanedJson.match(/\{[\s\S]*\}/);
-      if (jsonMatch) cleanedJson = jsonMatch[0];
-
-      const parsed = JSON.parse(cleanedJson);
+${bestQnA}`,
+      maxTokens: 600
+    });
+    
+    if (parsed) {
       if (parsed.bioEn || parsed.bioTa) {
         worker.bioEn = parsed.bioEn ? parsed.bioEn.substring(0, 400) : '';
         worker.bioTa = parsed.bioTa ? parsed.bioTa.substring(0, 400) : '';

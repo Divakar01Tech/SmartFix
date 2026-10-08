@@ -11,7 +11,7 @@ const InterviewSession = require('./models/InterviewSession');
 
 const adminController = require('./controllers/adminController');
 const { generateFinalAssessment } = require('./services/skillInterviewService');
-const { validateSivagangaiLocation } = require('./services/geocodingService');
+const { validateTamilNaduLocation } = require('./services/geocodingService');
 const { sanitizeBookingForRole } = require('./utils/sanitizer');
 
 const { runSlaBreachSweep } = require('./services/slaCronService');
@@ -39,7 +39,7 @@ async function runFullProjectCompletionTests() {
       password: 'password123',
       role: 'handyman',
       trade: 'Plumbing',
-      location: 'Karaikudi, Sivagangai',
+      location: 'Karaikudi, Tamil Nadu',
     });
 
 
@@ -78,13 +78,13 @@ async function runFullProjectCompletionTests() {
     }
     console.log('✅ PASS: Skill questions bank loaded with scenario questions');
 
-    // Test Sivagangai Geocoding
-    const sivaCheck = await validateSivagangaiLocation(9.91, 78.80, 'Karaikudi, Sivagangai, Tamil Nadu');
+    // Test Tamil Nadu Geocoding
+    const sivaCheck = await validateTamilNaduLocation(9.91, 78.80, 'Karaikudi, Tamil Nadu, Tamil Nadu');
     if (!sivaCheck.valid) {
 
-      throw new Error('FAILED: Sivagangai location rejected');
+      throw new Error('FAILED: Tamil Nadu location rejected');
     }
-    console.log('✅ PASS: Sivagangai District geofence check validated');
+    console.log('✅ PASS: Tamil Nadu geofence check validated');
 
     // Test Dual Approval Logic via adminController
     const reqMock1 = { params: { id: testWorker._id }, body: { identityStatus: 'verified' } };
@@ -165,7 +165,7 @@ async function runFullProjectCompletionTests() {
       paymentStatus: 'Paid',
       paymentMethod: 'UPI',
       price: 1000,
-      address: 'Karaikudi, Sivagangai',
+      address: 'Karaikudi, Tamil Nadu',
     });
 
 
@@ -187,7 +187,7 @@ async function runFullProjectCompletionTests() {
       status: 'Confirmed',
       price: 500,
       createdAt: new Date(Date.now() - 65 * 60 * 1000), // 65 mins ago
-      address: 'Sivagangai Town',
+      address: 'Tamil Nadu',
     });
 
 

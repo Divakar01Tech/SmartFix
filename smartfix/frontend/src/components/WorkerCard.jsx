@@ -75,7 +75,7 @@ const WorkerCard = ({ worker = {}, index = 0, confirmedBooking = false }) => {
 
       <div className="worker-info-details mb-3">
         <p className="text-secondary small mb-1">
-          <MapPin size={13} color="#2563eb" /> {worker.location || 'Sivagangai, Tamil Nadu'}
+          <MapPin size={13} color="#2563eb" /> {worker.location || 'Tamil Nadu, Tamil Nadu'}
         </p>
 
         <p className="text-success small fw-semibold mb-2 d-flex align-items-center gap-1">

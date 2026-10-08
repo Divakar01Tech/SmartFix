@@ -1,15 +1,15 @@
 # SMARTFIX — PRODUCT REQUIREMENTS DOCUMENT (PRD)
 
-**Project Name**: SmartFix / HandyBook On-Demand Service Platform  
+**Project Name**: SmartFix / SmartFix On-Demand Service Platform  
 **Document Version**: 1.0.0  
-**Target Market**: Sivagangai District & Surrounding Regions, Tamil Nadu, India  
+**Target Market**: Tamil Nadu & Surrounding Regions, Tamil Nadu, India  
 **Architecture**: MERN Stack (Node.js, Express, MongoDB, React, Vite)  
 
 ---
 
 ## 1. Executive Overview & Strategic Purpose
 
-SmartFix (formerly HandyBook) is an on-demand, hyper-local multi-portal service platform designed to seamlessly connect household consumers with background-verified, skilled handymen (plumbers, electricians, AC repair technicians, carpenters, painters, and appliance specialists).
+SmartFix (formerly SmartFix) is an on-demand, hyper-local multi-portal service platform designed to seamlessly connect household consumers with background-verified, skilled handymen (plumbers, electricians, AC repair technicians, carpenters, painters, and appliance specialists).
 
 The platform bridges traditional district-level home maintenance services with modern GPS radial dispatching, real-time socket tracking, in-app WebRTC calling, instant UPI wallet withdrawals, and transparent dynamic fare estimation.
 

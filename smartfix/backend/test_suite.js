@@ -51,8 +51,8 @@ async function runTests() {
   console.log('🚀 Starting SmartFix Verification Test Suite...\n');
 
   try {
-    // 1. Handyman Registration Outside Sivagangai (Should Fail)
-    console.log('Test 1: Handyman registration outside Sivagangai...');
+    // 1. Handyman Registration Outside Tamil Nadu (Should Fail)
+    console.log('Test 1: Handyman registration outside Tamil Nadu...');
     const badHandymanPhone = `+9199${Math.floor(10000000 + Math.random() * 90000000)}`;
     const res1 = await request('POST', '/auth/register', {
       name: 'Outside Handyman',
@@ -66,13 +66,13 @@ async function runTests() {
     });
     console.log(`-> Status: ${res1.status}, Message: ${res1.data?.message}`);
     if (res1.status === 400) {
-      console.log('✅ Test 1 Passed: Rejected non-Sivagangai registration!\n');
+      console.log('✅ Test 1 Passed: Rejected non-Tamil Nadu registration!\n');
     } else {
       console.error('❌ Test 1 Failed!\n');
     }
 
-    // 2. Handyman Registration in Sivagangai (Should Succeed as Pending)
-    console.log('Test 2: Handyman registration in Karaikudi, Sivagangai...');
+    // 2. Handyman Registration in Tamil Nadu (Should Succeed as Pending)
+    console.log('Test 2: Handyman registration in Karaikudi, Tamil Nadu...');
     const goodHandymanPhone = `+9198${Math.floor(10000000 + Math.random() * 90000000)}`;
     const otp1 = await request('POST', '/auth/send-otp', { phone: goodHandymanPhone, purpose: 'register' });
     await request('POST', '/auth/verify-otp', { phone: goodHandymanPhone, purpose: 'register', otp: otp1.data?.demoOtp });
@@ -84,7 +84,7 @@ async function runTests() {
       role: 'handyman',
       trade: 'Plumbing',
       subServices: ['Pipe Leak Repair', 'Toilet Repair'],
-      location: 'Karaikudi, Sivagangai',
+      location: 'Karaikudi, Tamil Nadu',
       aadhaarNumber: '987654321098',
     });
     console.log(`-> Status: ${res2.status}, Message: ${res2.data?.message}, Verification Status: ${res2.data?.user?.verificationStatus}`);
@@ -97,17 +97,17 @@ async function runTests() {
     const handymanToken = res2.data?.token;
 
     // 3. Customer Registration
-    console.log('Test 3: Customer registration in Sivagangai...');
+    console.log('Test 3: Customer registration in Tamil Nadu...');
     const custPhone = `+9197${Math.floor(10000000 + Math.random() * 90000000)}`;
     const otp2 = await request('POST', '/auth/send-otp', { phone: custPhone, purpose: 'register' });
     await request('POST', '/auth/verify-otp', { phone: custPhone, purpose: 'register', otp: otp2.data?.demoOtp });
 
     const res3 = await request('POST', '/auth/register', {
-      name: 'Sivagangai Resident',
+      name: 'Tamil Nadu Resident',
       phone: custPhone,
       password: 'password123',
       role: 'customer',
-      location: 'Sivagangai, Tamil Nadu',
+      location: 'Tamil Nadu, Tamil Nadu',
     });
     console.log(`-> Status: ${res3.status}, Customer ID: ${res3.data?.user?.id}`);
     if (res3.status === 201) {
@@ -117,8 +117,8 @@ async function runTests() {
     }
     const custToken = res3.data?.token;
 
-    // 4. Create Booking outside Sivagangai (Should Fail)
-    console.log('Test 4: Booking creation with location outside Sivagangai...');
+    // 4. Create Booking outside Tamil Nadu (Should Fail)
+    console.log('Test 4: Booking creation with location outside Tamil Nadu...');
     const res4 = await request(
       'POST',
       '/bookings',
@@ -133,12 +133,12 @@ async function runTests() {
     );
     console.log(`-> Status: ${res4.status}, Message: ${res4.data?.message}`);
     if (res4.status === 400) {
-      console.log('✅ Test 4 Passed: Booking outside Sivagangai rejected!\n');
+      console.log('✅ Test 4 Passed: Booking outside Tamil Nadu rejected!\n');
     } else {
       console.error('❌ Test 4 Failed!\n');
     }
 
-    // 5. Create Booking in Sivagangai (Should Succeed) & Check Privacy (Pending Status)
+    // 5. Create Booking in Tamil Nadu (Should Succeed) & Check Privacy (Pending Status)
     console.log('Test 5: Booking creation in Karaikudi (Pending status)...');
     const res5 = await request(
       'POST',
@@ -147,7 +147,7 @@ async function runTests() {
         workerId: handymanId,
         trade: 'Plumbing',
         subServices: ['Pipe Leak Repair'],
-        address: 'Karaikudi Main Road, Sivagangai',
+        address: 'Karaikudi Main Road, Tamil Nadu',
         pickupLat: 10.0735,
         pickupLng: 78.7732,
         price: 350,

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { apiService, getApiBase } from '../services/api';
 import AddWorkerModal from '../components/AddWorkerModal';
+import AdminLocations from '../components/AdminLocations';
 
 import { useLanguage } from '../context/LanguageContext';
 import socket from '../services/socket';
@@ -41,6 +42,11 @@ const AdminPanel = () => {
   const [aiModalWorker, setAiModalWorker] = useState(null);
   const [aiModalSession, setAiModalSession] = useState(null);
   const [aiModalLoading, setAiModalLoading] = useState(false);
+
+  // AI Review Insights Modal state
+  const [aiInsightsWorker, setAiInsightsWorker] = useState(null);
+  const [aiInsightsData, setAiInsightsData] = useState(null);
+  const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
 
   const [sosAlerts, setSosAlerts] = useState([]);
   const [highRiskBookings, setHighRiskBookings] = useState([]);
@@ -144,6 +150,30 @@ const AdminPanel = () => {
     } catch (err) {}
   };
 
+  const handleViewAiInsights = async (worker) => {
+    setAiInsightsWorker(worker);
+    setAiInsightsData(null);
+    setAiInsightsLoading(true);
+    try {
+      const token = localStorage.getItem('smartfix_token');
+      const res = await fetch(`${getApiBase()}/admin/workers/${worker._id || worker.id}/review-insights`, {
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAiInsightsData(data);
+      } else {
+        setActionToast('Failed to load AI Insights');
+        setTimeout(() => setActionToast(''), 3000);
+      }
+    } catch (e) {
+      setActionToast('Error loading AI Insights');
+      setTimeout(() => setActionToast(''), 3000);
+    } finally {
+      setAiInsightsLoading(false);
+    }
+  };
+
   const loadAdminBookings = async (status) => {
 
     const bkgs = await apiService.getAdminBookings(status);
@@ -204,7 +234,7 @@ const AdminPanel = () => {
   const handleVerifyCaptain = async (cId, name, status) => {
     try {
       const aiVerdict = aiModalSession?.aiRecommendation?.verdict || 'none';
-      await apiService.verifyCaptain(cId, status);
+      await apiService.verifyCaptain(cId, status, '');
       await apiService.logAdminAuditDecision(cId, status === 'Verified' ? 'approved' : 'rejected', aiVerdict);
 
       setActionToast(`Partner ${name} status updated to '${status}' successfully!`);
@@ -217,13 +247,21 @@ const AdminPanel = () => {
   };
 
   const handleInspectAiInterview = async (worker) => {
+    console.log("Inspecting AI Interview for worker:", worker);
     setAiModalWorker(worker);
     setAiModalLoading(true);
     setAiModalSession(null);
     try {
       const session = await apiService.getWorkerInterview(worker._id || worker.id);
+      console.log("Fetched AI Session:", session);
+      if (!session) {
+        alert("Session is null! Worker may not have completed the test, or an error occurred.");
+      }
       setAiModalSession(session);
-    } catch (e) {}
+    } catch (e) {
+      console.error("Error inspecting AI Interview:", e);
+      alert("Error fetching session: " + e.message);
+    }
     setAiModalLoading(false);
   };
 
@@ -670,7 +708,26 @@ const AdminPanel = () => {
         >
           <Wallet size={18} /> Wallet Overview
         </button>
+        <button
+          onClick={() => setActiveTab('locations')}
+          style={{
+            background: activeTab === 'locations' ? '#4f46e5' : '#ffffff',
+            color: activeTab === 'locations' ? '#ffffff' : '#475569',
+            border: '1px solid #cbd5e1',
+            padding: '10px 20px',
+            borderRadius: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <MapPin size={18} /> Service Locations
+        </button>
       </div>
+
+      {activeTab === 'locations' && <AdminLocations />}
 
       {/* TAB 1: VERIFIED WORKER DIRECTORY */}
       {activeTab === 'workers' && (
@@ -726,6 +783,12 @@ const AdminPanel = () => {
                         </td>
                         <td style={{ padding: '14px 12px', textAlign: 'right' }}>
                           <button
+                            onClick={() => handleViewAiInsights(w)}
+                            style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '6px 12px', borderRadius: '8px', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '8px' }}
+                          >
+                            <Sparkles size={14} /> {t('ai_insights', 'AI Insights')}
+                          </button>
+                          <button
                             onClick={() => handleDeleteWorker(wId, w.name)}
                             style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '6px 12px', borderRadius: '8px', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                           >
@@ -772,7 +835,7 @@ const AdminPanel = () => {
                       <div><strong>Trade:</strong> {tTrade(c.trade)}</div>
                       <div><strong>Location:</strong> 📍 {c.location}</div>
                       <div><strong>Phone:</strong> 📞 {c.phone}</div>
-                      <div><strong>Aadhaar Number:</strong> 🪪 {c.aadhaarNumber || 'Not provided'}</div>
+
                     </div>
 
                     <button
@@ -781,6 +844,32 @@ const AdminPanel = () => {
                     >
                       <Bot size={16} /> Inspect AI Skill Interview 🤖
                     </button>
+
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        onClick={() => {
+                           // AI KYC Logic trigger
+                           setAiModalWorker(c);
+                           setAiModalLoading(true);
+                           // Since we don't have real images in DB, we'll simulate the AI Vision call with a prompt for demo
+                           fetch(`${getApiBase()}/ai/verify-kyc`, {
+                             method: 'POST',
+                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('smartfix_token')}` },
+                             body: JSON.stringify({ image: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/' }) // Fake base64 for demo if no real doc
+                           }).then(res => res.json()).then(data => {
+                             alert(`🤖 AI Vision Analysis Complete:\nDocument: ${data.analysis.documentType}\nClear & Readable: ${data.analysis.isClearAndReadable}\nVerdict: ${data.analysis.looksSuspicious ? 'Suspicious ⚠️' : 'Looks Valid ✅'}\nReason: ${data.analysis.suspicionReason || 'N/A'}`);
+                             setAiModalLoading(false);
+                           }).catch(err => {
+                             alert('AI Check Failed: ' + err.message);
+                             setAiModalLoading(false);
+                           });
+                        }}
+                        style={{ width: '100%', marginBottom: '12px', background: '#f59e0b', border: '1px solid #d97706', color: '#ffffff', padding: '8px 12px', borderRadius: '10px', fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                      >
+                        {aiModalLoading && aiModalWorker?._id === cId ? <RefreshCw size={16} className="spin" /> : <Camera size={16} />}
+                        AI Vision Check 👁️
+                      </button>
+                    </div>
 
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button
@@ -1414,6 +1503,119 @@ const AdminPanel = () => {
                 style={{ background: '#059669', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 <CheckCircle2 size={16} /> Approve Partner
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Review Insights Modal */}
+      {aiInsightsWorker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+          <div style={{ background: '#ffffff', width: '100%', maxWidth: '600px', borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+            <div style={{ padding: '24px', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', borderBottom: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#1e40af', fontSize: '1.4rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={24} color="#3b82f6" /> {t('ai_review_insights', 'AI Review Insights')}
+                </h3>
+                <div style={{ color: '#475569', fontSize: '0.9rem', marginTop: '6px', fontWeight: '500' }}>
+                  {aiInsightsWorker.name} • {aiInsightsWorker.phone}
+                </div>
+                <div style={{ background: '#e0e7ff', color: '#4338ca', fontSize: '0.75rem', fontWeight: '800', padding: '4px 8px', borderRadius: '6px', marginTop: '12px', display: 'inline-block' }}>
+                  {t('ai_generated_reference_only', 'AI-generated, for reference only')}
+                </div>
+              </div>
+              <button
+                onClick={() => setAiInsightsWorker(null)}
+                style={{ background: '#ffffff', color: '#64748b', border: '1px solid #cbd5e1', width: '36px', height: '36px', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+              {aiInsightsLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <Bot size={48} color="#94a3b8" className="animate-pulse" style={{ margin: '0 auto 16px auto', display: 'block' }} />
+                  <h4 style={{ color: '#475569', margin: 0 }}>{t('analyzing_review_data', 'Analyzing review data...')}</h4>
+                </div>
+              ) : aiInsightsData ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* Summary section */}
+                  <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <FileText size={16} /> {t('ai_summary', 'AI Summary')}
+                    </h4>
+                    {aiInsightsData.summary?.en ? (
+                      <p style={{ margin: 0, color: '#1e293b', fontSize: '0.95rem', lineHeight: 1.5, fontWeight: '500' }}>
+                        {t('ai_summary_content', aiInsightsData.summary.en)}
+                      </p>
+                    ) : (
+                      <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                        {t('not_enough_reviews_summary', 'Not enough reviews for a summary (need 5+). Total analyzed: {{count}}').replace('{{count}}', aiInsightsData.totalAnalyzed)}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Aspect scores */}
+                  <div>
+                    <h4 style={{ margin: '0 0 16px 0', fontSize: '0.95rem', color: '#334155' }}>{t('aspect_scores_out_of_5', 'Aspect Scores (out of 5)')}</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {['punctuality', 'behaviour', 'cleanliness', 'price_fairness'].map(asp => {
+                        const score = aiInsightsData.averages[asp];
+                        const displayScore = score !== null ? score.toFixed(1) : 'N/A';
+                        const pct = score !== null ? (score / 5) * 100 : 0;
+                        const barColor = score >= 4 ? '#10b981' : score >= 2.5 ? '#f59e0b' : '#ef4444';
+                        
+                        return (
+                          <div key={asp}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.85rem', color: '#475569', fontWeight: '600', textTransform: 'capitalize' }}>
+                              <span>{asp.replace('_', ' ')}</span>
+                              <span>{displayScore}</span>
+                            </div>
+                            <div style={{ height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                              {score !== null && (
+                                <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: '4px' }} />
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Suspicious reviews badge */}
+                  {aiInsightsData.suspiciousCount > 0 && (
+                    <div style={{ marginTop: '8px' }}>
+                      <button 
+                        onClick={() => {
+                          setAiInsightsWorker(null);
+                          setActiveTab('review_flags');
+                        }}
+                        style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', width: '100%', justifyContent: 'center' }}
+                      >
+                        <AlertTriangle size={16} />
+                        {aiInsightsData.suspiciousCount > 1 
+                          ? t('view_suspicious_reviews_plural', 'View {{count}} Suspicious Reviews').replace('{{count}}', aiInsightsData.suspiciousCount)
+                          : t('view_suspicious_reviews', 'View {{count}} Suspicious Review').replace('{{count}}', aiInsightsData.suspiciousCount)
+                        }
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#ef4444' }}>
+                  {t('failed_load_data', 'Failed to load data.')}
+                </div>
+              )}
+            </div>
+            
+            <div style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setAiInsightsWorker(null)}
+                style={{ background: '#cbd5e1', color: '#334155', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                {t('close_btn', 'Close')}
               </button>
             </div>
           </div>

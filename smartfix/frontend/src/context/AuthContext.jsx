@@ -28,7 +28,7 @@ const OTP_API_BASE = getOtpApiBase();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('smartfix_token') || localStorage.getItem('handybook_token') || null);
+  const [token, setToken] = useState(localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token') || null);
   const [loading, setLoading] = useState(true);
   // phoneVerifyToken: short-lived JWT from /api/otp/verify (purpose='register')
   // Stored in memory only — never in localStorage — so it expires on page reload
@@ -42,8 +42,8 @@ export const AuthProvider = ({ children }) => {
   // Restore session on page load if token exists
   useEffect(() => {
     const restoreSession = async () => {
-      const savedToken = localStorage.getItem('smartfix_token') || localStorage.getItem('handybook_token');
-      const savedUser = localStorage.getItem('smartfix_user') || localStorage.getItem('handybook_user');
+      const savedToken = localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token');
+      const savedUser = localStorage.getItem('smartfix_user') || localStorage.getItem('smartfix_user');
 
       if (savedUser) {
         try {
@@ -83,12 +83,17 @@ export const AuthProvider = ({ children }) => {
     restoreSession();
   }, []);
 
-  // Login with phone number + password
-  const login = async (phone, password, role) => {
+  // Login with phone number or email + password
+  const login = async (identifier, password, role) => {
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    const payload = { password, role };
+    if (isEmail) payload.email = identifier;
+    else payload.phone = identifier;
+
     const res = await fetch(`${API_BASE}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, password, role }),
+      body: JSON.stringify(payload),
     });
 
     const data = await res.json();
@@ -154,12 +159,20 @@ export const AuthProvider = ({ children }) => {
   // Send OTP to user/worker mobile number via Twilio Verify API
   // NOTE: No client-side fallback — if the backend fails, a real error is thrown.
   // Credentials are NEVER generated or stored in the browser.
-  const sendOtp = async (phone, role, purpose = 'login') => {
-    const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
+  const sendOtp = async (identifier, role, purpose = 'login') => {
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    const payload = { role, purpose };
+    
+    if (isEmail) {
+      payload.email = identifier;
+    } else {
+      payload.phone = identifier.startsWith('+') ? identifier : `+91${identifier.replace(/\D/g, '')}`;
+    }
+    
     const res = await fetch(`${API_BASE}/send-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: formattedPhone, role, purpose }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to send verification code. Please try again.');
@@ -170,11 +183,20 @@ export const AuthProvider = ({ children }) => {
   // For purpose='register': stores the returned phoneVerifyToken in memory for the register() call.
   // For purpose='login': stores the JWT session token.
   const verifyOtp = async (payload) => {
-    const formattedPhone = payload.phone.startsWith('+') ? payload.phone : `+91${payload.phone.replace(/\D/g, '')}`;
+    const isEmail = payload.phone && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.phone);
+    const apiPayload = { ...payload };
+    
+    if (isEmail) {
+      apiPayload.email = payload.phone;
+      delete apiPayload.phone;
+    } else if (apiPayload.phone) {
+      apiPayload.phone = apiPayload.phone.startsWith('+') ? apiPayload.phone : `+91${apiPayload.phone.replace(/\D/g, '')}`;
+    }
+
     const res = await fetch(`${OTP_API_BASE}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, phone: formattedPhone }),
+      body: JSON.stringify(apiPayload),
     });
 
     const data = await res.json();
@@ -199,11 +221,16 @@ export const AuthProvider = ({ children }) => {
 
 
   // Reset Password via OTP
-  const resetPassword = async (phone, otp, newPassword) => {
+  const resetPassword = async (identifier, otp, newPassword) => {
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    const payload = { otp, newPassword };
+    if (isEmail) payload.email = identifier;
+    else payload.phone = identifier;
+
     const res = await fetch(`${API_BASE}/reset-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, otp, newPassword }),
+      body: JSON.stringify(payload),
     });
 
     const data = await res.json();
@@ -219,7 +246,7 @@ export const AuthProvider = ({ children }) => {
   // Update Profile & Settings
   const updateProfile = async (formData) => {
     try {
-      const savedToken = localStorage.getItem('smartfix_token') || localStorage.getItem('handybook_token');
+      const savedToken = localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token');
       const res = await fetch(`${API_BASE}/profile`, {
         method: 'PUT',
         headers: {
@@ -247,7 +274,7 @@ export const AuthProvider = ({ children }) => {
   // Delete Account Permanently
   const deleteAccount = async () => {
     try {
-      const savedToken = localStorage.getItem('smartfix_token') || localStorage.getItem('handybook_token');
+      const savedToken = localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token');
       const res = await fetch(`${API_BASE}/delete-account`, {
         method: 'DELETE',
         headers: {
@@ -269,8 +296,8 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     localStorage.removeItem('smartfix_token');
     localStorage.removeItem('smartfix_user');
-    localStorage.removeItem('handybook_token');
-    localStorage.removeItem('handybook_user');
+    localStorage.removeItem('smartfix_token');
+    localStorage.removeItem('smartfix_user');
   };
 
   return (

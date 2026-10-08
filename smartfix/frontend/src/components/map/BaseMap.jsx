@@ -1,6 +1,6 @@
 import React, { useCallback, useRef } from 'react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
-import { minimalMapStyle, SIVAGANGAI_BOUNDS, SIVAGANGAI_CENTER } from './mapStyle';
+import { minimalMapStyle, TAMILNADU_BOUNDS, TAMILNADU_CENTER } from './mapStyle';
 import { Navigation } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -9,7 +9,7 @@ const libraries = ['places', 'geometry'];
 
 const BaseMap = ({ 
   children, 
-  center = SIVAGANGAI_CENTER, 
+  center = TAMILNADU_CENTER, 
   zoom = 12, 
   onLoad,
   onIdle,
@@ -58,10 +58,10 @@ const BaseMap = ({
           fullscreenControl: false,
           gestureHandling: 'greedy',
           restriction: {
-            latLngBounds: SIVAGANGAI_BOUNDS,
+            latLngBounds: TAMILNADU_BOUNDS,
             strictBounds: false
           },
-          minZoom: 10,
+          minZoom: 6,
         }}
         onLoad={handleOnLoad}
         onIdle={onIdle}

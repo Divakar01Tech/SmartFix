@@ -1,6 +1,6 @@
 # SMARTFIX — UI/UX DESIGN BRIEF
 
-**Project Name**: SmartFix / HandyBook Platform  
+**Project Name**: SmartFix / SmartFix Platform  
 **Document Version**: 1.0.0  
 
 ---

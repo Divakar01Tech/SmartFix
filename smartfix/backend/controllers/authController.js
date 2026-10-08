@@ -27,16 +27,17 @@ const formatPhone = (phone) => {
 exports.register = async (req, res) => {
   try {
     const {
-      name, phone, password, role, trade, subServices, location, ratePerHour,
+      name, phone, email, password, role, trade, subServices, location, ratePerHour,
       aadhaarNumber, aadhaarDocUrl, idProofType, idProofNumber, idProofDocUrl,
       preferredLanguage, theme
     } = req.body;
 
-    if (!name || !phone || !password || !role) {
-      return res.status(400).json({ message: 'Name, phone, password and role are required' });
+    if (!name || (!phone && !email) || !password || !role) {
+      return res.status(400).json({ message: 'Name, phone or email, password and role are required' });
     }
 
-    const formattedPhone = formatPhone(phone);
+    const formattedPhone = phone ? formatPhone(phone) : null;
+    const normalizedEmail = email ? email.toLowerCase().trim() : null;
 
     // Security Rule: Restrict Admin registration
     if (role === 'admin') {
@@ -47,11 +48,7 @@ exports.register = async (req, res) => {
 
     // KYC & Location Rules for Handyman
     if (role === 'handyman') {
-      if (!aadhaarNumber || !/^\d{12}$/.test(aadhaarNumber.trim())) {
-        return res.status(400).json({ message: 'A valid 12-digit Aadhaar Card number is mandatory for provider registration.' });
-      }
-
-      // District Taluk Validation (Sivagangai District only)
+      // District Taluk Validation (Tamil Nadu only)
       const talukCheck = validateHandymanTaluk(location);
       if (!talukCheck.valid) {
         return res.status(400).json({ message: talukCheck.message });
@@ -70,9 +67,13 @@ exports.register = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({ phone: formattedPhone });
+    const queryCond = [];
+    if (formattedPhone) queryCond.push({ phone: formattedPhone });
+    if (normalizedEmail) queryCond.push({ email: normalizedEmail });
+    
+    const existingUser = await User.findOne({ $or: queryCond });
     if (existingUser) {
-      return res.status(400).json({ message: '🚫 An account with this phone number already exists! Rule: One phone number = One Account.' });
+      return res.status(400).json({ message: '🚫 An account with this phone number or email already exists!' });
     }
 
     // ── Phone Verification Gate ──────────────────────────────────────────────
@@ -80,6 +81,7 @@ exports.register = async (req, res) => {
     // This token proves Twilio (or DB OTP) confirmed the phone — we NEVER trust a
     // client-supplied phoneVerified: true flag from the request body.
     let phoneVerified = false;
+    let emailVerified = false;
 
     if (req.body.phoneVerifyToken) {
       try {
@@ -87,27 +89,29 @@ exports.register = async (req, res) => {
         if (
           decoded.type === 'phone_verify' &&
           decoded.purpose === 'register' &&
-          decoded.phone === formattedPhone
+          (decoded.phone === formattedPhone || decoded.phone === normalizedEmail)
         ) {
-          phoneVerified = true;
+          if (decoded.phone === formattedPhone) phoneVerified = true;
+          if (decoded.phone === normalizedEmail) emailVerified = true;
         } else {
-          return res.status(400).json({ message: 'Phone verification token is invalid or does not match this number.' });
+          return res.status(400).json({ message: 'Verification token is invalid or does not match.' });
         }
       } catch (_tokenErr) {
-        return res.status(400).json({ message: 'Phone verification has expired. Please verify your phone number again.' });
+        return res.status(400).json({ message: 'Verification has expired. Please verify again.' });
       }
     }
 
-    // Fallback: DB OTP record (for Fast2SMS / DB-hash path when Twilio Verify not configured)
-    if (!phoneVerified) {
-      const isVerifiedReg = await otpService.checkVerifiedOtp(formattedPhone, 'register');
-      const isVerifiedLogin = await otpService.checkVerifiedOtp(formattedPhone, 'login');
+    // Fallback: DB OTP record
+    if (!phoneVerified && !emailVerified) {
+      const isVerifiedReg = await otpService.checkVerifiedOtp(formattedPhone, 'register', normalizedEmail);
+      const isVerifiedLogin = await otpService.checkVerifiedOtp(formattedPhone, 'login', normalizedEmail);
       if (!isVerifiedReg && !isVerifiedLogin) {
         return res.status(400).json({
-          message: 'Phone verification required before creating account. Please verify your phone via OTP.',
+          message: 'Verification required before creating account. Please verify via OTP.',
         });
       }
-      phoneVerified = true;
+      if (formattedPhone) phoneVerified = true;
+      if (normalizedEmail) emailVerified = true;
     }
 
 
@@ -115,11 +119,12 @@ exports.register = async (req, res) => {
     const user = await User.create({
       name,
       phone: formattedPhone,
+      email: normalizedEmail,
       password,
       role,
       trade: isHandyman ? trade : undefined,
       subServices: isHandyman ? (subServices || []) : undefined,
-      location: location || 'Sivagangai, Tamil Nadu',
+      location: location || 'Tamil Nadu, Tamil Nadu',
       ratePerHour: isHandyman ? (ratePerHour || 350) : undefined,
       aadhaarNumber: isHandyman ? aadhaarNumber.trim() : undefined,
       aadhaarDocUrl: isHandyman ? (aadhaarDocUrl || '') : undefined,
@@ -131,10 +136,11 @@ exports.register = async (req, res) => {
       verificationStatus: isHandyman ? 'Pending' : 'Verified',
       isAvailable: isHandyman ? false : true,
       isOnline: isHandyman ? false : true,
-      phoneVerified: true,
+      phoneVerified: phoneVerified,
+      liveLocation: (req.body.lat && req.body.lng) ? { type: 'Point', coordinates: [req.body.lng, req.body.lat] } : undefined,
     });
 
-    await otpService.consumeVerifiedOtp(formattedPhone, 'register');
+    await otpService.consumeVerifiedOtp(formattedPhone, 'register', normalizedEmail);
 
     const token = generateToken(user._id);
 
@@ -148,7 +154,10 @@ exports.register = async (req, res) => {
         trade: user.trade,
         subServices: user.subServices,
         location: user.location,
+        lat: user.liveLocation?.coordinates?.[1] || null,
+        lng: user.liveLocation?.coordinates?.[0] || null,
         ratePerHour: user.ratePerHour,
+        workerId: user.workerId,
         verificationStatus: user.verificationStatus,
         preferredLanguage: user.preferredLanguage,
         theme: user.theme,
@@ -163,13 +172,14 @@ exports.register = async (req, res) => {
 // @desc   Login with phone number + password
 exports.login = async (req, res) => {
   try {
-    const { phone, password, role } = req.body;
+    const { phone, email, password, role } = req.body;
 
-    if (!phone || !password) {
-      return res.status(400).json({ message: 'Phone number and password are required' });
+    if ((!phone && !email) || !password) {
+      return res.status(400).json({ message: 'Phone/Email and password are required' });
     }
 
-    const formattedPhone = formatPhone(phone);
+    const formattedPhone = phone ? formatPhone(phone) : null;
+    const normalizedEmail = email ? email.toLowerCase().trim() : null;
 
     // Security Rule: Admin login restriction to 7604975206
     if (role === 'admin' && formattedPhone !== ADMIN_PHONE) {
@@ -182,10 +192,14 @@ exports.login = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ phone: formattedPhone }).select('+password');
+    const queryCond = [];
+    if (formattedPhone) queryCond.push({ phone: formattedPhone });
+    if (normalizedEmail) queryCond.push({ email: normalizedEmail });
+    
+    const user = await User.findOne({ $or: queryCond }).select('+password');
 
     if (!user) {
-      return res.status(401).json({ message: 'No account found with this phone number' });
+      return res.status(401).json({ message: 'No account found with this phone number or email' });
     }
 
     if (role && user.role !== role) {
@@ -218,7 +232,10 @@ exports.login = async (req, res) => {
         trade: user.trade,
         subServices: user.subServices,
         location: user.location,
+        lat: user.liveLocation?.coordinates?.[1] || null,
+        lng: user.liveLocation?.coordinates?.[0] || null,
         ratePerHour: user.ratePerHour,
+        workerId: user.workerId,
         verificationStatus: user.verificationStatus,
         rejectionReason: user.rejectionReason,
         preferredLanguage: user.preferredLanguage || 'en',
@@ -260,20 +277,21 @@ exports.getMe = async (req, res) => {
 // @route  POST /api/auth/reset-password
 exports.resetPassword = async (req, res) => {
   try {
-    const { phone, otp, newPassword } = req.body;
-    if (!phone || !newPassword) {
-      return res.status(400).json({ message: 'Phone number and new password are required' });
+    const { phone, email, otp, newPassword } = req.body;
+    if ((!phone && !email) || !newPassword) {
+      return res.status(400).json({ message: 'Phone/Email and new password are required' });
     }
 
-    const formattedPhone = formatPhone(phone);
+    const formattedPhone = phone ? formatPhone(phone) : null;
+    const normalizedEmail = email ? email.toLowerCase().trim() : null;
 
     // Step 3 Requirement: Re-validate that a verified: true OTP record exists for purpose='reset_password'
-    let isVerified = await otpService.checkVerifiedOtp(formattedPhone, 'reset_password');
+    let isVerified = await otpService.checkVerifiedOtp(formattedPhone, 'reset_password', normalizedEmail);
 
     // Fallback: If not pre-verified but OTP is provided directly in request
     if (!isVerified && otp) {
       try {
-        await otpService.verifyOtp(formattedPhone, 'reset_password', otp);
+        await otpService.verifyOtp(formattedPhone, 'reset_password', otp, normalizedEmail);
         isVerified = true;
       } catch (err) {
         return res.status(401).json({ message: err.message || 'Invalid or expired OTP code' });
@@ -284,15 +302,19 @@ exports.resetPassword = async (req, res) => {
       return res.status(400).json({ message: 'Phone verification required before resetting password. Please verify OTP first.' });
     }
 
-    const user = await User.findOne({ phone: formattedPhone });
+    const queryCond = [];
+    if (formattedPhone) queryCond.push({ phone: formattedPhone });
+    if (normalizedEmail) queryCond.push({ email: normalizedEmail });
+    
+    const user = await User.findOne({ $or: queryCond });
     if (!user) {
-      return res.status(404).json({ message: 'No account found registered with this phone number' });
+      return res.status(404).json({ message: 'No account found registered with this phone number or email' });
     }
 
     user.password = newPassword;
     await user.save();
 
-    await otpService.consumeVerifiedOtp(formattedPhone, 'reset_password');
+    await otpService.consumeVerifiedOtp(formattedPhone, 'reset_password', normalizedEmail);
 
     const token = generateToken(user._id);
 
@@ -387,6 +409,7 @@ exports.updateProfile = async (req, res) => {
         ratePerHour: user.ratePerHour,
         isAvailable: user.isAvailable,
         verificationStatus: user.verificationStatus,
+        workerId: user.workerId,
         aadhaarNumber: user.aadhaarNumber,
         aadhaarDocUrl: user.aadhaarDocUrl,
         idProofType: user.idProofType,

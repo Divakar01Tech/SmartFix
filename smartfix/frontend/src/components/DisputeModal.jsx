@@ -20,7 +20,7 @@ const DisputeModal = ({ booking, role, onClose }) => {
       setError('');
       
       const apiBase = getApiBase();
-      const token = localStorage.getItem('smartfix_token') || localStorage.getItem('handybook_token');
+      const token = localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token');
       const res = await fetch(`${apiBase}/disputes`, {
         method: 'POST',
         headers: {

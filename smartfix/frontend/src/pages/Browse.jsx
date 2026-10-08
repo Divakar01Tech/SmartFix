@@ -11,6 +11,7 @@ import { apiService } from '../services/api';
 import { getWorkerDistance, getCityBase } from '../utils/distance';
 import { getUserCurrentLocation } from '../utils/geolocation';
 import { Search, MapPin, Map, LayoutGrid, RotateCcw, Navigation, Wrench, Sparkles, Info } from 'lucide-react';
+import AISearchBar from '../components/AISearchBar';
 import './Browse.css';
 
 const Browse = () => {
@@ -32,6 +33,7 @@ const Browse = () => {
   const [viewMode, setViewMode] = useState('grid');
   const [userGps, setUserGps] = useState(null);
   const [locatingGps, setLocatingGps] = useState(false);
+  const [gpsError, setGpsError] = useState('');
 
   // Get sub-services for the currently selected category
   const activeCategorySubServices = useMemo(() => {
@@ -63,10 +65,11 @@ const Browse = () => {
       const coords = await getUserCurrentLocation({ enableHighAccuracy: true, timeout: 8000 });
       setUserGps({ lat: coords.lat, lng: coords.lng });
       setLocatingGps(false);
+      setGpsError('');
     } catch (err) {
       console.warn('GPS location error:', err.message);
       setLocatingGps(false);
-      alert('Unable to fetch live GPS position. Please ensure location permissions are granted.');
+      setGpsError('Unable to fetch live GPS position. Please ensure location permissions are granted.');
     }
   };
 
@@ -83,8 +86,8 @@ const Browse = () => {
 
   const locations = useMemo(() => {
     const locSet = new Set(workers.map((w) => w.location).filter(Boolean));
-    const sivagangaiTowns = [
-      'Sivagangai Town',
+    const tamilnaduTowns = [
+      'Tamil Nadu',
       'Karaikudi',
       'Devakottai',
       'Manamadurai',
@@ -94,7 +97,7 @@ const Browse = () => {
       'Ilayangudi',
       'Thirupuvanam',
     ];
-    sivagangaiTowns.forEach((town) => locSet.add(town));
+    tamilnaduTowns.forEach((town) => locSet.add(town));
     return ['all', ...Array.from(locSet)];
   }, [workers]);
 
@@ -197,6 +200,21 @@ const Browse = () => {
 
   return (
     <div className="browse-page container py-4 animate__animated animate__fadeIn">
+      
+      {/* AI Search Bar */}
+      <AISearchBar 
+        onSelectMatch={(match) => {
+          // match has category, subService
+          const cat = categories.find(c => c.name === match.category);
+          if (cat) {
+            handleCategoryChange(cat.id);
+            setTimeout(() => {
+              setSelectedSubService(match.subService);
+            }, 0);
+          }
+        }}
+      />
+
       {/* Header Banner */}
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
         <div>
@@ -371,6 +389,12 @@ const Browse = () => {
             </button>
           </div>
         </div>
+        {gpsError && (
+          <div className="alert alert-warning mt-3 mb-0 py-2 d-flex align-items-center gap-2 border-0 shadow-sm" style={{ background: '#fef3c7', color: '#b45309' }}>
+            <AlertTriangle size={16} />
+            <span style={{ fontSize: '0.85rem' }}>{gpsError}</span>
+          </div>
+        )}
       </div>
 
       {/* Results Header */}

@@ -2,6 +2,7 @@
 // Supports Fast2SMS (India +91 numbers) & Twilio SMS / WhatsApp
 
 const twilioService = require('./twilioService');
+const whatsappService = require('./whatsappService');
 
 const sendSmsOtp = async (phoneNumber, otpCode, channel = 'sms') => {
   let lastFast2SmsError = null;
@@ -14,8 +15,16 @@ const sendSmsOtp = async (phoneNumber, otpCode, channel = 'sms') => {
   const messageText = `Your SmartFix verification OTP code is: ${otpCode}. Valid for 5 minutes. Do not share this code with anyone.`;
 
 
-  // 1. Twilio WhatsApp Option if requested
-  if (channel === 'whatsapp' && twilioService.isTwilioConfigured()) {
+  // 1. Try our Free WhatsApp Web.js Client first!
+  if (whatsappService.isReady) {
+    const waResult = await whatsappService.sendWhatsAppMessage(formattedPhone, messageText);
+    if (waResult.success) {
+      return waResult;
+    }
+  }
+
+  // 1.5 Fallback to Twilio WhatsApp for OTP
+  if (twilioService.isTwilioConfigured()) {
     const waResult = await twilioService.sendWhatsApp(formattedPhone, messageText);
     if (waResult.success) {
       return waResult;

@@ -444,7 +444,7 @@ const CustomerDashboard = () => {
                           worker={{
                             name: workerObj.name || 'Pro Specialist',
                             trade: b.trade,
-                            location: 'Sivagangai District',
+                            location: 'Tamil Nadu',
                             ratePerHour: b.price || 350,
                             rating: workerObj.rating || 4.8,
                             ratingCount: workerObj.ratingCount || 42,
@@ -479,12 +479,12 @@ const CustomerDashboard = () => {
                           type="button"
                           className="abc-action-btn live-map-btn"
                           onClick={() => setSelectedBookingForMap(b)}
-                          title={b.status !== 'EnRoute' ? 'Live tracking becomes available once worker is En Route' : 'Track worker live on map'}
-                          style={b.status !== 'EnRoute' ? { opacity: 0.55, cursor: 'not-allowed' } : {}}
-                          disabled={b.status !== 'EnRoute'}
+                          title={!(b.status === 'EnRoute' || b.status === 'Accepted') ? 'Live tracking becomes available once worker accepts' : 'Track worker live on map'}
+                          style={!(b.status === 'EnRoute' || b.status === 'Accepted') ? { opacity: 0.55, cursor: 'not-allowed' } : {}}
+                          disabled={!(b.status === 'EnRoute' || b.status === 'Accepted')}
                         >
                           <Navigation size={16} />
-                          {b.status === 'EnRoute' ? 'Live GPS Map Tracker' : '🗺️ Track (Active En Route only)'}
+                          {(b.status === 'EnRoute' || b.status === 'Accepted') ? 'Live GPS Map Tracker' : '🗺️ Track (Active jobs only)'}
                         </button>
 
                         {b.status !== 'Pending' && b.status !== 'PendingDispatch' && b.worker && (
@@ -726,7 +726,7 @@ const CustomerDashboard = () => {
                           <small style={{ color: '#64748b' }}>{workerObj.phone || b.workerPhone || '+919876543210'}</small>
                         </td>
                         <td>{b.trade}</td>
-                        <td>{b.address || 'Sivagangai'}</td>
+                        <td>{b.address || 'Tamil Nadu'}</td>
                         <td>₹{b.price}</td>
                         <td>
                           <span className="badge bg-danger-subtle text-danger fw-bold px-2 py-1 rounded-pill">

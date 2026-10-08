@@ -13,7 +13,7 @@ const AddWorkerModal = ({ onClose, onWorkerAdded }) => {
     phone: '',
     trade: 'Plumbing',
     subServices: [],
-    location: 'Sivagangai Town',
+    location: 'Tamil Nadu',
     ratePerHour: '350',
     experience: '5 years',
     avatar: '👨‍🔧',
@@ -74,7 +74,7 @@ const AddWorkerModal = ({ onClose, onWorkerAdded }) => {
       phone: form.phone.trim(),
       trade: form.trade,
       subServices: form.subServices.length > 0 ? form.subServices : [selectedCategory.subServices[0]],
-      location: form.location.trim() || 'Sivagangai Town',
+      location: form.location.trim() || 'Tamil Nadu',
       ratePerHour: Number(form.ratePerHour) || 350,
       rating: 4.9,
       ratingCount: 1,
@@ -190,7 +190,7 @@ const AddWorkerModal = ({ onClose, onWorkerAdded }) => {
                   name="location"
                   value={form.location}
                   onChange={handleChange}
-                  placeholder="e.g. Sivagangai Town / Karaikudi"
+                  placeholder="e.g. Tamil Nadu / Karaikudi"
                   required
                 />
               </div>

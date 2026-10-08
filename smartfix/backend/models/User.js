@@ -21,7 +21,6 @@ const userSchema = new mongoose.Schema(
     },
     googleUid: {
       type: String,
-      default: '',
       // sparse index defined below
     },
     avatar: {
@@ -39,7 +38,19 @@ const userSchema = new mongoose.Schema(
       required: true,
       default: 'customer',
     },
+    customerId: {
+      type: String,
+      trim: true,
+      unique: true,
+      sparse: true,
+    },
     // Handyman-specific fields (ignored for customers)
+    workerId: {
+      type: String,
+      trim: true,
+      unique: true,
+      sparse: true,
+    },
     trade: {
       type: String,
       enum: [
@@ -259,6 +270,14 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    jobsOffered: {
+      type: Number,
+      default: 0,
+    },
+    jobsAccepted: {
+      type: Number,
+      default: 0,
+    },
     isBlocked: {
       type: Boolean,
       default: false,
@@ -291,12 +310,32 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Demo data flag — set by seedDemoData.js; never touches real users
+    isDemo: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   { timestamps: true }
 );
 
-// Hash password before saving (skip for Google OAuth placeholder passwords)
+// Hash password before saving and generate customer ID
 userSchema.pre('save', async function (next) {
+  // Generate customerId for new customers
+  if (this.isNew && this.role === 'customer' && !this.customerId) {
+    let isUnique = false;
+    while (!isUnique) {
+      const randomNum = Math.floor(10000 + Math.random() * 90000);
+      const newId = `CUST_${randomNum}`;
+      const exists = await mongoose.models.User.findOne({ customerId: newId });
+      if (!exists) {
+        this.customerId = newId;
+        isUnique = true;
+      }
+    }
+  }
+
   if (!this.isModified('password') || !this.password) return next();
   // Don't re-hash already-hashed Google placeholder passwords stored as plain marker strings
   if (this.password.startsWith('google_oauth_') && !this.isNew) return next();

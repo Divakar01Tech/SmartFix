@@ -615,3 +615,18 @@
   color: var(--primary-color);
 }
 
+@media (max-width: 900px) {
+  .hero-content h1 { font-size: 2.2rem; }
+  .hero-subtitle { font-size: 1rem; }
+  .hero-search-box { flex-direction: column; padding: 12px; gap: 10px; border-radius: 12px; }
+  .hero-search-box input { width: 100%; text-align: center; }
+  .hero-search-btn { width: 100%; }
+}
+
+@media (max-width: 600px) {
+  .hero-content h1 { font-size: 1.8rem; }
+  .hero-section { padding: 40px 15px; }
+  .section-header h2 { font-size: 1.8rem; }
+  .modern-glass-card { padding: 16px; }
+  .categories-grid, .features-grid, .testimonials-grid { grid-template-columns: 1fr; }
+}

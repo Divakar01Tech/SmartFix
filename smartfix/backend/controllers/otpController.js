@@ -47,15 +47,16 @@ const generatePhoneVerifyToken = (phone, purpose) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.sendOtp = async (req, res) => {
   try {
-    const { phone, purpose, role } = req.body;
+    const { phone, email, purpose, role } = req.body;
 
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'Phone number is required.' });
+    if (!phone && !email) {
+      return res.status(400).json({ success: false, message: 'Phone number or email is required.' });
     }
 
-    const formattedPhone = formatPhoneE164(phone);
+    const formattedPhone = phone ? formatPhoneE164(phone) : null;
+    const normalizedEmail = email ? email.toLowerCase().trim() : null;
 
-    if (!formattedPhone) {
+    if (phone && !formattedPhone) {
       return res.status(400).json({ success: false, message: 'Enter a valid Indian mobile number.' });
     }
 
@@ -64,50 +65,50 @@ exports.sendOtp = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Admin access is restricted to the authorized phone number.' });
     }
 
-    // Duplicate-phone check for registration
+    // Duplicate check for registration
     if (purpose === 'register') {
-      const existingUser = await User.findOne({ phone: formattedPhone });
+      const query = [];
+      if (formattedPhone) query.push({ phone: formattedPhone });
+      if (normalizedEmail) query.push({ email: normalizedEmail });
+      
+      const existingUser = await User.findOne({ $or: query });
       if (existingUser) {
         return res.status(400).json({
           success: false,
-          message: 'This phone number is already registered. Please log in instead.',
+          message: `This ${formattedPhone ? 'phone number' : 'email address'} is already registered. Please log in instead.`,
         });
       }
     }
 
-    // ── 1. Primary: Twilio Verify (if properly configured) ─────────────────
-    if (isTwilioVerifyConfigured()) {
-      try {
-        const result = await twilioVerifyService.sendVerificationCode(formattedPhone);
-        return res.status(200).json({
-          success: true,
-          message: 'Verification code sent to your phone via SMS.',
-          status: result.status,
-          phone: formattedPhone,
-          provider: 'twilio_verify',
+    // Check if user exists for login
+    if (purpose === 'login' || !purpose) {
+      const query = [];
+      if (formattedPhone) query.push({ phone: formattedPhone });
+      if (normalizedEmail) query.push({ email: normalizedEmail });
+      
+      const existingUser = await User.findOne({ $or: query });
+      if (!existingUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'Account not found. Please sign up first.',
         });
-      } catch (err) {
-        if (err.message !== 'TWILIO_NOT_CONFIGURED') {
-          // A real Twilio error (e.g. invalid number, rate limit) — surface it safely
-          return res.status(err.message.includes('wait') || err.message.includes('Too many') ? 429 : 400).json({
-            success: false,
-            message: err.message,
-          });
-        }
-        // TWILIO_NOT_CONFIGURED — fall through to DB fallback
-        console.log('ℹ️ Twilio Verify not configured — using DB/SMS fallback');
       }
     }
 
-    // ── 2. Persistent DB-hash OTP via Fast2SMS ────────────────────────────
-    const result = await otpService.generateOtp(formattedPhone, purpose || 'login');
+    // Twilio Verify disabled temporarily to force WhatsApp DB OTP flow
+
+    // ── 2. Persistent DB-hash OTP via Fast2SMS or Email ────────────────────────────
+    const result = await otpService.generateOtp(formattedPhone, purpose || 'login', normalizedEmail);
+    
     const response = {
       success: true,
-      message: 'Verification code sent to your phone.',
+      message: normalizedEmail ? 'Verification code sent to your email.' : 'Verification code sent to your phone.',
       status: 'pending',
       phone: formattedPhone,
-      provider: 'fast2sms',
+      email: normalizedEmail,
+      provider: normalizedEmail ? 'nodemailer' : 'fast2sms',
       smsStatus: result.smsStatus,
+      emailStatus: result.emailStatus,
     };
 
     return res.status(200).json(response);
@@ -126,36 +127,23 @@ exports.sendOtp = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.verifyOtp = async (req, res) => {
   try {
-    const { phone, purpose, otp, role, name, trade, subServices, location, ratePerHour } = req.body;
+    const { phone, email, purpose, otp, role, name, trade, subServices, location, ratePerHour } = req.body;
 
-    if (!phone || otp === undefined || otp === null || otp === '') {
-      return res.status(400).json({ success: false, message: 'Phone number and OTP code are required.' });
+    if ((!phone && !email) || otp === undefined || otp === null || otp === '') {
+      return res.status(400).json({ success: false, message: 'Phone number/Email and OTP code are required.' });
     }
 
-    const formattedPhone = formatPhoneE164(phone);
+    const formattedPhone = phone ? formatPhoneE164(phone) : null;
+    const normalizedEmail = email ? email.toLowerCase().trim() : null;
     const code = otp.toString().trim();
     let isApproved = false;
 
-    // ── 1. Twilio Verify (if properly configured) ───────────────────────────
-    if (isTwilioVerifyConfigured()) {
-      try {
-        const result = await twilioVerifyService.checkVerificationCode(formattedPhone, code);
-        if (result.approved) {
-          isApproved = true;
-        }
-      } catch (err) {
-        if (err.message !== 'TWILIO_NOT_CONFIGURED') {
-          // Real Twilio error (wrong code, expired, too many attempts)
-          return res.status(400).json({ success: false, message: err.message });
-        }
-        console.log('ℹ️ Twilio Verify not configured — trying DB fallback');
-      }
-    }
+    // Twilio Verify disabled temporarily to force WhatsApp DB OTP flow
 
     // ── 2. Persistent DB-hash OTP verification (No bypasses, strictly bcrypt check) ──
     if (!isApproved) {
       try {
-        const { record } = await otpService.verifyOtp(formattedPhone, purpose || 'login', code);
+        const { record } = await otpService.verifyOtp(formattedPhone, purpose || 'login', code, normalizedEmail);
         if (record) isApproved = true;
       } catch (dbErr) {
         return res.status(400).json({
@@ -172,31 +160,33 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-
     // Determine what we're doing: pure phone-verify (for signup step) vs login
     const isSignupVerify = purpose === 'register';
 
     if (isSignupVerify) {
-      // Signup step: just return a short-lived phoneVerifyToken.
-      // The frontend will pass this to /api/auth/register.
-      // We do NOT create the user account here — that happens at /register.
-
       // Consume/mark OTP in DB if it exists (for fallback path)
-      await otpService.consumeVerifiedOtp(formattedPhone, 'register').catch(() => {});
+      await otpService.consumeVerifiedOtp(formattedPhone, 'register', normalizedEmail).catch(() => {});
 
-      const phoneVerifyToken = generatePhoneVerifyToken(formattedPhone, 'register');
+      // Use the available identifier for the token
+      const identifier = formattedPhone || normalizedEmail;
+      const phoneVerifyToken = generatePhoneVerifyToken(identifier, 'register');
 
       return res.status(200).json({
         success: true,
         verified: true,
-        message: '✅ Phone number verified successfully.',
+        message: '✅ Verified successfully.',
         phoneVerifyToken,
         phone: formattedPhone,
+        email: normalizedEmail,
       });
     }
 
     // Login / OTP-login path: find or create user, issue JWT
-    let user = await User.findOne({ phone: formattedPhone });
+    const queryCond = [];
+    if (formattedPhone) queryCond.push({ phone: formattedPhone });
+    if (normalizedEmail) queryCond.push({ email: normalizedEmail });
+
+    let user = await User.findOne({ $or: queryCond });
 
     if (!user) {
       // Auto-create account from OTP login (quick-login flow)
@@ -207,20 +197,21 @@ exports.verifyOtp = async (req, res) => {
       user = await User.create({
         name: name || (isHandyman ? 'Service Partner' : 'SmartFix Customer'),
         phone: formattedPhone,
+        email: normalizedEmail,
         password: defaultPassword,
         role: userRole,
         trade: isHandyman ? (trade || 'Plumbing') : undefined,
         subServices: isHandyman ? (subServices || []) : undefined,
-        location: location || 'Sivagangai, Tamil Nadu',
+        location: location || 'Tamil Nadu, Tamil Nadu',
         ratePerHour: isHandyman ? (Number(ratePerHour) || 350) : undefined,
         verificationStatus: isHandyman ? 'Pending' : 'Verified',
         isAvailable: isHandyman ? false : true,
         isOnline: isHandyman ? false : true,
-        phoneVerified: true,
+        phoneVerified: !!formattedPhone,
       });
-      console.log(`✅ Auto-created user via OTP login: ${user.name} (${user.phone})`);
+      console.log(`✅ Auto-created user via OTP login: ${user.name} (${user.phone || user.email})`);
     } else {
-      user.phoneVerified = true;
+      if (formattedPhone) user.phoneVerified = true;
       await user.save();
     }
 
@@ -228,7 +219,7 @@ exports.verifyOtp = async (req, res) => {
     if ((user.role === 'admin' || role === 'admin') && formattedPhone !== ADMIN_PHONE) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied. Admin login is restricted to the authorized number.',
+        message: 'Access denied. Admin login is restricted.',
       });
     }
 
@@ -265,6 +256,7 @@ exports.verifyOtp = async (req, res) => {
     });
   } catch (err) {
     console.error('Verify OTP Error:', err.message);
+    require('fs').appendFileSync('smartfix_error.log', new Date().toISOString() + ' ' + (err.stack || err) + '\n');
     return res.status(500).json({
       success: false,
       message: 'OTP verification failed. Please try again.',

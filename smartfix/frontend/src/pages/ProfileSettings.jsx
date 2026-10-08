@@ -5,6 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import { HOME_SERVICES } from '../data/servicesData';
 import { User, Phone, MapPin, Wrench, ShieldCheck, CheckSquare, Square, Lock, Bell, CheckCircle2, Save, Globe, Trash2, AlertTriangle, Sun, Moon } from 'lucide-react';
+import LocationSelector from '../components/LocationSelector';
 import './ProfileSettings.css';
 
 const ProfileSettings = () => {
@@ -26,7 +27,7 @@ const ProfileSettings = () => {
   const [form, setForm] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
-    location: user?.location || 'Sivagangai, Tamil Nadu',
+    location: user?.location || '',
     preferredLanguage: user?.preferredLanguage || language || 'en',
     theme: user?.theme || theme || 'light',
     // Handyman fields
@@ -165,7 +166,10 @@ const ProfileSettings = () => {
           <div>
             <h1>{user?.name || 'User Profile'}</h1>
             <p className="profile-sub-info">
-              <Phone size={14} /> {user?.phone || '+91 98765 43210'} • <MapPin size={14} /> {user?.location || 'Sivagangai, Tamil Nadu'}
+              <Phone size={14} /> {user?.phone || '+91 98765 43210'} • <MapPin size={14} /> {user?.location || 'Tamil Nadu, India'}
+              {user?.workerId && (
+                <> • <span className="badge bg-primary text-white ms-1">ID: {user.workerId}</span></>
+              )}
             </p>
           </div>
         </div>
@@ -278,14 +282,11 @@ const ProfileSettings = () => {
                 </div>
 
                 <div className="form-grid-2">
-                  <div className="form-group">
-                    <label><MapPin size={15} /> Primary Address / City</label>
-                    <input
-                      type="text"
-                      name="location"
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ marginBottom: '8px' }}>Service Area (Tamil Nadu)</label>
+                    <LocationSelector
                       value={form.location}
                       onChange={handleChange}
-                      placeholder="e.g. Sivagangai Town / Karaikudi"
                     />
                   </div>
 
@@ -429,50 +430,62 @@ const ProfileSettings = () => {
                 <h3 className="tab-pane-title"><ShieldCheck size={20} /> Document & Identity Verification</h3>
                 <p className="tab-pane-desc">Upload required government ID, license, and service registration to go live.</p>
 
-                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '14px', borderRadius: '12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <ShieldCheck size={24} color="#059669" />
-                  <div>
-                    <strong style={{ color: '#166534' }}>Verification Status: VERIFIED HANDYMAN 🟢</strong>
-                    <p style={{ margin: 0, fontSize: '0.83rem', color: '#15803d' }}>All documents are active and approved for service dispatch requests.</p>
+                {user?.verificationStatus === 'Verified' ? (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '14px', borderRadius: '12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <ShieldCheck size={24} color="#059669" />
+                    <div>
+                      <strong style={{ color: '#166534' }}>Verification Status: VERIFIED HANDYMAN 🟢</strong>
+                      <p style={{ margin: 0, fontSize: '0.83rem', color: '#15803d' }}>All documents are active and approved for service dispatch requests.</p>
+                    </div>
+                  </div>
+                ) : user?.verificationStatus === 'Rejected' ? (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '14px', borderRadius: '12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <ShieldCheck size={24} color="#dc2626" />
+                    <div>
+                      <strong style={{ color: '#991b1b' }}>Verification Status: REJECTED ❌</strong>
+                      <p style={{ margin: 0, fontSize: '0.83rem', color: '#b91c1c' }}>Your verification was rejected by Admin. Please update details or contact support.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '14px', borderRadius: '12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <ShieldCheck size={24} color="#d97706" />
+                    <div>
+                      <strong style={{ color: '#92400e' }}>Verification Status: PENDING APPROVAL ⏳</strong>
+                      <p style={{ margin: 0, fontSize: '0.83rem', color: '#b45309' }}>Your profile is under manual review by SmartFix Admin. You will be notified once approved.</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="form-grid-2">
+                  <div className="form-group">
+                    <label>Mobile Number</label>
+                    <input
+                      type="text"
+                      placeholder="Verified via OTP"
+                      defaultValue={user?.phone || ''}
+                      disabled
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="user@example.com"
+                      defaultValue={user?.email || ''}
+                      disabled
+                    />
                   </div>
                 </div>
 
                 <div className="form-grid-2">
-                  <div className="form-group">
-                    <label>Aadhaar Card Number (12 digits)</label>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>SmartFix Worker ID</label>
                     <input
                       type="text"
-                      placeholder="9876 5432 1098"
-                      defaultValue="9876 5432 1098"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Driving License / Govt ID Number</label>
-                    <input
-                      type="text"
-                      placeholder="TN-59-2022-00984"
-                      defaultValue="TN-59-2022-00984"
-                    />
-                  </div>
-                </div>
-
-                <div className="form-grid-2">
-                  <div className="form-group">
-                    <label>Vehicle / Transport Registration No.</label>
-                    <input
-                      type="text"
-                      placeholder="TN 59 BX 4321"
-                      defaultValue="TN 59 BX 4321"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Insurance / Guarantee Policy No.</label>
-                    <input
-                      type="text"
-                      placeholder="POL-9948-2026"
-                      defaultValue="POL-9948-2026"
+                      placeholder="SFX-9988"
+                      defaultValue={user?.workerId || user?._id?.slice(-6).toUpperCase() || 'SFX-9988'}
+                      disabled
                     />
                   </div>
                 </div>

@@ -1,8 +1,8 @@
 /**
- * Test Suite for HandyBook (SmartFix) AI Chatbot Intent Taxonomy & Dialogue Engine
+ * Test Suite for SmartFix (SmartFix) AI Chatbot Intent Taxonomy & Dialogue Engine
  */
 
-const { detectLiveIntent, isTalukCovered, extractStandardEntities, SIVAGANGAI_TALUKS, SERVICE_CATEGORIES } = require('../services/aiIntentService');
+const { detectLiveIntent, isTalukCovered, extractStandardEntities, TAMILNADU_TALUKS, SERVICE_CATEGORIES } = require('../services/aiIntentService');
 const { processDialogueTurn, enforceTrustGating } = require('../services/aiDialogueManager');
 
 async function runTests() {
@@ -23,9 +23,9 @@ async function runTests() {
     }
   }
 
-  // 1. Test 8 Sivagangai District Taluks Geofence Validation
-  console.log('--- 1. Testing Sivagangai 8-Taluk Service Area Allowlist ---');
-  for (const taluk of SIVAGANGAI_TALUKS) {
+  // 1. Test 8 Tamil Nadu Taluks Geofence Validation
+  console.log('--- 1. Testing Tamil Nadu 8-Taluk Service Area Allowlist ---');
+  for (const taluk of TAMILNADU_TALUKS) {
     const res = isTalukCovered(`I am in ${taluk}`);
     assert(res.isCovered && res.matchedTaluk === taluk, `Covered taluk '${taluk}' recognized correctly`);
   }

@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const Booking = require('../models/Booking');
 const mongoose = require('mongoose');
-const { validateSivagangaiLocation } = require('../services/geocodingService');
+const { validateTamilNaduLocation } = require('../services/geocodingService');
 const { sanitizeBookingForRole } = require('../utils/sanitizer');
 const { createProxySession } = require('../utils/twilioProxy');
 const DispatchAttempt = require('../models/DispatchAttempt');
@@ -111,7 +111,7 @@ exports.findNearestCaptains = async (req, res) => {
 
 exports.requestDispatch = async (req, res) => {
   try {
-    const { trade, serviceTier = 'AutoHandyman', pickupLat, pickupLng, address, price, notes, workerId } = req.body;
+    const { trade, serviceTier = 'AutoHandyman', pickupLat, pickupLng, address, price, notes, workerId, aiSuggested } = req.body;
     const customerId = req.user?.id;
 
     if (!customerId || !mongoose.Types.ObjectId.isValid(customerId)) {
@@ -121,8 +121,8 @@ exports.requestDispatch = async (req, res) => {
     const pLat = parseFloat(pickupLat);
     const pLng = parseFloat(pickupLng);
 
-    // Validate Sivagangai District bounds
-    const locValidation = await validateSivagangaiLocation(pLat, pLng, address);
+    // Validate Tamil Nadu bounds
+    const locValidation = await validateTamilNaduLocation(pLat, pLng, address);
     if (!locValidation.valid) {
       return res.status(400).json({ message: locValidation.message });
     }
@@ -156,10 +156,11 @@ exports.requestDispatch = async (req, res) => {
       distanceKm: 1.8,
       date: autoDate,
       time: autoTime,
-      address: address || 'Sivagangai, Tamil Nadu',
+      address: address || 'Tamil Nadu, Tamil Nadu',
       price: Number(price) || assignedWorker?.ratePerHour || 350,
       notes: notes || 'Dispatched via SmartFix On-Demand Engine',
       status: 'Pending',
+      aiSuggested: aiSuggested || undefined,
     });
 
     const populated = await Booking.findById(createdBooking._id)

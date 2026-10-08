@@ -237,3 +237,46 @@
   color: var(--danger-color);
 }
 
+
+@media (max-width: 768px) {
+  .navbar-top { 
+    flex-direction: column; 
+    gap: 12px; 
+    align-items: stretch; 
+    padding: 12px 10px; 
+  }
+  
+  .navbar-logo { 
+    justify-content: center; 
+  }
+  
+  .navbar-search { 
+    max-width: 100%; 
+    width: 100%;
+  }
+
+  .navbar-right { 
+    display: flex;
+    justify-content: center; 
+    flex-wrap: wrap; 
+    gap: 10px;
+    width: 100%;
+  }
+
+  .nav-link {
+    font-size: 0.85rem; /* slightly smaller to fit mobile */
+    padding: 4px 8px;
+    text-align: center;
+  }
+
+  .account-trigger {
+    font-size: 0.85rem;
+    padding: 6px 12px;
+  }
+  
+  .custom-dropdown-menu {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+}

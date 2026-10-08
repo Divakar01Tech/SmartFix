@@ -30,6 +30,15 @@ const bookingSchema = new mongoose.Schema(
     notes: {
       type: String,
     },
+    aiSuggested: {
+      category: String,
+      subService: String,
+      urgency: { type: String, enum: ['Low', 'Medium', 'Emergency'] },
+      priceMin: Number,
+      priceMax: Number,
+      confidence: Number,
+      acceptedByUser: Boolean
+    },
     price: {
       type: Number, // stored in INR
       required: true,
@@ -255,6 +264,16 @@ const bookingSchema = new mongoose.Schema(
     workerReview: {
       type: String,
     },
+    aiAnalysis: {
+      aspects: {
+        punctuality: { type: Number, default: null },
+        behaviour: { type: Number, default: null },
+        cleanliness: { type: Number, default: null },
+        price_fairness: { type: Number, default: null }
+      },
+      summary: { type: String, default: '' },
+      suspicious: { type: Boolean, default: false }
+    },
     // Photo Proof of Work
     beforePhotoUrls: [{ type: String }],
     afterPhotoUrls: [{ type: String }],
@@ -297,6 +316,12 @@ const bookingSchema = new mongoose.Schema(
         },
       },
     ],
+    // Demo data flag — set by seedDemoData.js; never touches real bookings
+    isDemo: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   { timestamps: true }
 );

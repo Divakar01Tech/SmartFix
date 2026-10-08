@@ -25,3 +25,6 @@ logs/
 # SSL Certificates
 certs/
 *.pem
+
+.wwebjs_auth
+.wwebjs_cache

@@ -15,7 +15,7 @@ const SEOLandingPage = () => {
     return str.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
-  const formattedCity = formatString(city) || 'Sivagangai';
+  const formattedCity = formatString(city) || 'Tamil Nadu';
   const formattedTrade = formatString(trade) || 'Plumbers';
   const title = `Top Rated ${formattedTrade} in ${formattedCity} | LocalHands`;
   const description = `Looking for the best ${formattedTrade.toLowerCase()} in ${formattedCity}? Find top-rated, zero-commission verified trade workers on LocalHands. Connect directly!`;
@@ -117,7 +117,7 @@ const SEOLandingPage = () => {
           <ul className="text-muted lh-lg mb-0">
             <li><strong>Zero Platform Commission:</strong> We don't take a cut from the worker's earnings, ensuring you get the fairest market price.</li>
             <li><strong>Direct Contact:</strong> Call or chat directly with the provider before booking.</li>
-            <li><strong>Verified Professionals:</strong> All workers pass a rigorous Aadhaar-based KYC and AI skill assessment.</li>
+            <li><strong>Verified Professionals:</strong> All workers pass a rigorous Mobile-based KYC and AI skill assessment.</li>
             <li><strong>Hyperlocal Focus:</strong> Specialized for {formattedCity} and surrounding neighborhoods for fastest service.</li>
           </ul>
         </div>

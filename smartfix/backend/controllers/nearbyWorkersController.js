@@ -32,28 +32,27 @@ exports.getNearbyWorkers = async (req, res) => {
     }
 
     // Add general verification constraints for available workers
-    query['identity.status'] = 'verified';
+    query.overallStatus = 'approved';
+
+    // Exclude demo workers from real customer results unless SHOW_DEMO_DATA env flag is set
+    if (process.env.SHOW_DEMO_DATA !== 'true') {
+      query.isDemo = { $ne: true };
+    }
 
     const workers = await User.find(query)
-      .select('trade subServices rating currentLocation _id') // only needed fields
+      .select('trade subServices rating ratingCount currentLocation lat lng _id overallStatus availabilityStatus jobsOffered jobsAccepted') 
       .lean();
 
-    // Anonymize response
-    const anonymizedWorkers = workers.map((worker) => {
-      const dist = calculateDistance(Number(lat), Number(lng), worker.currentLocation.coordinates[1], worker.currentLocation.coordinates[0]);
-      // Round to nearest 0.5 km
-      const approxDistanceKm = Math.round(dist * 2) / 2;
+    const { rankWorkers } = require('../services/matchingService');
+    const bookingPayload = {
+      userLat: Number(lat),
+      userLng: Number(lng),
+      subServices: category ? [category] : [] // If category was passed, assume it's the required subService for matching
+    };
 
-      return {
-        workerId: worker._id, // internal reference
-        category: worker.trade,
-        subServices: worker.subServices,
-        rating: worker.rating,
-        approxDistanceKm: approxDistanceKm || 0.5 // if 0, show ~0.5km
-      };
-    });
+    const rankedWorkers = await rankWorkers(workers, bookingPayload);
 
-    res.json({ success: true, workers: anonymizedWorkers });
+    res.json({ success: true, workers: rankedWorkers });
   } catch (error) {
     console.error('Error fetching nearby workers:', error);
     res.status(500).json({ success: false, message: 'Server error fetching nearby workers' });

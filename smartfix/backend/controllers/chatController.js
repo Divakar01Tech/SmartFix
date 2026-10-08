@@ -1,7 +1,7 @@
 const ChatMessage = require('../models/ChatMessage');
 const PolicyViolation = require('../models/PolicyViolation');
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+const { askGroqJSON } = require('../services/aiService');
 
 // Deterministic regex for fast filtering
 const REGEX_PII = /(\b\d{10}\b|\+91[-.\s]?\d{10}|\b[\w.-]+@[\w.-]+\.\w{2,4}\b|whatsapp|call me|my number)/i;
@@ -12,23 +12,11 @@ const checkWithLLM = async (text) => {
 Message: "${text}"
 Respond with strict JSON: { "isContactSharingAttempt": true/false, "confidence": 0-1 }`;
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL || 'claude-3-5-sonnet-20240620',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0,
-        response_format: { type: 'json_object' }
-      })
+    const parsed = await askGroqJSON({
+      system: "You are a policy violation detector.",
+      user: prompt,
+      maxTokens: 50
     });
-
-    const data = await response.json();
-    const answer = data.choices[0].message.content;
-    const parsed = JSON.parse(answer);
     return parsed.isContactSharingAttempt === true;
   } catch (err) {
     console.error('LLM Check Error:', err);

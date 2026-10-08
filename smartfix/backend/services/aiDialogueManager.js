@@ -8,7 +8,7 @@ const Booking = require('../models/Booking');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const CommissionConfig = require('../models/CommissionConfig');
-const { isTalukCovered, SIVAGANGAI_TALUKS, SERVICE_CATEGORIES } = require('./aiIntentService');
+const { isTalukCovered, TAMILNADU_TALUKS, SERVICE_CATEGORIES } = require('./aiIntentService');
 
 // In-memory dialogue session store (Keyed by userId or sessionId)
 const sessionStore = new Map();
@@ -139,10 +139,10 @@ async function processDialogueTurn(userId, sessionId, message, userRole, intentD
     if (!talukCheck.isCovered) {
       return {
         reply: session.language === 'ta'
-          ? `📍 மன்னிக்கவும்! **${intentData.entities.taluk}** இன்னும் எங்கள் சேவை மண்டலத்திற்குள் வரவில்லை. தற்போது நாங்கள் சிவகங்கை மாவட்டத்தின் 8 வட்டங்களில் (Sivagangai, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi) மட்டுமே சேவைகளை வழங்குகிறோம்.`
-          : `📍 Sorry! **${intentData.entities.taluk}** is not yet in our service area. SmartFix currently operates strictly within the 8 Sivagangai District taluks (Sivagangai, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi).`,
+          ? `📍 மன்னிக்கவும்! **${intentData.entities.taluk}** இன்னும் எங்கள் சேவை மண்டலத்திற்குள் வரவில்லை. தற்போது நாங்கள் சிவகங்கை மாவட்டத்தின் 8 வட்டங்களில் (Tamil Nadu, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi) மட்டுமே சேவைகளை வழங்குகிறோம்.`
+          : `📍 Sorry! **${intentData.entities.taluk}** is not yet in our service area. SmartFix currently operates strictly within the 8 Tamil Nadu taluks (Tamil Nadu, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi).`,
         intentData,
-        actionResult: { isServiceable: false, coveredTaluks: SIVAGANGAI_TALUKS }
+        actionResult: { isServiceable: false, coveredTaluks: TAMILNADU_TALUKS }
       };
     }
   }
@@ -211,13 +211,13 @@ async function executeIntentAction(session, intentData, authUser) {
         return { success: true };
 
       case 'CheckServiceArea': {
-        const talukText = entities?.taluk || 'Sivagangai District';
+        const talukText = entities?.taluk || 'Tamil Nadu';
         const check = isTalukCovered(talukText);
         return {
           success: true,
           isServiceable: check.isCovered,
           taluk: check.matchedTaluk || talukText,
-          coveredTaluks: SIVAGANGAI_TALUKS
+          coveredTaluks: TAMILNADU_TALUKS
         };
       }
 
@@ -239,7 +239,7 @@ async function executeIntentAction(session, intentData, authUser) {
             trade: entities?.service_category || 'Plumbing',
             subService: entities?.sub_service || 'Tap leak repair',
             estimatedPrice: 350,
-            taluk: entities?.taluk || 'Sivagangai'
+            taluk: entities?.taluk || 'Tamil Nadu'
           }
         };
       }
@@ -449,8 +449,8 @@ function generateDialogueResponse(session, intentData, actionResult) {
 
     case 'CheckServiceArea':
       return isTa
-        ? `📍 **SmartFix சேவை மண்டல தகவல்கள்:** நாங்கள் சிவகங்கை மாவட்டத்தின் 8 வட்டங்களிலும் (Sivagangai, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi) 100% சேவைகளை வழங்குகிறோம்!`
-        : `📍 **SmartFix Service Area:** We actively cover all 8 Taluks in Sivagangai District (Sivagangai, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi). Your location is verified!`;
+        ? `📍 **SmartFix சேவை மண்டல தகவல்கள்:** நாங்கள் சிவகங்கை மாவட்டத்தின் 8 வட்டங்களிலும் (Tamil Nadu, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi) 100% சேவைகளை வழங்குகிறோம்!`
+        : `📍 **SmartFix Service Area:** We actively cover all 8 Taluks in Tamil Nadu (Tamil Nadu, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi). Your location is verified!`;
 
     case 'AskPricing':
       return isTa

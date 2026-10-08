@@ -21,21 +21,29 @@ const normalizePurpose = (purpose) => {
 };
 
 /**
- * Generate and send a 6-digit OTP code via Fast2SMS
+ * Generate and send a 6-digit OTP code via Fast2SMS or Email
  * @param {string} phone 
  * @param {'register' | 'login' | 'reset_password' | 'registration' | 'password-reset'} purpose 
+ * @param {string} email
  */
-const generateOtp = async (phone, purpose = 'login') => {
+const generateOtp = async (phone, purpose = 'login', email = null) => {
   const formattedPhone = formatPhone(phone);
-  if (!formattedPhone) {
-    throw new Error('Valid phone number is required');
+  const normalizedEmail = email ? email.toLowerCase().trim() : null;
+  
+  if (!formattedPhone && !normalizedEmail) {
+    throw new Error('Valid phone number or email is required');
   }
 
   const normalizedPurpose = normalizePurpose(purpose);
+  
+  // Create search query based on what's provided
+  const queryCond = [];
+  if (formattedPhone) queryCond.push({ phoneNumber: formattedPhone }, { phone: formattedPhone });
+  if (normalizedEmail) queryCond.push({ email: normalizedEmail });
 
   // 1. Rate Limiting Cooldown: 60 seconds between resends
   const existingOtp = await OtpRequest.findOne({
-    $or: [{ phoneNumber: formattedPhone }, { phone: formattedPhone }],
+    $or: queryCond,
     purpose: normalizedPurpose,
   }).sort({ createdAt: -1 });
 
@@ -47,14 +55,15 @@ const generateOtp = async (phone, purpose = 'login') => {
     }
   }
 
-  // 2. Overwrite / Delete previous OTPs for same phone + purpose
+  // 2. Overwrite / Delete previous OTPs for same identifier + purpose
   await OtpRequest.deleteMany({
-    $or: [{ phoneNumber: formattedPhone }, { phone: formattedPhone }],
+    $or: queryCond,
     purpose: normalizedPurpose,
   });
 
   // 3. Generate 6-digit OTP
-  const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+  let rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+  // In mock mode, we just don't send the SMS but we still generate a random OTP.
 
   // 4. Hash OTP strictly with bcrypt
   const salt = await bcrypt.genSalt(10);
@@ -66,12 +75,33 @@ const generateOtp = async (phone, purpose = 'login') => {
   // 6. Save persistent record in MongoDB
   await OtpRequest.create({
     phoneNumber: formattedPhone,
+    email: normalizedEmail,
     hashedOtp,
     purpose: normalizedPurpose,
     expiresAt,
     attemptCount: 0,
     verified: false,
   });
+
+  if (normalizedEmail) {
+    console.log(`📧 Email OTP generated for ${normalizedEmail} (expires in 5 minutes)`);
+    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') {
+      console.log(`🔑 [DEV MODE] Email OTP Code for ${normalizedEmail}: ${rawOtp}`);
+    }
+    
+    let emailResult = { success: true, provider: 'Mock' };
+    if (process.env.OTP_MOCK_MODE !== 'true') {
+      const { sendEmailOTP } = require('./emailService');
+      const success = await sendEmailOTP(normalizedEmail, rawOtp);
+      emailResult = { success, provider: 'Nodemailer' };
+    }
+    return {
+      success: true,
+      message: `OTP code sent successfully to ${normalizedEmail}`,
+      email: normalizedEmail,
+      emailStatus: emailResult,
+    };
+  }
 
   const maskedPhone = formattedPhone.length >= 10
     ? `${formattedPhone.slice(0, 5)}***${formattedPhone.slice(-4)}`
@@ -89,7 +119,7 @@ const generateOtp = async (phone, purpose = 'login') => {
 
   return {
     success: true,
-    message: `OTP code sent successfully to ${formattedPhone}`,
+    message: `WhatsApp OTP sent successfully to ${formattedPhone}`,
     phone: formattedPhone,
     smsStatus: smsResult,
   };
@@ -100,27 +130,33 @@ const generateOtp = async (phone, purpose = 'login') => {
  * @param {string} phone 
  * @param {'register' | 'login' | 'reset_password'} purpose 
  * @param {string} enteredOtp 
+ * @param {string} email
  */
-const verifyOtp = async (phone, purpose, enteredOtp) => {
+const verifyOtp = async (phone, purpose, enteredOtp, email = null) => {
   const formattedPhone = formatPhone(phone);
+  const normalizedEmail = email ? email.toLowerCase().trim() : null;
 
-  if (!formattedPhone || !enteredOtp) {
-    throw new Error('Phone number and OTP code are required');
+  if ((!formattedPhone && !normalizedEmail) || !enteredOtp) {
+    throw new Error('Phone number/Email and OTP code are required');
   }
 
   const normalizedPurpose = normalizePurpose(purpose);
   const cleanCode = enteredOtp.toString().trim();
+  
+  const queryCond = [];
+  if (formattedPhone) queryCond.push({ phoneNumber: formattedPhone }, { phone: formattedPhone });
+  if (normalizedEmail) queryCond.push({ email: normalizedEmail });
 
   // 1. Find latest unexpired OTP record in MongoDB
   let record = await OtpRequest.findOne({
-    $or: [{ phoneNumber: formattedPhone }, { phone: formattedPhone }],
+    $or: queryCond,
     purpose: normalizedPurpose,
     expiresAt: { $gt: new Date() },
   }).sort({ createdAt: -1 });
 
   if (!record) {
     record = await OtpRequest.findOne({
-      $or: [{ phoneNumber: formattedPhone }, { phone: formattedPhone }],
+      $or: queryCond,
       expiresAt: { $gt: new Date() },
     }).sort({ createdAt: -1 });
   }
@@ -156,13 +192,19 @@ const verifyOtp = async (phone, purpose, enteredOtp) => {
 };
 
 /**
- * Check if a valid `verified: true` OTP record exists for phone + purpose
+ * Check if a valid `verified: true` OTP record exists for phone/email + purpose
  */
-const checkVerifiedOtp = async (phone, purpose) => {
+const checkVerifiedOtp = async (phone, purpose, email = null) => {
   const formattedPhone = formatPhone(phone);
+  const normalizedEmail = email ? email.toLowerCase().trim() : null;
   const normalizedPurpose = normalizePurpose(purpose);
+  
+  const queryCond = [];
+  if (formattedPhone) queryCond.push({ phoneNumber: formattedPhone }, { phone: formattedPhone });
+  if (normalizedEmail) queryCond.push({ email: normalizedEmail });
+
   const record = await OtpRequest.findOne({
-    $or: [{ phoneNumber: formattedPhone }, { phone: formattedPhone }],
+    $or: queryCond,
     purpose: normalizedPurpose,
     verified: true,
     expiresAt: { $gt: new Date() },
@@ -174,11 +216,17 @@ const checkVerifiedOtp = async (phone, purpose) => {
 /**
  * Invalidate / delete verified OTP record after registration or password reset
  */
-const consumeVerifiedOtp = async (phone, purpose) => {
+const consumeVerifiedOtp = async (phone, purpose, email = null) => {
   const formattedPhone = formatPhone(phone);
+  const normalizedEmail = email ? email.toLowerCase().trim() : null;
   const normalizedPurpose = normalizePurpose(purpose);
+  
+  const queryCond = [];
+  if (formattedPhone) queryCond.push({ phoneNumber: formattedPhone }, { phone: formattedPhone });
+  if (normalizedEmail) queryCond.push({ email: normalizedEmail });
+
   await OtpRequest.deleteMany({
-    $or: [{ phoneNumber: formattedPhone }, { phone: formattedPhone }],
+    $or: queryCond,
     purpose: normalizedPurpose,
   });
 };

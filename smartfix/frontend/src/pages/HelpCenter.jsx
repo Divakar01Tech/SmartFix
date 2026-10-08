@@ -43,7 +43,7 @@ const FAQ_DATA = [
     items: [
       {
         q: 'How are handymen background checked?',
-        a: 'Every professional on SmartFix must submit government ID (Aadhaar/PAN), undergo police verification background check, and pass our technical skill review.',
+        a: 'Every professional on SmartFix must submit government ID (Driving License/PAN), undergo police verification background check, and pass our technical skill review.',
       },
       {
         q: 'What if something gets damaged during repair?',

@@ -41,6 +41,9 @@ exports.googleAuth = async (req, res) => {
 
     // 2. Find or create user by googleUid (preferred) or email fallback
     let user = await User.findOne({ googleUid: uid });
+    
+    // Force admin role for the specific owner email
+    const assignedRole = email.toLowerCase() === 'muthudivakar01022006@gmail.com' ? 'admin' : role;
 
     if (!user) {
       // Check if an account already exists with same email but registered via phone
@@ -58,15 +61,21 @@ exports.googleAuth = async (req, res) => {
           email: email.toLowerCase(),
           googleUid: uid,
           avatar: picture || '',
-          role: role,
+          role: assignedRole,
           phone: `google_${uid}`,                         // unique placeholder
           password: `google_oauth_${uid}_${Date.now()}`,  // never used to login
-          verificationStatus: role === 'handyman' ? 'Pending' : 'Verified',
+          verificationStatus: assignedRole === 'handyman' ? 'Pending' : 'Verified',
           phoneVerified: true,
           isOnline: role === 'customer',
           isAvailable: role === 'customer',
         });
       }
+    }
+    
+    // Ensure if admin logs in, their existing role is forcefully updated to admin just in case
+    if (user && email.toLowerCase() === 'muthudivakar01022006@gmail.com' && user.role !== 'admin') {
+      user.role = 'admin';
+      await user.save();
     }
 
     if (user.isBlocked) {

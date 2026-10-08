@@ -27,7 +27,7 @@ const Footer = () => {
             <ShieldCheck size={28} className="newsletter-icon" />
             <div>
               <h3>Subscribe for Exclusive Repairs & Offers</h3>
-              <p>Get instant updates and service offers in Sivagangai district.</p>
+              <p>Get instant updates and service offers in Tamil Nadu.</p>
             </div>
           </div>
           <form className="newsletter-form" onSubmit={handleSubscribe}>
@@ -67,7 +67,7 @@ const Footer = () => {
           <div className="footer-contact-details">
             <div className="contact-item">
               <MapPin size={16} className="contact-icon" />
-              <span>Sivagangai Town, Karaikudi & All Sivagangai District Towns, Tamil Nadu</span>
+              <span>Tamil Nadu, Karaikudi & All Tamil Nadu Towns, Tamil Nadu</span>
             </div>
             <div className="contact-item">
               <Phone size={16} className="contact-icon" />
@@ -128,7 +128,7 @@ const Footer = () => {
         <div className="container footer-bottom-inner">
           <p>© {new Date().getFullYear()} SmartFix Technologies Inc. {t('all_rights_reserved')}</p>
           <p className="footer-crafted">
-            Crafted with <Heart size={14} color="#ef4444" fill="#ef4444" style={{ display: 'inline', margin: '0 3px' }} /> for Sivagangai District.
+            Crafted with <Heart size={14} color="#ef4444" fill="#ef4444" style={{ display: 'inline', margin: '0 3px' }} /> for Tamil Nadu.
           </p>
         </div>
       </div>

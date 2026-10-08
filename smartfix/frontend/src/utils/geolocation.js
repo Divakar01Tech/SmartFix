@@ -1,4 +1,4 @@
-// Default city center coordinates (Sivagangai Town, Tamil Nadu)
+// Default city center coordinates (Tamil Nadu, Tamil Nadu)
 export const DEFAULT_COORDS = { lat: 9.8433, lng: 78.4809 };
 
 /**

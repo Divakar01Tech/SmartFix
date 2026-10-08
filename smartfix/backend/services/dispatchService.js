@@ -57,7 +57,9 @@ const dispatchNext = async (bookingId, io) => {
     const query = {
       role: 'handyman',
       availabilityStatus: 'Available',
-      _id: { $nin: attemptedWorkerIds }
+      _id: { $nin: attemptedWorkerIds },
+      // Exclude demo workers from real customer dispatch unless explicitly enabled
+      ...(process.env.SHOW_DEMO_DATA === 'true' ? {} : { $or: [{ isDemo: false }, { isDemo: { $exists: false } }] }),
     };
     
     // basic category matching

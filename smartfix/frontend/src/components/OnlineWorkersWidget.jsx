@@ -117,7 +117,7 @@ const OnlineWorkersWidget = ({ title }) => {
                 </div>
 
                 <div className="small text-secondary mb-3">
-                  <span className="fw-bold text-success">₹{worker.ratePerHour || 350}/{t('per_hour')}</span> • {worker.location || 'Sivagangai'}
+                  <span className="fw-bold text-success">₹{worker.ratePerHour || 350}/{t('per_hour')}</span> • {worker.location || 'Tamil Nadu'}
                 </div>
 
                 <div className="d-flex gap-2 mt-auto">

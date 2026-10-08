@@ -104,8 +104,8 @@ export const SERVICE_CATEGORIES = [
   },
 ];
 
-export const SIVAGANGAI_TALUKS = [
-  'Sivagangai',
+export const TAMILNADU_TALUKS = [
+  'Tamil Nadu',
   'Karaikudi',
   'Devakottai',
   'Manamadurai',

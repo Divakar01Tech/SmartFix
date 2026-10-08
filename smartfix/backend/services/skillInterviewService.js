@@ -3,7 +3,7 @@ const User = require('../models/User');
 const { callGeminiApi } = require('./geminiService');
 const { generateWorkerBio } = require('../controllers/bioController');
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+
 
 // Category fallback practical questions for robust offline operation
 const CATEGORY_FALLBACK_QUESTIONS = {
@@ -179,7 +179,7 @@ async function askNextQuestion(sessionId, language = 'en') {
 
   const isTamil = language === 'ta';
 
-  const systemPrompt = `You are conducting a spoken/typed practical skill-verification interview for a home-service worker applying to join HandyBook in the category: ${category}. Ask ONE practical, real-world question at a time to assess genuine hands-on skill (not certifications or theory). Base questions on common on-the-job scenarios a ${category} worker would face. Keep questions short, direct, and in plain language without long introductory fluff — many workers have limited literacy, so questions should also be answerable via short spoken response. ${isTamil ? 'Ask the question in simple, natural conversational Tamil.' : 'Keep language simple and concise.'} Always write complete, un-truncated sentences and do not cut off mid-sentence. You are asking question ${qIndex + 1} of 5. After 5 questions total, stop and do not ask more.`;
+  const systemPrompt = `You are conducting a spoken/typed practical skill-verification interview for a home-service worker applying to join SmartFix in the category: ${category}. Ask ONE practical, real-world question at a time to assess genuine hands-on skill (not certifications or theory). Base questions on common on-the-job scenarios a ${category} worker would face. Keep questions short, direct, and in plain language without long introductory fluff — many workers have limited literacy, so questions should also be answerable via short spoken response. ${isTamil ? 'Ask the question in simple, natural conversational Tamil.' : 'Keep language simple and concise.'} Always write complete, un-truncated sentences and do not cut off mid-sentence. You are asking question ${qIndex + 1} of 5. After 5 questions total, stop and do not ask more.`;
 
   // Format context history
   const historyPayload = [

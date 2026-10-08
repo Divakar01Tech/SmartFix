@@ -3,7 +3,7 @@ const Wallet = require('../models/Wallet');
 const Dispute = require('../models/Dispute');
 const User = require('../models/User');
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 
 // --- Context Gatherers (Role-Scoped) ---
 
@@ -100,7 +100,7 @@ exports.queryAssistant = async (req, res) => {
       return res.status(403).json({ message: 'Role not supported for AI assistant' });
     }
 
-    const systemPrompt = `You are a read-only, helpful AI assistant for SmartFix/HandyBook users.
+    const systemPrompt = `You are a read-only, helpful AI assistant for SmartFix/SmartFix users.
 You are currently helping a ${userRole}.
 Answer ONLY using the provided Context JSON Data.
 If the answer isn't in the context, say so honestly — do not guess or fabricate numbers.
@@ -119,25 +119,15 @@ ${JSON.stringify(contextData, null, 2)}
       { role: 'user', content: question }
     ];
 
-    // OpenRouter requires system prompt as user if not supported, but we'll use system and format if needed
-    const openRouterMessages = messagesPayload.map((m) => {
-      if (m.role === 'system') {
-        return { role: 'user', content: `[SYSTEM INSTRUCTION]\n${m.content}` };
-      }
-      return m;
-    });
-
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'SmartFix Command Center AI',
       },
       body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL || 'claude-3-5-sonnet-20240620',
-        messages: openRouterMessages,
+        model: 'llama-3.3-70b-versatile',
+        messages: messagesPayload,
         temperature: 0.3,
         max_tokens: 600,
       }),

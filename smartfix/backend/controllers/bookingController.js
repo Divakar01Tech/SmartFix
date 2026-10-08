@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
-const { validateSivagangaiLocation } = require('../services/geocodingService');
+const { validateTamilNaduLocation } = require('../services/geocodingService');
 const { sanitizeBookingForRole } = require('../utils/sanitizer');
 const twilioService = require('../services/twilioService');
 const { generateInvoicePDF } = require('../services/invoiceService');
@@ -37,8 +37,8 @@ exports.createBooking = async (req, res) => {
     const pLat = parseFloat(pickupLat);
     const pLng = parseFloat(pickupLng);
 
-    // Validate location against Sivagangai District bounds
-    const locValidation = await validateSivagangaiLocation(pLat, pLng, address);
+    // Validate location against Tamil Nadu bounds
+    const locValidation = await validateTamilNaduLocation(pLat, pLng, address);
     if (!locValidation.valid) {
       return res.status(400).json({ message: locValidation.message });
     }
@@ -57,7 +57,7 @@ exports.createBooking = async (req, res) => {
       serviceTier: serviceTier || 'AutoHandyman',
       date: date || new Date().toISOString().split('T')[0],
       time: time || '10:00 AM',
-      address: address || 'Sivagangai, Tamil Nadu',
+      address: address || 'Tamil Nadu, Tamil Nadu',
       notes: notes || '',
       price: Number(price) || workerObj?.ratePerHour || 350,
       pickupLat: pLat || 9.8433,
@@ -90,7 +90,7 @@ exports.createBooking = async (req, res) => {
 
     // Trigger non-blocking SMS notification for assigned worker (Fast2SMS / Twilio)
     if (workerObj && workerObj.phone) {
-      const alertMsg = `SmartFix Job Request: New ${trade || 'handyman'} job at ${address || 'Sivagangai'}. Open SmartFix App to accept your booking!`;
+      const alertMsg = `SmartFix Job Request: New ${trade || 'handyman'} job at ${address || 'Tamil Nadu'}. Open SmartFix App to accept your booking!`;
       sendCustomSms(workerObj.phone, alertMsg).catch(() => {});
       twilioService.sendSms(workerObj.phone, alertMsg).catch(() => {});
       twilioService.sendWhatsApp(workerObj.phone, alertMsg).catch(() => {});
@@ -246,8 +246,10 @@ exports.providerAcceptBooking = async (req, res) => {
     // Update worker status to Busy
     if (worker.availabilityStatus !== 'Offline') {
       worker.availabilityStatus = 'Busy';
-      await worker.save();
     }
+    worker.jobsOffered = (worker.jobsOffered || 0) + 1;
+    worker.jobsAccepted = (worker.jobsAccepted || 0) + 1;
+    await worker.save();
 
     const now = new Date();
     const slaDeadline = new Date(now.getTime() + 60 * 60 * 1000); // +60 minutes
@@ -280,6 +282,18 @@ exports.providerAcceptBooking = async (req, res) => {
       });
       io.to(`booking-${id}`).emit('booking-status-changed', { bookingId: id, status: 'Accepted', slaDeadline });
       io.emit('booking-updated', updated);
+
+      const trackingPayload = {
+        bookingId: id,
+        slaDeadline: slaDeadline ? new Date(slaDeadline).toISOString() : null,
+        slaTimeRemainingMs: slaDeadline
+          ? Math.max(0, new Date(slaDeadline).getTime() - Date.now())
+          : null,
+        workerName: updated?.worker?.name || 'Handyman',
+        workerPhone: updated?.worker?.phone || '',
+      };
+      io.to(`booking-${id}`).emit('tracking-started', trackingPayload);
+      io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('tracking-started', trackingPayload);
     }
 
     // Non-blocking SMS/WhatsApp alert to Customer (Fast2SMS / Twilio)
@@ -309,6 +323,11 @@ exports.providerDeclineBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
+    const workerId = req.user?.id;
+
+    if (workerId) {
+      await User.findByIdAndUpdate(workerId, { $inc: { jobsOffered: 1 } });
+    }
 
     const updated = await Booking.findByIdAndUpdate(
       id,
@@ -554,7 +573,7 @@ exports.updateBookingStatus = async (req, res) => {
       io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('booking-status-changed', { bookingId: id, status: newStatus });
       io.emit('booking-updated', updated);
 
-      if (newStatus === 'EnRoute') {
+      if (newStatus === 'EnRoute' || newStatus === 'Accepted') {
         const slaDeadline = updated?.slaDeadline ?? null;
         const trackingPayload = {
           bookingId: id,
@@ -781,6 +800,10 @@ exports.rateBooking = async (req, res) => {
     // Trigger AI Fake Review Detection asynchronously
     const { analyzeReview } = require('../services/reviewDetectionService');
     analyzeReview(id, booking.customer, booking.worker, rating, review, booking.paidAt).catch(e => console.error(e));
+
+    // Trigger AI Aspect Analysis asynchronously
+    const { analyzeReviewAspects } = require('../services/reviewAspectService');
+    analyzeReviewAspects(id, review, rating).catch(e => console.error(e));
 
     const sanitized = sanitizeBookingForRole(updated, req.user?.id, req.user?.role);
     res.status(200).json({ message: 'Rating submitted successfully', booking: sanitized });

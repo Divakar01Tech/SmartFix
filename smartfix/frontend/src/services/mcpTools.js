@@ -15,7 +15,7 @@ export const MCP_TOOL_DEFINITIONS = [
       properties: {
         trade: { type: 'string', description: 'Trade category e.g. Plumbing, Electrical, AC Repair' },
         maxRate: { type: 'number', description: 'Maximum hourly rate in INR (₹)' },
-        city: { type: 'string', description: 'City or town name e.g. Sivagangai, Karaikudi' },
+        city: { type: 'string', description: 'City or town name e.g. Tamil Nadu, Karaikudi' },
       },
     },
   },
@@ -138,7 +138,7 @@ export function detectMcpIntent(userPrompt) {
     if (rateMatch) maxRate = parseInt(rateMatch[1], 10);
 
     let city = null;
-    if (p.includes('sivagangai')) city = 'Sivagangai';
+    if (p.includes('Tamil Nadu')) city = 'Tamil Nadu';
     else if (p.includes('karaikudi')) city = 'Karaikudi';
     else if (p.includes('devakottai')) city = 'Devakottai';
     else if (p.includes('manamadurai')) city = 'Manamadurai';

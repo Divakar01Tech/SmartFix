@@ -15,6 +15,7 @@ const { seedServiceIntervals } = require('./models/ServiceInterval');
 const { initProxyCron } = require('./services/proxyCronService');
 const { initDispatchSweeper } = require('./services/dispatchService');
 const { initReviewSummaryCron } = require('./services/reviewSummaryService');
+const { initWhatsApp } = require('./services/whatsappService');
 
 dotenv.config();
 
@@ -78,9 +79,13 @@ app.use('/api', apiRateLimiter);
 
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/otp', require('./routes/otpRoutes'));
+app.use('/api/services', require('./routes/serviceRoutes'));
 app.use('/api/workers', require('./routes/workerRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
+app.use('/api/address', require('./routes/addressRoutes'));
 app.use('/api/location', require('./routes/locationRoutes'));
+app.use('/api/locations', require('./routes/locationRoutes')); // /api/locations/districts etc.
+app.use('/api/waitlist', require('./routes/waitlistRoutes'));
 app.use('/api/maps', require('./routes/mapsRoutes'));
 app.use('/api/ai', require('./routes/aiRoutes'));
 app.use('/api/dispatch', require('./routes/dispatchRoutes'));
@@ -126,6 +131,9 @@ const startServer = async () => {
     initProxyCron();
     initDispatchSweeper(io);
     initReviewSummaryCron();
+    
+    // Initialize Free WhatsApp Web Client
+    initWhatsApp();
   } catch (err) {
     console.error('Initial DB connection failure:', err.message);
   }

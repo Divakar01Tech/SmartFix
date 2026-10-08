@@ -72,7 +72,7 @@ async function callGeminiApi(messagesPayload, temperature = 0.4, maxTokens = 500
 async function runTest() {
   const testMessages = [
     { role: 'system', content: 'You are SmartFix AI assistant for home services in Tamil Nadu.' },
-    { role: 'user', content: 'My kitchen sink tap is leaking. What is the estimated repair cost in Sivagangai?' }
+    { role: 'user', content: 'My kitchen sink tap is leaking. What is the estimated repair cost in Tamil Nadu?' }
   ];
 
   console.log('Sending query to Gemini API...');

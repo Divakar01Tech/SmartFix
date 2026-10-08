@@ -27,7 +27,7 @@ const AssistantWidget = ({ contextLabel = "Ask about your data" }) => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('smartfix_token') || localStorage.getItem('handybook_token'); 
+      const token = localStorage.getItem('token') || localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token'); 
       const baseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
       
       const response = await fetch(`${baseUrl}/assistant/query`, {

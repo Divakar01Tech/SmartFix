@@ -7,17 +7,16 @@
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-.ai-widget-toggle-btn {
+.ai-widget-toggle-btn-small {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 22px;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #2563eb 100%);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 30px;
-  font-weight: 700;
-  font-size: 0.92rem;
+  border-radius: 50%;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -25,8 +24,8 @@
   overflow: hidden;
 }
 
-.ai-widget-toggle-btn:hover {
-  transform: translateY(-3px) scale(1.03);
+.ai-widget-toggle-btn-small:hover {
+  transform: translateY(-3px) scale(1.05);
   box-shadow: 0 14px 35px rgba(37, 99, 235, 0.45);
 }
 
@@ -75,13 +74,13 @@
 
 /* Header */
 .ai-chat-header {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  color: #ffffff;
+  background: #ffffff;
+  color: #111827;
   padding: 14px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid #f3f4f6;
 }
 
 .ai-header-left {
@@ -91,14 +90,15 @@
 }
 
 .ai-badge-icon {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #2563eb 0%, #0284c7 100%);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+  color: #111827;
 }
 
 .ai-header-title-row {
@@ -110,8 +110,8 @@
 .ai-header-title-row h4 {
   margin: 0;
   font-size: 0.95rem;
-  font-weight: 800;
-  color: #ffffff;
+  font-weight: 700;
+  color: #111827;
 }
 
 .online-dot-pulse {
@@ -121,9 +121,7 @@
 }
 
 .ai-header-sub {
-  margin: 2px 0 0 0;
-  font-size: 0.72rem;
-  color: #94a3b8;
+  display: none;
 }
 
 .ai-header-actions {
@@ -133,8 +131,9 @@
 }
 
 .ai-header-icon-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
+  background: #f9fafb;
+  color: #6b7280;
+  border: 1px solid #f3f4f6;
   border-radius: 50%;
   width: 32px;
   height: 32px;
@@ -154,24 +153,24 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #f9fafb;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
   padding: 4px 8px;
   border-radius: 12px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: 0.75rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .ai-lang-pill-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: #f3f4f6;
 }
 
 .ai-close-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: #94a3b8;
+  background: #f9fafb;
+  border: 1px solid #f3f4f6;
+  color: #6b7280;
   width: 30px;
   height: 30px;
   border-radius: 50%;
@@ -182,8 +181,8 @@
 }
 
 .ai-close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+  background: #f3f4f6;
+  color: #111827;
 }
 
 /* Voice Mode Banner */

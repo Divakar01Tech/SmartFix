@@ -24,7 +24,7 @@ const generateInvoicePDF = (booking) => {
 
       // Header
       doc.fillColor('#1e293b').fontSize(24).text('SmartFix Home Services', { align: 'center' });
-      doc.fontSize(10).fillColor('#64748b').text('Sivagangai District On-Demand Network', { align: 'center' });
+      doc.fontSize(10).fillColor('#64748b').text('Tamil Nadu On-Demand Network', { align: 'center' });
       doc.moveDown(1.5);
 
       // Invoice Title & Details
@@ -48,7 +48,7 @@ const generateInvoicePDF = (booking) => {
       doc.fontSize(10).fillColor('#475569');
       doc.text(`Name: ${booking.customer?.name || 'Customer'}`);
       doc.text(`Phone: ${booking.customer?.phone || 'N/A'}`);
-      doc.text(`Address: ${booking.address || 'Sivagangai'}`);
+      doc.text(`Address: ${booking.address || 'Tamil Nadu'}`);
       doc.moveDown();
 
       doc.fontSize(11).fillColor('#1e293b').text('Service Specialist Details:');

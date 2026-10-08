@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { HOME_SERVICES } from '../data/servicesData';
-import { Phone, Lock, User, Wrench, MapPin, ShieldCheck, KeyRound, RotateCcw, CheckCircle2, Globe } from 'lucide-react';
+import { Phone, Lock, User, Wrench, MapPin, ShieldCheck, KeyRound, RotateCcw, CheckCircle2, Globe, Bot, Sparkles, AlertTriangle } from 'lucide-react';
 import OtpInput from '../components/OtpInput';
+import LocationSelector from '../components/LocationSelector';
+import { apiService } from '../services/api';
 import { auth, googleProvider } from '../firebase';
 import { signInWithPopup } from 'firebase/auth';
 import './Login.css';
@@ -19,8 +21,15 @@ const Login = () => {
   const [role, setRole] = useState('customer'); // 'customer' | 'handyman'
   const [otpStep, setOtpStep] = useState(1); // 1 = enter phone, 2 = enter OTP code
   const [otpCode, setOtpCode] = useState('');
+  const [emailOtpCode, setEmailOtpCode] = useState('');
   const [timer, setTimer] = useState(30);
   const [timerActive, setTimerActive] = useState(false);
+
+  // AI Address State
+  const [aiAddressText, setAiAddressText] = useState('');
+  const [aiAddressLoading, setAiAddressLoading] = useState(false);
+  const [aiAddressResult, setAiAddressResult] = useState(null);
+  const [showAiAddressConfirm, setShowAiAddressConfirm] = useState(false);
 
   // Handyman sub-service selection state
   const [selectedSubServices, setSelectedSubServices] = useState([]);
@@ -51,11 +60,13 @@ const Login = () => {
   // Form fields
   const [form, setForm] = useState({
     name: '',
+    identifier: '',
+    email: '',
     phone: '',
     password: '',
     confirmPassword: '',
     trade: 'Plumbing',
-    location: 'Sivagangai Town',
+    location: '',
     ratePerHour: '350',
     preferredLanguage: language || 'en',
     aadhaarNumber: '',
@@ -100,9 +111,11 @@ const Login = () => {
     setError('');
   };
 
-  const validatePhone = (phone) => {
-    const cleaned = phone.replace(/\D/g, '');
-    return cleaned.length === 10 || (cleaned.length === 12 && cleaned.startsWith('91'));
+  const validateIdentifier = (id) => {
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id);
+    const cleaned = id.replace(/\D/g, '');
+    const isPhone = cleaned.length === 10 || (cleaned.length === 12 && cleaned.startsWith('91'));
+    return isEmail || isPhone;
   };
 
   const redirectByRole = (userRole) => {
@@ -115,25 +128,46 @@ const Login = () => {
     }
   };
 
-  // 1. Send OTP Request via Twilio Verify API
+  // 1. Send OTP Request via Twilio Verify API or Email
   const handleSendOtp = async (e) => {
     if (e) e.preventDefault();
     setError('');
     setSuccessInfo('');
 
-    if (!validatePhone(form.phone)) {
-      setError('Enter a valid 10-digit Indian phone number (e.g. 9876543210)');
+    if (!validateIdentifier(form.identifier)) {
+      setError('Enter a valid email address or 10-digit phone number');
       return;
     }
 
     try {
       setSubmitting(true);
-      const res = await sendOtp(form.phone, role, mode === 'signup' ? 'register' : 'login');
+      if (mode === 'signup') {
+        if (!form.location) {
+          setError('Please detect and confirm your address before proceeding.');
+          setSubmitting(false);
+          return;
+        }
+        const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
+        const isPhoneValid = /^\d{10}$/.test(form.phone.replace(/\D/g, ''));
+        if (!isEmailValid || !isPhoneValid) {
+          setError('Please provide both a valid email and a 10-digit mobile number.');
+          setSubmitting(false);
+          return;
+        }
+        await sendOtp(form.email, role, 'register');
+        await sendOtp(form.phone, role, 'register');
+        setSuccessInfo(`Verification codes have been sent to your email and WhatsApp.`);
+      } else {
+        const res = await sendOtp(form.identifier, role, 'login');
+        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier);
+        let target = form.identifier;
+        if (!isEmail && !target.startsWith('+')) target = `+91 ${target.replace(/\D/g, '')}`;
+        setSuccessInfo(res.message || `A 6-digit WhatsApp OTP has been sent to ${target}.`);
+      }
+      
       setOtpStep(2);
       setTimer(60);
       setTimerActive(true);
-      const formattedNumber = form.phone.startsWith('+') ? form.phone : `+91 ${form.phone.replace(/\D/g, '')}`;
-      setSuccessInfo(res.message || `A 6-digit verification code has been sent via SMS to ${formattedNumber}.`);
     } catch (err) {
       setError(err.message || 'Failed to send OTP. Try again.');
     } finally {
@@ -149,21 +183,28 @@ const Login = () => {
     setSuccessInfo('');
 
     if (!otpCode || otpCode.trim().length < 4) {
-      setError('Please enter the 6-digit OTP code sent to your phone.');
+      setError('Please enter the 6-digit OTP code sent to your WhatsApp.');
       return;
     }
 
     try {
       setSubmitting(true);
       if (mode === 'signup') {
-        // Step 2 for Signup: Verify OTP first via AuthContext (correct API URL + stores phoneVerifyToken)
+        if (!otpCode || otpCode.trim().length < 4 || !emailOtpCode || emailOtpCode.trim().length < 4) {
+          setError('Please enter both the Email and SMS OTP codes.');
+          setSubmitting(false);
+          return;
+        }
+        await verifyOtp({ email: form.email, purpose: 'register', otp: emailOtpCode.trim() });
         await verifyOtp({ phone: form.phone, purpose: 'register', otp: otpCode.trim() });
         setOtpStep(3);
-        setSuccessInfo('✅ Mobile OTP Verified! Now set your account Password below to finish registration.');
+        setSuccessInfo('✅ Both OTPs Verified! Now set your account Password below to finish registration.');
       } else {
         // Step 2 for Login: Verify OTP and log in
+        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier);
         const payload = {
-          phone: form.phone,
+          phone: !isEmail ? form.identifier : undefined,
+          email: isEmail ? form.identifier : undefined,
           otp: otpCode.trim(),
           role,
           name: form.name,
@@ -207,22 +248,29 @@ const Login = () => {
         return;
       }
 
-      if (role === 'handyman' && !/^\d{12}$/.test(form.aadhaarNumber.trim())) {
-        setError('Please enter a valid 12-digit Aadhaar number (mandatory for worker accounts).');
-        setSubmitting(false);
-        return;
+
+
+      if (role === 'handyman' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier)) {
+        if (!/^\d{10}$/.test(form.phone.replace(/\D/g, ''))) {
+          setError('Please enter a valid 10-digit mobile number for Live Tracking.');
+          setSubmitting(false);
+          return;
+        }
       }
 
       const payload = {
         name: form.name || (role === 'handyman' ? 'Service Partner' : 'SmartFix Customer'),
-        phone: form.phone,
+        phone: form.phone ? `+91${form.phone.replace(/\D/g, '')}` : undefined,
+        email: form.email,
         password: form.password,
         role,
         preferredLanguage: form.preferredLanguage,
+        location: form.location || 'Unknown Location, Tamil Nadu',
+        lat: form.lat,
+        lng: form.lng,
         ...(role === 'handyman' && {
           trade: form.trade,
           subServices: selectedSubServices,
-          location: form.location || 'Unknown Location, Tamil Nadu',
           ratePerHour: Number(form.ratePerHour) || 350,
           aadhaarNumber: form.aadhaarNumber.trim(),
           idProofType: form.idProofType,
@@ -245,8 +293,8 @@ const Login = () => {
     e.preventDefault();
     setError('');
 
-    if (!validatePhone(form.phone)) {
-      setError('Enter a valid 10-digit Indian phone number (e.g. 9876543210)');
+    if (!validateIdentifier(form.identifier)) {
+      setError('Enter a valid email address or 10-digit phone number');
       return;
     }
 
@@ -259,7 +307,7 @@ const Login = () => {
       setSubmitting(true);
 
       if (mode === 'login') {
-        const user = await login(form.phone, form.password, role);
+        const user = await login(form.identifier, form.password, role);
         if (user?.preferredLanguage) setLanguage(user.preferredLanguage);
         redirectByRole(user.role);
       } else {
@@ -281,22 +329,19 @@ const Login = () => {
           return;
         }
 
-        if (role === 'handyman' && !/^\d{12}$/.test(form.aadhaarNumber.trim())) {
-          setError('Please enter a valid 12-digit Aadhaar number (mandatory for worker accounts).');
-          setSubmitting(false);
-          return;
-        }
+
 
         const payload = {
           name: form.name,
-          phone: form.phone,
+          phone: !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier) ? form.identifier : undefined,
+          email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier) ? form.identifier : undefined,
           password: form.password,
           role,
           preferredLanguage: form.preferredLanguage,
           ...(role === 'handyman' && {
             trade: form.trade,
             subServices: selectedSubServices,
-            location: form.location || 'Sivagangai, Tamil Nadu',
+            location: form.location || 'Tamil Nadu, Tamil Nadu',
             ratePerHour: Number(form.ratePerHour) || 350,
             aadhaarNumber: form.aadhaarNumber.trim(),
             idProofType: form.idProofType,
@@ -315,17 +360,51 @@ const Login = () => {
     }
   };
 
+  const handleAiAddressDetect = async (e) => {
+    e.preventDefault();
+    if (!aiAddressText.trim()) return;
+    setAiAddressLoading(true);
+    try {
+      const res = await apiService.normalizeAddress(aiAddressText);
+      if (res && res.success && res.normalizedAddress) {
+        setAiAddressResult(res);
+        setShowAiAddressConfirm(true);
+      } else {
+        setError('AI could not detect the address properly. Please try again.');
+      }
+    } catch (err) {
+      console.error('AI Address API error:', err);
+      setError('AI Address service is unavailable right now.');
+    } finally {
+      setAiAddressLoading(false);
+    }
+  };
+
+  const confirmAiAddress = (e) => {
+    e.preventDefault();
+    if (aiAddressResult?.normalizedAddress) {
+      setForm(prev => ({
+        ...prev,
+        location: aiAddressResult.normalizedAddress,
+        lat: aiAddressResult.lat,
+        lng: aiAddressResult.lng
+      }));
+    }
+    setShowAiAddressConfirm(false);
+  };
+
   const handleGoogleLogin = async () => {
     try {
       setSubmitting(true);
       setError('');
       const result = await signInWithPopup(auth, googleProvider);
       const idToken = await result.user.getIdToken();
+      
       await googleLogin(idToken, role);
-      navigate(role === 'handyman' ? '/handyman-dashboard' : '/dashboard');
+      // The useEffect listening to `user` will handle the redirection.
     } catch (err) {
       console.error(err);
-      setError(err.message || 'Google Sign-In failed.');
+      setError(err.message || 'Google Sign-In failed or was cancelled.');
     } finally {
       setSubmitting(false);
     }
@@ -336,8 +415,8 @@ const Login = () => {
     e.preventDefault();
     setError('');
 
-    if (!validatePhone(forgotPhone)) {
-      setError('Enter a valid 10-digit Indian phone number (e.g. 9876543210)');
+    if (!validateIdentifier(forgotPhone)) {
+      setError('Enter a valid email address or 10-digit phone number');
       return;
     }
 
@@ -446,22 +525,7 @@ const Login = () => {
           </button>
         </div>
 
-        <div className="google-auth-container" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-          <button
-            type="button"
-            className="google-login-btn"
-            onClick={handleGoogleLogin}
-            disabled={submitting}
-            style={{
-              width: '100%', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-              backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px', cursor: 'pointer',
-              fontSize: '1rem', fontWeight: '500', color: '#333', transition: 'all 0.2s ease', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-            }}
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style={{ width: '24px', height: '24px' }} />
-            {mode === 'login' ? 'Continue with Google' : 'Sign up with Google'}
-          </button>
-        </div>
+
 
         {/* OTP Authentication Flow */}
         {authMethod === 'otp' ? (
@@ -537,17 +601,15 @@ const Login = () => {
                     </div>
 
                     <div className="form-row-2">
-                      <div className="form-group">
-                        <label><MapPin size={15} /> Primary Location / Taluk</label>
-                        <input
-                          type="text"
-                          name="location"
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label style={{ marginBottom: '8px' }}>Service Area (Tamil Nadu) <span style={{ color: '#dc2626' }}>*</span></label>
+                        <LocationSelector
                           value={form.location}
                           onChange={handleChange}
-                          placeholder="e.g. Sivagangai Town / Karaikudi"
+                          required={true}
                         />
                       </div>
-                      <div className="form-group">
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                         <label>Hourly Rate (₹/hr)</label>
                         <input
                           type="number"
@@ -560,67 +622,107 @@ const Login = () => {
                       </div>
                     </div>
 
-                    <div className="kyc-section-box">
-                      <div className="kyc-section-label"><ShieldCheck size={14} /> KYC Verification (Mandatory)</div>
-                      <div className="form-group">
-                        <label>Aadhaar Card Number <span style={{ color: '#dc2626' }}>*</span></label>
-                        <input
-                          type="text"
-                          name="aadhaarNumber"
-                          value={form.aadhaarNumber}
-                          onChange={handleChange}
-                          placeholder="12-digit Aadhaar number"
-                          maxLength={12}
-                          required={role === 'handyman'}
-                        />
-                      </div>
-                      <div className="form-row-2">
-                        <div className="form-group">
-                          <label>ID Proof Type</label>
-                          <select name="idProofType" value={form.idProofType} onChange={handleChange}>
-                            <option value="driving_license">Driving License</option>
-                            <option value="voter_id">Voter ID</option>
-                            <option value="pan_card">PAN Card</option>
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label>ID Proof Number</label>
-                          <input
-                            type="text"
-                            name="idProofNumber"
-                            value={form.idProofNumber}
-                            onChange={handleChange}
-                            placeholder="e.g. TN1234567890"
-                          />
-                        </div>
-                      </div>
-                      <p style={{ fontSize: '0.77rem', color: '#64748b', marginTop: '4px', marginBottom: 0 }}>
-                        📋 Your account will be in <strong>Pending Verification</strong> until the Admin approves your KYC documents.
-                      </p>
-                    </div>
+
                   </div>
                 )}
 
-                {/* Mobile Phone Number Input Field (Always Required) */}
-                <div className="form-group">
-                  <label><Phone size={15} /> Mobile Number (+91)</label>
-                  <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '12px', fontWeight: '700', color: '#475569' }}>
-                      🇮🇳 +91
-                    </span>
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={form.phone}
-                      onChange={handleChange}
-                      placeholder="Enter 10-digit mobile number (e.g. 9876543210)"
-                      maxLength={10}
-                      required
-                      autoFocus
-                      style={{ flex: 1 }}
-                    />
+                {/* Dual Input Fields for Signup */
+                mode === 'signup' ? (
+                  <>
+                    <div className="form-group">
+                      <label><User size={15} /> Email Address <span style={{color: '#ef4444'}}>*</span></label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={form.email}
+                        onChange={handleChange}
+                        placeholder="Enter your email address"
+                        required
+                        style={{ padding: '12px', borderRadius: '8px', border: '1px solid #ccc', width: '100%' }}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginTop: '16px' }}>
+                      <label><Phone size={15} /> Mobile Number (+91) <span style={{color: '#ef4444'}}>*</span></label>
+                      <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', fontWeight: '700', color: '#475569' }}>
+                          🇮🇳 +91
+                        </span>
+                        <input
+                          type="tel"
+                          name="phone"
+                          value={form.phone}
+                          onChange={handleChange}
+                          placeholder="Enter 10-digit mobile number"
+                          maxLength={10}
+                          required
+                          style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{ marginTop: '16px' }}>
+                      <label><Bot size={15} /> Your Home Address (Smart AI Detection) <span style={{color: '#ef4444'}}>*</span></label>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                        <input
+                          type="text"
+                          value={aiAddressText}
+                          onChange={(e) => setAiAddressText(e.target.value)}
+                          placeholder="e.g., Kalpana theater pinadi, Karaikudi"
+                          style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAiAddressDetect}
+                          disabled={aiAddressLoading || !aiAddressText.trim()}
+                          style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}
+                        >
+                          <Sparkles size={16} /> {aiAddressLoading ? 'Detecting...' : 'Detect'}
+                        </button>
+                      </div>
+
+                      {showAiAddressConfirm && aiAddressResult && (
+                        <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '8px' }}>
+                          <h4 style={{ fontSize: '0.95rem', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '6px' }}><MapPin size={16} /> Confirm Address</h4>
+                          {!aiAddressResult.insideServiceArea ? (
+                            <p style={{ color: '#ef4444', fontSize: '0.9rem', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <AlertTriangle size={15} /> {aiAddressResult.message || 'Outside service area.'}
+                            </p>
+                          ) : (
+                            <>
+                              <p style={{ fontSize: '0.9rem', margin: '0 0 10px 0', color: '#334155' }}><strong>Found:</strong> {aiAddressResult.normalizedAddress}</p>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button type="button" onClick={confirmAiAddress} style={{ flex: 1, background: '#10b981', color: 'white', padding: '8px', borderRadius: '6px', border: 'none', fontWeight: '600' }}>Confirm</button>
+                                <button type="button" onClick={() => setShowAiAddressConfirm(false)} style={{ background: '#64748b', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none' }}>Cancel</button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {form.location && !showAiAddressConfirm && (
+                        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', color: '#065f46', fontSize: '0.9rem' }}>
+                          <CheckCircle2 size={16} /> <span><strong>Verified Address:</strong> {form.location}</span>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="form-group">
+                    <label><User size={15} /> Email or Mobile Number</label>
+                    <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="text"
+                        name="identifier"
+                        value={form.identifier}
+                        onChange={handleChange}
+                        placeholder="Enter Email or 10-digit mobile number"
+                        required
+                        autoFocus
+                        style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {error && <div className="login-error-alert">{error}</div>}
 
@@ -640,10 +742,23 @@ const Login = () => {
                   </div>
                 )}
 
-                <div className="form-group">
-                  <label><KeyRound size={15} /> Enter 6-Digit OTP Code</label>
-                  <OtpInput value={otpCode} onChange={setOtpCode} error={!!error} />
-                </div>
+                {mode === 'signup' ? (
+                  <>
+                    <div className="form-group">
+                      <label><KeyRound size={15} /> Enter Email OTP</label>
+                      <OtpInput value={emailOtpCode} onChange={setEmailOtpCode} error={!!error} />
+                    </div>
+                    <div className="form-group" style={{ marginTop: '16px' }}>
+                      <label><KeyRound size={15} /> Enter SMS OTP</label>
+                      <OtpInput value={otpCode} onChange={setOtpCode} error={!!error} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="form-group">
+                    <label><KeyRound size={15} /> Enter 6-Digit OTP Code</label>
+                    <OtpInput value={otpCode} onChange={setOtpCode} error={!!error} />
+                  </div>
+                )}
 
                 <div className="otp-timer-bar">
                   {timerActive ? (
@@ -671,7 +786,7 @@ const Login = () => {
                   <div className="otp-demo-alert" style={{ background: '#ecfdf5', borderColor: '#6ee7b7', color: '#065f46' }}>
                     <CheckCircle2 size={18} color="#059669" />
                     <div>
-                      <strong>Mobile Verified!</strong>
+                      <strong>Verified Successfully!</strong>
                       <p>{successInfo}</p>
                     </div>
                   </div>
@@ -730,13 +845,13 @@ const Login = () => {
             )}
 
             <div className="form-group">
-              <label><Phone size={15} /> Phone Number</label>
+              <label><User size={15} /> Email or Mobile Number</label>
               <input
-                type="tel"
-                name="phone"
-                value={form.phone}
+                type="text"
+                name="identifier"
+                value={form.identifier}
                 onChange={handleChange}
-                placeholder="e.g. 9876543210 or +919876543210"
+                placeholder="Enter Email or 10-digit mobile number"
                 required
               />
             </div>
@@ -751,7 +866,7 @@ const Login = () => {
                     onClick={() => {
                       setShowForgotPassword(true);
                       setForgotStep(1);
-                      setForgotPhone(form.phone);
+                      setForgotPhone(form.identifier);
                       setError('');
                     }}
                   >
@@ -821,17 +936,15 @@ const Login = () => {
                 </div>
 
                 <div className="form-row-2">
-                  <div className="form-group">
-                    <label><MapPin size={15} /> Primary Location / Taluk</label>
-                    <input
-                      type="text"
-                      name="location"
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ marginBottom: '8px' }}>Service Area (Tamil Nadu) <span style={{ color: '#dc2626' }}>*</span></label>
+                    <LocationSelector
                       value={form.location}
                       onChange={handleChange}
-                      placeholder="e.g. Sivagangai Town / Karaikudi"
+                      required={true}
                     />
                   </div>
-                  <div className="form-group">
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                     <label>Hourly Rate (₹/hr)</label>
                     <input
                       type="number"
@@ -844,43 +957,7 @@ const Login = () => {
                   </div>
                 </div>
 
-                <div className="kyc-section-box">
-                  <div className="kyc-section-label"><ShieldCheck size={14} /> KYC Verification (Mandatory)</div>
-                  <div className="form-group">
-                    <label>Aadhaar Card Number <span style={{ color: '#dc2626' }}>*</span></label>
-                    <input
-                      type="text"
-                      name="aadhaarNumber"
-                      value={form.aadhaarNumber}
-                      onChange={handleChange}
-                      placeholder="12-digit Aadhaar number"
-                      maxLength={12}
-                    />
-                  </div>
-                  <div className="form-row-2">
-                    <div className="form-group">
-                      <label>ID Proof Type</label>
-                      <select name="idProofType" value={form.idProofType} onChange={handleChange}>
-                        <option value="driving_license">Driving License</option>
-                        <option value="voter_id">Voter ID</option>
-                        <option value="pan_card">PAN Card</option>
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label>ID Proof Number</label>
-                      <input
-                        type="text"
-                        name="idProofNumber"
-                        value={form.idProofNumber}
-                        onChange={handleChange}
-                        placeholder="e.g. TN1234567890"
-                      />
-                    </div>
-                  </div>
-                  <p style={{ fontSize: '0.77rem', color: '#64748b', marginTop: '4px', marginBottom: 0 }}>
-                    📋 Your account will be in <strong>Pending Verification</strong> until the Admin approves your KYC documents.
-                  </p>
-                </div>
+
               </div>
             )}
 
@@ -895,6 +972,20 @@ const Login = () => {
             </button>
           </form>
         )}
+        {/* Google SSO Divider */}
+        <div className="google-divider">
+          <span>OR</span>
+        </div>
+
+        <button 
+          type="button" 
+          className="google-login-btn"
+          onClick={handleGoogleLogin}
+          disabled={submitting}
+        >
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="google-icon" />
+          Continue with Google
+        </button>
 
         {/* Footer Toggle Switch */}
         <div className="auth-footer-switcher">

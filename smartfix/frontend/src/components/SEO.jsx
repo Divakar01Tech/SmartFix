@@ -4,7 +4,7 @@ import { Helmet } from 'react-helmet-async';
 const SEO = ({ title, description, url, type = 'website', schema }) => {
   const siteTitle = 'SmartFix | LocalHands';
   const fullTitle = title ? `${title} | ${siteTitle}` : siteTitle;
-  const defaultDesc = 'SmartFix connects you directly with zero-commission verified trade workers, plumbers, and electricians in Sivagangai & Madurai.';
+  const defaultDesc = 'SmartFix connects you directly with zero-commission verified trade workers, plumbers, and electricians in Tamil Nadu & Madurai.';
 
   return (
     <Helmet>

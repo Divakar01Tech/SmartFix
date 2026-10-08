@@ -13,7 +13,7 @@ const About = () => {
           </span>
           <h1 className="display-4 fw-extrabold mb-3">Revolutionizing Local Home Maintenance</h1>
           <p className="lead text-light opacity-90 max-w-2xl mx-auto mb-4">
-            SmartFix connects homeowners in Sivagangai district with verified, background-checked, top-rated local handymen — bringing speed, traditional trust, and transparent pricing to everyday repairs.
+            SmartFix connects homeowners in Tamil Nadu district with verified, background-checked, top-rated local handymen — bringing speed, traditional trust, and transparent pricing to everyday repairs.
           </p>
           <div className="d-flex justify-content-center gap-3 flex-wrap">
             <Link to="/browse" className="btn btn-primary btn-lg fw-bold rounded-4 px-4 py-3 shadow">
@@ -41,7 +41,7 @@ const About = () => {
             <div className="card h-100 border-0 shadow-sm rounded-4 p-4 hover-lift">
               <h2 className="display-5 fw-extrabold text-success mb-1">100%</h2>
               <h6 className="fw-bold text-dark mb-1">Verified Pros</h6>
-              <p className="text-muted small mb-0">Aadhaar & identity checked</p>
+              <p className="text-muted small mb-0">Mobile & identity checked</p>
             </div>
           </div>
 
@@ -57,7 +57,7 @@ const About = () => {
             <div className="card h-100 border-0 shadow-sm rounded-4 p-4 hover-lift">
               <h2 className="display-5 fw-extrabold text-info mb-1">8+ Towns</h2>
               <h6 className="fw-bold text-dark mb-1">District Coverage</h6>
-              <p className="text-muted small mb-0">Sivagangai, Karaikudi & all taluks</p>
+              <p className="text-muted small mb-0">Tamil Nadu, Karaikudi & all taluks</p>
             </div>
           </div>
         </div>
@@ -74,7 +74,7 @@ const About = () => {
                 SmartFix was created to eliminate the daily hassle of finding honest, punctual, skilled local handymen.
               </p>
               <p className="text-muted mb-4">
-                We combine real-time GPS location matching with transparent hourly rates, instant 1-hour arrival guarantees, and direct phone/WhatsApp communication for every family in Sivagangai.
+                We combine real-time GPS location matching with transparent hourly rates, instant 1-hour arrival guarantees, and direct phone/WhatsApp communication for every family in Tamil Nadu.
               </p>
 
               <ul className="list-unstyled d-flex flex-column gap-3 mb-0">
@@ -103,7 +103,7 @@ const About = () => {
                     <ShieldCheck size={24} color="#3b82f6" />
                     <div>
                       <strong className="d-block">Background Checked</strong>
-                      <small className="text-light opacity-75">Aadhaar & identity verified workers</small>
+                      <small className="text-light opacity-75">Mobile & identity verified workers</small>
                     </div>
                   </div>
                   <div className="d-flex align-items-center gap-3">

@@ -41,15 +41,15 @@ export const minimalMapStyle = [
   }
 ];
 
-// Sivagangai District bounds (approximate bounding box)
-export const SIVAGANGAI_BOUNDS = {
-  north: 10.33,
-  south: 9.68,
-  east: 78.91,
-  west: 78.10
+// Tamil Nadu bounds (approximate bounding box)
+export const TAMILNADU_BOUNDS = {
+  north: 13.5,
+  south: 8.0,
+  east: 80.3,
+  west: 76.2
 };
 
-export const SIVAGANGAI_CENTER = {
-  lat: 9.8433, 
-  lng: 78.4809
+export const TAMILNADU_CENTER = {
+  lat: 11.1271, 
+  lng: 78.6569
 };

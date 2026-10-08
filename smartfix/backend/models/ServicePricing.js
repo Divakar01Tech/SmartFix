@@ -25,7 +25,7 @@ const servicePricingSchema = new mongoose.Schema({
 
 const ServicePricing = mongoose.model('ServicePricing', servicePricingSchema);
 
-// Initial Seed Data (6 Categories x 8 Sub-services = 48 combos for Sivagangai typical rates)
+// Initial Seed Data (6 Categories x 8 Sub-services = 48 combos for Tamil Nadu typical rates)
 const seedData = [
   // Plumbing
   { category: 'Plumbing', subService: 'Leaking Tap / Valve Replacement', minPrice: 150, maxPrice: 350, avgDurationMinutes: 30 },

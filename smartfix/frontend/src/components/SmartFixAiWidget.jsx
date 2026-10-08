@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Bot, X, Send, User, RefreshCw, Zap, Wrench, ShieldAlert,
   Camera, Mic, MicOff, Volume2, VolumeX, Copy, Check, Sparkles,
-  CheckCircle, Globe
+  CheckCircle, Globe, MessageSquare
 } from 'lucide-react';
 import { detectMcpIntent, executeMcpTool } from '../services/mcpTools';
 import { useLanguage } from '../context/LanguageContext';
@@ -23,7 +23,7 @@ const getApiBase = () => {
 const API_BASE = getApiBase();
 
 const CUSTOMER_SUGGESTION_CHIPS = [
-  { id: 'area', label: '📍 Check Service Area', prompt: 'Is Karaikudi or Sivagangai covered in service area?' },
+  { id: 'area', label: '📍 Check Service Area', prompt: 'Is Karaikudi or Tamil Nadu covered in service area?' },
   { id: 'pricing', label: '💰 Check Pricing', prompt: 'How much for an AC repair or plumber?' },
   { id: 'book', label: '📅 Book Service', prompt: 'Book a plumber for tomorrow at 5pm' },
   { id: 'status', label: '🚚 Track Worker / Status', prompt: 'Where is my worker and what is booking status?' },
@@ -518,7 +518,7 @@ const SmartFixAiWidget = () => {
           trade: draft.trade || 'Plumbing',
           notes: draft.notes || 'Created via SmartFix AI',
           price: draft.estimatedPrice || 350,
-          address: 'Sivagangai District, Tamil Nadu'
+          address: 'Tamil Nadu, Tamil Nadu'
         })
       });
 
@@ -555,15 +555,11 @@ const SmartFixAiWidget = () => {
       {!isOpen && (
         <button
           type="button"
-          className="ai-widget-toggle-btn"
+          className="ai-widget-toggle-btn-small"
           onClick={() => setIsOpen(true)}
           title="SmartFix AI Assistant"
         >
-          <div className="ai-toggle-icon-pulse">
-            <Zap size={18} color="#f59e0b" />
-          </div>
-          <span>SmartFix AI</span>
-          <span className="mcp-live-badge-pill">AI LIVE</span>
+          <MessageSquare size={24} color="#ffffff" />
         </button>
       )}
 
@@ -790,16 +786,6 @@ const SmartFixAiWidget = () => {
                       >
                         {speakingMsgIdx === idx ? <VolumeX size={13} color="#ef4444" /> : <Volume2 size={13} />}
                         <span>{speakingMsgIdx === idx ? 'Stop' : 'Listen'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        className="action-icon-btn"
-                        title="Copy message"
-                        onClick={() => copyToClipboard(msg.content, idx)}
-                      >
-                        {copiedIndex === idx ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
-                        <span>{copiedIndex === idx ? 'Copied' : 'Copy'}</span>
                       </button>
                     </div>
                   )}

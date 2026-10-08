@@ -1,14 +1,14 @@
 /**
  * SmartFix Live Intent Recognition & Entity Extraction Engine
- * Implementation of HandyBook (SmartFix) AI Chatbot Intent Taxonomy
+ * Implementation of SmartFix (SmartFix) AI Chatbot Intent Taxonomy
  * Supports Customer, Service Provider (Worker), and Admin intents in English and Tamil.
  */
 
 const { callGeminiJsonApi } = require('./geminiService');
 
-// 8 Sivagangai District Taluks allowlist (PRD §4, §8)
-const SIVAGANGAI_TALUKS = [
-  'Sivagangai',
+// 8 Tamil Nadu Taluks allowlist (PRD §4, §8)
+const TAMILNADU_TALUKS = [
+  'Tamil Nadu',
   'Manamadurai',
   'Ilayangudi',
   'Singampunari',
@@ -71,7 +71,7 @@ const SUPPORTED_INTENTS = {
     label: '📍 Service Area Verification',
     priority: 'Medium',
     suggestedActions: [
-      { label: '📍 Check Sivagangai Taluks', action: 'CheckServiceArea' },
+      { label: '📍 Check Tamil Nadu Taluks', action: 'CheckServiceArea' },
       { label: '📅 Book Technician', action: 'BookService' }
     ]
   },
@@ -355,10 +355,10 @@ const SUPPORTED_INTENTS = {
 
 // System prompt for Gemini AI NLU Intent Classifier
 const INTENT_CLASSIFIER_PROMPT = `
-You are the official AI Intent & Entity Extraction Classifier for the SmartFix platform operating in Sivagangai District, Tamil Nadu.
+You are the official AI Intent & Entity Extraction Classifier for the SmartFix platform operating in Tamil Nadu, Tamil Nadu.
 Your job is to analyze user queries (in English, Tamil script, or transliterated Tanglish) and classify them into exactly ONE intent from the taxonomy.
 
-Covered Sivagangai District Taluks: Sivagangai, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi.
+Covered Tamil Nadu Taluks: Tamil Nadu, Manamadurai, Ilayangudi, Singampunari, Kalayarkoil, Tirupathur, Devakottai, Karaikudi.
 Covered Categories: Plumbing, Electrical, Carpentry, Painting, Cleaning, AC/Appliance Repair.
 
 Intent Set:
@@ -380,7 +380,7 @@ Respond STRICTLY in valid JSON matching this structure:
   "entities": {
     "service_category": "Plumbing | Electrical | Carpentry | Painting | Cleaning | AC/Appliance Repair | null",
     "sub_service": "string or null",
-    "taluk": "Sivagangai | Manamadurai | Ilayangudi | Singampunari | Kalayarkoil | Tirupathur | Devakottai | Karaikudi | null",
+    "taluk": "Tamil Nadu | Manamadurai | Ilayangudi | Singampunari | Kalayarkoil | Tirupathur | Devakottai | Karaikudi | null",
     "booking_id": "string (e.g. SF-20394) or null",
     "date_time": "string or null",
     "phone_number": "E.164 string or null",
@@ -392,12 +392,12 @@ Respond STRICTLY in valid JSON matching this structure:
 `;
 
 /**
- * Validates whether a location string corresponds to one of the 8 Sivagangai Taluks
+ * Validates whether a location string corresponds to one of the 8 Tamil Nadu Taluks
  */
 function isTalukCovered(locationText) {
   if (!locationText) return { isCovered: false, matchedTaluk: null };
   const norm = locationText.toLowerCase();
-  for (const taluk of SIVAGANGAI_TALUKS) {
+  for (const taluk of TAMILNADU_TALUKS) {
     if (norm.includes(taluk.toLowerCase())) {
       return { isCovered: true, matchedTaluk: taluk };
     }
@@ -617,7 +617,7 @@ function detectFallbackIntent(text, userRole = 'customer', predefinedEntities = 
         intentKey = 'RaiseComplaint';
       } else if (q.includes('english') || q.includes('tamil-la pesu') || q.includes('switch to english') || q.includes('tamil')) {
         intentKey = 'SwitchLanguage';
-      } else if (q.includes('serve') || q.includes('covered') || q.includes('service area') || q.includes('karaikudi') || q.includes('sivagangai') || q.includes('taluk')) {
+      } else if (q.includes('serve') || q.includes('covered') || q.includes('service area') || q.includes('karaikudi') || q.includes('Tamil Nadu') || q.includes('taluk')) {
         intentKey = 'CheckServiceArea';
       } else if (q.includes('cost') || q.includes('price') || q.includes('rate') || q.includes('charge') || q.includes('how much') || q.includes('fare')) {
         intentKey = 'AskPricing';
@@ -648,7 +648,7 @@ module.exports = {
   detectLiveIntent,
   isTalukCovered,
   extractStandardEntities,
-  SIVAGANGAI_TALUKS,
+  TAMILNADU_TALUKS,
   SERVICE_CATEGORIES,
   SUPPORTED_INTENTS,
 };

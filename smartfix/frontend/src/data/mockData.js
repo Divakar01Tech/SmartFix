@@ -29,7 +29,7 @@ export const saveWorkerToStorage = (workerData) => {
       name: workerData.name,
       trade: workerData.trade || 'Plumbing',
       subServices: workerData.subServices || [],
-      location: workerData.location || 'Sivagangai Town',
+      location: workerData.location || 'Tamil Nadu',
       ratePerHour: Number(workerData.ratePerHour) || 350,
       rating: workerData.rating || 5.0,
       ratingCount: workerData.ratingCount || 1,

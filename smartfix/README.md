@@ -1,9 +1,9 @@
-# HandyBook — SmartFix
+# SmartFix — SmartFix
 
-> **OTP-Verified Home Service Booking Platform · Sivagangai District, Tamil Nadu**
+> **OTP-Verified Home Service Booking Platform · Tamil Nadu, Tamil Nadu**
 > Academic reference: IEEE DOI 10.1109/ICSPC51351.2021.9451783
 
-A full-stack MERN application that connects customers with verified local handymen (plumbers, electricians, AC technicians, refrigerator/washing machine/water-purifier repairers) within Sivagangai District. All bookings, workers, and addresses are geographically restricted to the district. Pricing in ₹ (INR), phone numbers in +91 format, bilingual UI (English / Tamil).
+A full-stack MERN application that connects customers with verified local handymen (plumbers, electricians, AC technicians, refrigerator/washing machine/water-purifier repairers) within Tamil Nadu. All bookings, workers, and addresses are geographically restricted to the district. Pricing in ₹ (INR), phone numbers in +91 format, bilingual UI (English / Tamil).
 
 ---
 
@@ -79,7 +79,7 @@ smartfix/
 │   ├── services/
 │   │   ├── smsService.js          # Fast2SMS OTP dispatch
 │   │   ├── otpService.js          # Hash store / verify logic
-│   │   └── geocodingService.js    # Sivagangai District boundary validation
+│   │   └── geocodingService.js    # Tamil Nadu boundary validation
 │   ├── socket/
 │   │   └── locationSocket.js      # All Socket.IO event handlers
 │   ├── utils/
@@ -189,7 +189,7 @@ Admin login: ONLY phone 7604975206 is accepted.
 
 ```
 Dashboard → Browse → Select category → Filter by sub-service
-→ Enter address (GPS / pin) → backend validates within Sivagangai District
+→ Enter address (GPS / pin) → backend validates within Tamil Nadu
 → Booking created (status: "Pending")
 → Nearby verified worker notified via Socket.IO
 → Worker accepts → status: "Confirmed" → 1-hour SLA countdown begins
@@ -242,7 +242,7 @@ Real-time **SLA breach alerts** appear as dismissable banners via Socket.IO when
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/` | Create booking (customer; Sivagangai District validation) |
+| `POST` | `/` | Create booking (customer; Tamil Nadu validation) |
 | `GET` | `/my` | My bookings (customer or worker) |
 | `GET` | `/:id` | Single booking detail |
 | `PATCH` | `/:id/status` | Update booking status (worker/admin); SLA enforced |
@@ -303,7 +303,7 @@ Real-time **SLA breach alerts** appear as dismissable banners via Socket.IO when
 
 | Rule | Detail |
 |---|---|
-| **Geographic restriction** | All customer addresses and handyman locations must be within Sivagangai District (8 taluks). Bookings outside the district boundary are rejected. |
+| **Geographic restriction** | All customer addresses and handyman locations must be within Tamil Nadu (8 taluks). Bookings outside the district boundary are rejected. |
 | **Proximity limit** | Maximum 5 km between customer and worker for a valid booking. |
 | **KYC mandatory** | Handymen must provide a valid 12-digit Aadhaar number and one secondary ID proof (Driving License / Voter ID / PAN Card) at registration. |
 | **OTP security** | Max 5 verification attempts per OTP. OTPs expire in 5 minutes. No master/bypass OTP is permitted. |

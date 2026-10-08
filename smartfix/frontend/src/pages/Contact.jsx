@@ -70,7 +70,7 @@ const Contact = () => {
               <div>
                 <strong>Headquarters Location</strong>
                 <p>SmartFix Complex, 2nd Floor</p>
-                <p>Collectorate Road, Sivagangai - 630561, Tamil Nadu</p>
+                <p>Collectorate Road, Tamil Nadu - 630561, Tamil Nadu</p>
               </div>
             </div>
 

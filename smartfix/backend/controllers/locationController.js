@@ -1,5 +1,57 @@
 const WorkerLocation = require('../models/WorkerLocation');
 const User = require('../models/User');
+const Location = require('../models/Location');
+
+// @route GET /api/locations/districts
+// @desc Get all districts
+exports.getDistricts = async (req, res) => {
+  try {
+    const districts = await Location.find({ level: 'district' })
+      .select('id name slug isServiceActive zone aliases lat lng')
+      .sort({ 'name.en': 1 });
+    res.status(200).json(districts);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching districts', error: err.message });
+  }
+};
+
+// @route GET /api/locations/districts/:id/taluks
+// @desc Get all taluks for a given district
+exports.getTaluksByDistrict = async (req, res) => {
+  try {
+    const taluks = await Location.find({ level: 'taluk', parentId: req.params.id })
+      .select('id name slug parentId radiusKm zoneOverride')
+      .sort({ 'name.en': 1 });
+    res.status(200).json(taluks);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching taluks', error: err.message });
+  }
+};
+
+// @route GET /api/locations/taluks/:id/villages?q=
+// @desc Search villages by taluk id and query prefix
+exports.searchVillagesByTaluk = async (req, res) => {
+  try {
+    const { q } = req.query;
+    let query = { level: 'village', parentId: req.params.id };
+
+    if (q && q.length >= 2) {
+      const regex = new RegExp('^' + q, 'i');
+      query.$or = [
+        { 'name.en': regex },
+        { 'name.ta': regex }
+      ];
+    }
+
+    const villages = await Location.find(query)
+      .select('id name slug kind lat lng pincode isActive')
+      .sort({ 'name.en': 1 });
+
+    res.status(200).json(villages);
+  } catch (err) {
+    res.status(500).json({ message: 'Error searching villages', error: err.message });
+  }
+};
 
 // @route GET /api/location/worker/:workerId
 // @desc Get current worker location
@@ -53,30 +105,28 @@ exports.validateLocation = async (req, res) => {
     const data = await geocodeRes.json();
 
     if (data.status === 'OK' && data.results && data.results.length > 0) {
+      let state = '';
       let district = '';
       let taluk = '';
       const result = data.results[0];
       
       result.address_components.forEach(comp => {
+        if (comp.types.includes('administrative_area_level_1')) state = comp.long_name;
         if (comp.types.includes('administrative_area_level_2')) district = comp.long_name;
         if (comp.types.includes('administrative_area_level_3')) taluk = comp.long_name;
         if (!district && comp.types.includes('locality')) district = comp.long_name;
       });
 
-      const distLower = district.toLowerCase().replace(/\s/g, '');
-      const talukLower = taluk.toLowerCase().replace(/\s/g, '');
-      const SIVAGANGAI_ALIASES = ['sivaganga', 'sivagangai'];
-      const VALID_TALUKS = ['sivaganga', 'karaikudi', 'devakottai', 'manamadurai', 'thirupuvanam', 'ilaiyankudi', 'kalaiyarkoil', 'thirupathur', 'tirupathur'];
-      
-      const isDistValid = SIVAGANGAI_ALIASES.some(a => distLower.includes(a));
-      const isTalukValid = talukLower === '' || VALID_TALUKS.some(t => talukLower.includes(t));
+      const stateLower = state.toLowerCase().replace(/\s/g, '');
+      const isStateValid = stateLower.includes('tamilnadu');
 
-      if (isDistValid && isTalukValid) {
+      if (isStateValid) {
         return res.status(200).json({ isValid: true });
       } else {
         return res.status(200).json({ 
           isValid: false, 
-          message: 'Service available only in Sivagangai District / சிவகங்கை மாவட்டத்தில் மட்டுமே சேவை உள்ளது',
+          message: 'Service available only in Tamil Nadu / தமிழ்நாட்டில் மட்டுமே சேவை உள்ளது',
+          state,
           district,
           taluk
         });

@@ -1,6 +1,6 @@
 # SMARTFIX — TECHNICAL REQUIREMENTS DOCUMENT (TRD)
 
-**Project Name**: SmartFix / HandyBook Platform  
+**Project Name**: SmartFix / SmartFix Platform  
 **Document Version**: 1.0.0  
 **Stack**: MERN (MongoDB, Express, React, Node.js)  
 

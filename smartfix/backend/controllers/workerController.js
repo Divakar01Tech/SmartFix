@@ -8,7 +8,14 @@ exports.getWorkers = async (req, res) => {
   try {
     const { trade, location, search } = req.query;
 
-    const conditions = [{ role: 'handyman', verificationStatus: 'Verified' }];
+    const conditions = [
+      {
+        role: 'handyman',
+        verificationStatus: 'Verified',
+        // Exclude demo workers from real customer results unless SHOW_DEMO_DATA env flag is set
+        ...(process.env.SHOW_DEMO_DATA !== 'true' ? { isDemo: { $ne: true } } : {}),
+      },
+    ];
 
     if (trade && trade !== 'all') {
       const tradeClean = trade.split('&')[0].trim();

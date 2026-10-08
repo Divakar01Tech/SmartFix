@@ -1,9 +1,0 @@
-.review-page { padding-top: 90px; }
-.stars-row { display: flex; justify-content: center; gap: 8px; margin-bottom: 12px; }
-.star-btn { background: none; border: none; cursor: pointer; padding: 4px; transition: transform var(--transition); }
-.star-btn:hover { transform: scale(1.1); }
-.rating-label { text-align: center; font-size: 1rem; font-weight: 600; color: #F59E0B; min-height: 24px; }
-.review-success { padding-top: 100px; }
-.review-success .success-icon { width: 96px; height: 96px; border-radius: 50%; background: #D1FAE5; color: var(--success); display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; }
-.review-success h1 { font-size: 2rem; font-weight: 800; margin-bottom: 12px; }
-.review-success p { color: var(--text-secondary); }

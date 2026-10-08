@@ -12,7 +12,7 @@ async function testAiResilience() {
 
   console.log('1. Testing Conversational Chat Query (callGeminiApi):');
   const chatMessages = [
-    { role: 'user', content: 'My kitchen tap is leaking water continuously. What is the estimated cost in Sivagangai?' }
+    { role: 'user', content: 'My kitchen tap is leaking water continuously. What is the estimated cost in Tamil Nadu?' }
   ];
   const chatRes = await callGeminiApi(chatMessages, 0.4, 400);
   if (chatRes && chatRes.text) {

@@ -1,6 +1,6 @@
 # SMARTFIX — BACKEND DATABASE SCHEMA
 
-**Project Name**: SmartFix / HandyBook Platform  
+**Project Name**: SmartFix / SmartFix Platform  
 **Database**: MongoDB Atlas  
 **ODM**: Mongoose  
 
@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['customer', 'handyman', 'admin'], default: 'customer' },
   trade: { type: String, default: null }, // e.g. Plumbing, Electrical
   subServices: [{ type: String }],
-  location: { type: String, default: 'Sivagangai Town' },
+  location: { type: String, default: 'Tamil Nadu' },
   latitude: { type: Number, default: 9.8433 },
   longitude: { type: Number, default: 78.4809 },
   ratePerHour: { type: Number, default: 350 },

@@ -72,7 +72,7 @@ const HowItWorks = () => {
                   <Clock size={30} className="text-warning-emphasis" />
                 </div>
                 <h4 className="fw-bold mb-2">3. 1-Hour Arrival</h4>
-                <p className="text-muted fs-6">Your verified handyman arrives at your doorstep within 60 minutes equipped with proper tools & Aadhaar ID.</p>
+                <p className="text-muted fs-6">Your verified handyman arrives at your doorstep within 60 minutes equipped with proper tools & verified ID.</p>
               </div>
             </div>
 

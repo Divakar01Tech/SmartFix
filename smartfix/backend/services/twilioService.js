@@ -102,7 +102,7 @@ const sendWhatsApp = async (toPhone, message) => {
   const rawPhone = formatPhoneE164(toPhone);
   const formattedTo = rawPhone.startsWith('whatsapp:') ? rawPhone : `whatsapp:${rawPhone}`;
   
-  let fromNumber = process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886';
+  let fromNumber = process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+917604975206';
   if (!fromNumber.startsWith('whatsapp:')) {
     fromNumber = `whatsapp:${fromNumber}`;
   }

@@ -6,12 +6,13 @@ import { useAuth } from '../context/AuthContext';
 import { useCall } from '../context/CallContext';
 import { apiService } from '../services/api';
 import socket from '../services/socket';
-import LocationPickerMap from '../components/LocationPickerMap';
+import LocationPicker from '../components/LocationPicker';
 import PaymentModal from '../components/PaymentModal';
 import LiveTrackerMap from '../components/LiveTrackerMap';
 import { getUserCurrentLocation } from '../utils/geolocation';
 import { useLanguage } from '../context/LanguageContext';
 import VoiceInputButton from '../components/VoiceInputButton';
+import DiagnosisBox from '../components/DiagnosisBox';
 import { MapPin, Wrench, ShieldCheck, CheckCircle2, CreditCard, Phone, PhoneCall, MessageSquare, Navigation, Clock, AlertTriangle, Crosshair, Zap, Camera, Sparkles, Bot } from 'lucide-react';
 import './Booking.css';
 
@@ -22,16 +23,27 @@ const Booking = () => {
   const { startCall } = useCall();
   const { t, language } = useLanguage();
 
-  // AI Diagnosis State
-  const [problemDesc, setProblemDesc] = useState('');
-  const [preSpeechDesc, setPreSpeechDesc] = useState('');
-  const [problemImageBase64, setProblemImageBase64] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiDiagnosis, setAiDiagnosis] = useState(null);
-
+  // AI Diagnosis State Removed
   const [worker, setWorker] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = useState(user?.location || '');
+  const [addressZone, setAddressZone] = useState('town');
+  
+  // AI Diagnosis Suggestion
+  const [aiSuggested, setAiSuggested] = useState(null);
+  const handleAiSuggestion = (suggestion) => {
+    setSelectedCategory(suggestion.category);
+    setSelectedSubServices([suggestion.subService]);
+    setAiSuggested(suggestion.aiSuggested);
+  };
+
+  
+  // AI Address Normalization
+  const [aiAddressText, setAiAddressText] = useState('');
+  const [aiAddressLoading, setAiAddressLoading] = useState(false);
+  const [aiAddressResult, setAiAddressResult] = useState(null);
+  const [showAiAddressConfirm, setShowAiAddressConfirm] = useState(false);
+
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedSubService, setSelectedSubService] = useState('');
   const [selectedSubServices, setSelectedSubServices] = useState([]);
@@ -47,8 +59,8 @@ const Booking = () => {
   const [createdBooking, setCreatedBooking] = useState(null);
 
   // GPS and Radial Dispatch State - Default active immediately to prevent blocking
-  const [userLat, setUserLat] = useState(9.9252);
-  const [userLng, setUserLng] = useState(78.1198);
+  const [userLat, setUserLat] = useState(user?.lat || user?.liveLocation?.coordinates?.[1] || 9.9252);
+  const [userLng, setUserLng] = useState(user?.lng || user?.liveLocation?.coordinates?.[0] || 78.1198);
   const [gpsActive, setGpsActive] = useState(true);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState('');
@@ -172,34 +184,18 @@ const Booking = () => {
     }
   };
 
-  const handleAiDiagnose = async (e) => {
-    e.preventDefault();
-    if (!problemDesc && !problemImageBase64) return;
-    setAiLoading(true);
-    try {
-      const result = await apiService.diagnoseCustomerIssue({ description: problemDesc, imageBase64: problemImageBase64 });
-      setAiDiagnosis(result);
-      if (result.category) {
-        setSelectedCategory(result.category);
-      }
-      if (result.subService) {
-        setSelectedSubServices((prev) => Array.from(new Set([...prev, result.subService])));
-      }
-    } catch (err) {
-      console.warn('AI Diagnosis failed', err);
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProblemImageBase64(reader.result);
-      };
-      reader.readAsDataURL(file);
+  const handleLocationConfirm = (structuredAddress) => {
+    setAddress(structuredAddress.normalizedAddress || `${structuredAddress.doorNo || ''} ${structuredAddress.street || ''}, ${structuredAddress.villageName}, ${structuredAddress.talukName}, ${structuredAddress.districtName}`);
+    setAddressZone(structuredAddress.districtZone || 'town');
+    if (structuredAddress.lat && structuredAddress.lng) {
+      setUserLat(structuredAddress.lat);
+      setUserLng(structuredAddress.lng);
+      setGpsActive(true);
+      if (worker?.lat && worker?.lng) {
+        const dist = haversineKm(structuredAddress.lat, structuredAddress.lng, worker.lat, worker.lng);
+        setWorkerDistance(dist);
+      }
     }
   };
 
@@ -275,6 +271,15 @@ const Booking = () => {
     }, 250);
 
     try {
+      let zoneMultiplier = 1.0;
+      if (addressZone === 'metro') zoneMultiplier = 1.2;
+      else if (addressZone === 'rural') zoneMultiplier = 0.8;
+
+      let computedPrice = Math.round((worker.ratePerHour || 250) * zoneMultiplier);
+      if (aiSuggested && aiSuggested.priceMin) {
+        computedPrice = aiSuggested.priceMin;
+      }
+
       const dispatchRes = await apiService.requestDispatch({
         workerId: worker._id || worker.id,
         trade: worker.trade,
@@ -283,9 +288,10 @@ const Booking = () => {
         address,
         subServices: selectedSubServices,
         notes,
-        price: worker.ratePerHour,
+        price: computedPrice,
         userLat,
         userLng,
+        aiSuggested,
       });
 
       clearInterval(timer);
@@ -301,7 +307,7 @@ const Booking = () => {
           workerPhone: phoneNum,
           customerName: user?.name || 'Customer',
           trade: worker.trade,
-          price: worker.ratePerHour,
+          price: computedPrice,
           subServices: selectedSubServices,
           address,
           userLat,
@@ -490,133 +496,10 @@ const Booking = () => {
 
           <form className="booking-form" onSubmit={handleConfirmBooking}>
 
-            {/* GPS Location Detector — Required */}
-            <div className={`gps-detect-section ${gpsActive ? 'gps-active' : ''} ${gpsError ? 'gps-error-state' : ''}`}>
-              <div className="gps-detect-header">
-                <Crosshair size={18} color={gpsActive ? '#059669' : '#2563eb'} />
-                <span className="gps-detect-title">
-                  {gpsActive ? '✅ Live GPS Location Detected' : '📍 Detect Your Live GPS Location'}
-                </span>
-                {gpsActive && <span className="gps-active-badge">LIVE</span>}
-              </div>
+            {/* Location Picker Module */}
+            <LocationPicker mode="booking" onConfirm={handleLocationConfirm} />
 
-              {gpsActive ? (
-                <div className="gps-coords-display">
-                  <span>📌 Lat: <strong>{userLat?.toFixed(5)}</strong></span>
-                  <span>📌 Lng: <strong>{userLng?.toFixed(5)}</strong></span>
-                  {workerDistance !== null && (
-                    <span className={`worker-dist-badge ${workerDistance > 5 ? 'too-far' : 'in-range'}`}>
-                      {workerDistance > 5 ? '⚠️' : '✅'} Worker is {workerDistance} km away {workerDistance > 5 ? '(Too far — 5 km max)' : '(Within range)'}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <p className="gps-detect-desc">
-                  Your live location is required to match workers within <strong>5 km</strong> and enable real-time tracking.
-                </p>
-              )}
-
-              {gpsError && <p className="gps-error-msg"><AlertTriangle size={14} /> {gpsError}</p>}
-
-              <button
-                type="button"
-                className={`gps-detect-btn ${gpsActive ? 'gps-refresh-btn' : ''}`}
-                onClick={handleDetectGPS}
-                disabled={gpsLoading}
-              >
-                <Navigation size={15} />
-                {gpsLoading ? 'Detecting...' : gpsActive ? 'Refresh GPS Location' : 'Use My Current Location'}
-              </button>
-            </div>
-
-            <div className="form-group">
-              <label><MapPin size={16} /> Service Address</label>
-              <textarea
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Enter street, apartment, landmark, city..."
-                rows={3}
-                required
-              />
-            </div>
-
-            {/* Interactive Map Location Picker */}
-            <LocationPickerMap
-              onAddressSelect={(selectedAddr) => setAddress(selectedAddr)}
-              onLocationSelect={(coords) => {
-                if (coords?.lat && coords?.lng) {
-                  setUserLat(coords.lat);
-                  setUserLng(coords.lng);
-                  setGpsActive(true);
-                  if (worker?.lat && worker?.lng) {
-                    const dist = haversineKm(coords.lat, coords.lng, worker.lat, worker.lng);
-                    setWorkerDistance(dist);
-                  }
-                }
-              }}
-              initialAddress={address}
-            />
-
-            {/* AI Diagnosis Feature */}
-            <div className="form-group ai-diagnosis-box" style={{ background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 'bold', marginBottom: '10px' }}>
-                <Bot size={18} color="#2563eb" /> {t('describe_problem') || 'Describe your problem'}
-              </label>
-              <textarea
-                value={problemDesc}
-                onChange={(e) => setProblemDesc(e.target.value)}
-                placeholder="Describe your issue in English or Tamil..."
-                rows={2}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '10px' }}
-              />
-              
-              <VoiceInputButton 
-                uiLanguage={language} 
-                onStartListening={() => setPreSpeechDesc(problemDesc)}
-                onTranscript={(text, isFinal) => {
-                  const base = preSpeechDesc ? preSpeechDesc + ' ' : '';
-                  setProblemDesc(base + text);
-                  if (isFinal) {
-                    setPreSpeechDesc(base + text);
-                  }
-                }} 
-              />
-              
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-                <label className="btn btn-sm btn-outline-secondary" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Camera size={14} /> Upload Photo
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
-                </label>
-                {problemImageBase64 && <span style={{ fontSize: '12px', color: '#059669' }}>✓ Photo attached</span>}
-                <button 
-                  type="button" 
-                  className="btn btn-sm btn-primary" 
-                  onClick={handleAiDiagnose} 
-                  disabled={aiLoading || (!problemDesc && !problemImageBase64)}
-                  style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}
-                >
-                  {aiLoading ? 'Analyzing...' : <><Sparkles size={14} /> Auto-Diagnose</>}
-                </button>
-              </div>
-
-              {aiDiagnosis && (
-                <div style={{ background: '#ecfdf5', padding: '12px', borderRadius: '8px', border: '1px solid #10b981', marginTop: '10px' }}>
-                  <h6 style={{ color: '#065f46', fontWeight: 'bold', margin: '0 0 8px 0' }}>💡 AI Diagnosis Result</h6>
-                  <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#047857' }}><strong>Reasoning:</strong> {aiDiagnosis.reasoning}</p>
-                  <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#047857' }}>
-                    <strong>Identified:</strong> {aiDiagnosis.category} - {aiDiagnosis.subService}
-                  </p>
-                  <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#047857' }}>
-                    <strong>Est. Price:</strong> ₹{aiDiagnosis.priceRange?.min} - ₹{aiDiagnosis.priceRange?.max} | <strong>Urgency:</strong> <span style={{ textTransform: 'capitalize' }}>{aiDiagnosis.urgency}</span>
-                  </p>
-                  {aiDiagnosis.needsManualReview && (
-                    <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#b45309', display: 'flex', alignItems: 'center', gap: '5px', background: '#fef3c7', padding: '5px', borderRadius: '4px' }}>
-                      <AlertTriangle size={14} /> We're not fully sure — please confirm or pick manually below.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+            <DiagnosisBox onApplySuggestion={handleAiSuggestion} zone={addressZone} />
 
             {/* Sub-Services Selection */}
             {categoryObj && (
@@ -717,7 +600,7 @@ const Booking = () => {
               <div>
                 <h3>{worker.name}</h3>
                 <p className="summary-trade"><Wrench size={14} /> {worker.trade}</p>
-                <p className="summary-location"><MapPin size={14} /> {worker.location || 'Sivagangai'}</p>
+                <p className="summary-location"><MapPin size={14} /> {worker.location || 'Tamil Nadu'}</p>
                 <p className="summary-phone"><Phone size={13} /> {phoneNum}</p>
               </div>
             </div>

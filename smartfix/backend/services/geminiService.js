@@ -155,7 +155,7 @@ async function callGeminiApi(messagesPayload, temperature = 0.4, maxTokens = 600
   }
 
   // 2. Try Google Gemini API Models if GEMINI_API_KEY is present
-  if (geminiApiKey && geminiApiKey.startsWith('AIza') && payload) {
+  if (geminiApiKey && payload) {
     const modelsToTry = [
       'gemini-2.0-flash',
       'gemini-1.5-flash',
@@ -165,7 +165,7 @@ async function callGeminiApi(messagesPayload, temperature = 0.4, maxTokens = 600
     for (const modelName of modelsToTry) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       try {
         const res = await fetch(url, {

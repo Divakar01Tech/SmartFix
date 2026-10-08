@@ -1,6 +1,6 @@
 # SMARTFIX — FULL WEBSITE IMPLEMENTATION PLAN
 
-**Project Name**: SmartFix / HandyBook Platform  
+**Project Name**: SmartFix / SmartFix Platform  
 **Document Version**: 1.0.0  
 
 ---

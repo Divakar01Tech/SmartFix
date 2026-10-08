@@ -95,6 +95,22 @@ const HandymanDashboard = () => {
     loadBookings();
   }, []);
 
+  // Auto-show AI Interview Modal for new Handymen who haven't completed it
+  useEffect(() => {
+    if (user?.role === 'handyman' && user?.verificationStatus === 'Pending') {
+      const interviewStatus = user?.aiInterview?.status || 'pending';
+      if (interviewStatus === 'pending') {
+        setShowInterviewModal(true);
+      }
+    }
+    
+    // Force active tab to documents if not verified
+    if (user?.verificationStatus !== 'Verified') {
+      setActiveTab('documents');
+      setIsOnline(false); // Force offline visually
+    }
+  }, [user]);
+
   // Ref to hold the latest active booking ID for the GPS watch callback
   const activeBookingIdRef = useRef(null);
   const latestGpsRef = useRef(null);
@@ -376,7 +392,10 @@ const HandymanDashboard = () => {
           <div>
             <h1>Welcome, {user?.name || 'Service Partner'}</h1>
             <p className="hd-subtitle">
-              <Wrench size={14} /> Trade: <strong>{user?.trade || 'Handyman Expert'}</strong> • <MapPin size={14} /> Sivagangai District
+              <Wrench size={14} /> Trade: <strong>{user?.trade || 'Handyman Expert'}</strong> • <MapPin size={14} /> Tamil Nadu
+              {user?.workerId && (
+                <> • <span className="badge bg-primary text-white ms-1">ID: {user.workerId}</span></>
+              )}
             </p>
           </div>
         </div>
@@ -393,6 +412,10 @@ const HandymanDashboard = () => {
               type="button"
               className="toggle-switch-btn"
               onClick={() => {
+                if (user?.verificationStatus !== 'Verified') {
+                  setToastMessage('⚠️ You cannot go online until your account is approved by Admin.');
+                  return;
+                }
                 const nextState = !isOnline;
                 setIsOnline(nextState);
                 if (socket) {
@@ -431,7 +454,7 @@ const HandymanDashboard = () => {
             <Clock size={28} color="#d97706" />
             <div>
               <h6 className="fw-extrabold text-warning-emphasis mb-0">⏳ KYC VERIFICATION PENDING APPROVAL</h6>
-              <small className="text-secondary">Your Aadhaar and ID proof documents are under review by SmartFix Admin. Job dispatch will activate automatically once approved.</small>
+              <small className="text-secondary">Your Mobile Number and ID proof documents are under review by SmartFix Admin. Job dispatch will activate automatically once approved.</small>
             </div>
           </div>
           <div className="d-flex align-items-center gap-2">
@@ -493,73 +516,79 @@ const HandymanDashboard = () => {
         </button>
       </div>
 
-      {/* KPI Stats Cards */}
-      <div className="hd-stats-grid">
-        <div className="stat-box blue">
-          <div className="stat-icon"><Radio size={24} /></div>
-          <div>
-            <span className="stat-num">{incomingBookings.length}</span>
-            <span className="stat-lbl">Incoming Requests</span>
+      {/* KPI Stats Cards (Hidden if not verified) */}
+      {user?.verificationStatus === 'Verified' && (
+        <div className="hd-stats-grid">
+          <div className="stat-box blue">
+            <div className="stat-icon"><Radio size={24} /></div>
+            <div>
+              <span className="stat-num">{incomingBookings.length}</span>
+              <span className="stat-lbl">Incoming Requests</span>
+            </div>
+          </div>
+
+          <div className="stat-box amber">
+            <div className="stat-icon"><Zap size={24} /></div>
+            <div>
+              <span className="stat-num">{activeBookings.length}</span>
+              <span className="stat-lbl">Active En Route Jobs</span>
+            </div>
+          </div>
+
+          <div className="stat-box green">
+            <div className="stat-icon"><CheckCircle2 size={24} /></div>
+            <div>
+              <span className="stat-num">{completedBookings.length}</span>
+              <span className="stat-lbl">Completed Repairs</span>
+            </div>
+          </div>
+
+          <div className="stat-box purple">
+            <div className="stat-icon"><Gift size={24} color="#059669" /></div>
+            <div>
+              <span className="stat-num">₹{totalWorkerPayout}</span>
+              <span className="stat-lbl">Total Net Earnings (+5% Bonus)</span>
+            </div>
           </div>
         </div>
+      )}
 
-        <div className="stat-box amber">
-          <div className="stat-icon"><Zap size={24} /></div>
-          <div>
-            <span className="stat-num">{activeBookings.length}</span>
-            <span className="stat-lbl">Active En Route Jobs</span>
-          </div>
-        </div>
-
-        <div className="stat-box green">
-          <div className="stat-icon"><CheckCircle2 size={24} /></div>
-          <div>
-            <span className="stat-num">{completedBookings.length}</span>
-            <span className="stat-lbl">Completed Repairs</span>
-          </div>
-        </div>
-
-        <div className="stat-box purple">
-          <div className="stat-icon"><Gift size={24} color="#059669" /></div>
-          <div>
-            <span className="stat-num">₹{totalWorkerPayout}</span>
-            <span className="stat-lbl">Total Net Earnings (+5% Bonus)</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation Tabs */}
+      {/* Navigation Tabs (Restricted if not verified) */}
       <div className="hd-tabs-bar">
-        <button
-          className={`hd-tab-btn ${activeTab === 'incoming' ? 'active' : ''}`}
-          onClick={() => setActiveTab('incoming')}
-        >
-          <Radio size={16} /> Incoming Requests ({incomingBookings.length})
-        </button>
-        <button
-          className={`hd-tab-btn ${activeTab === 'active' ? 'active' : ''}`}
-          onClick={() => setActiveTab('active')}
-        >
-          <Zap size={16} /> Active Jobs ({activeBookings.length})
-        </button>
-        <button
-          className={`hd-tab-btn ${activeTab === 'completed' ? 'active' : ''}`}
-          onClick={() => setActiveTab('completed')}
-        >
-          <CheckCircle2 size={16} /> Completed Jobs ({completedBookings.length})
-        </button>
-        <button
-          className={`hd-tab-btn ${activeTab === 'cancelled' ? 'active' : ''}`}
-          onClick={() => setActiveTab('cancelled')}
-        >
-          <XCircle size={16} /> Cancelled / Declined ({cancelledBookings.length})
-        </button>
-        <button
-          className={`hd-tab-btn ${activeTab === 'earnings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('earnings')}
-        >
-          <DollarSign size={16} /> Wallet & Withdrawals 🏦
-        </button>
+        {user?.verificationStatus === 'Verified' && (
+          <>
+            <button
+              className={`hd-tab-btn ${activeTab === 'incoming' ? 'active' : ''}`}
+              onClick={() => setActiveTab('incoming')}
+            >
+              <Radio size={16} /> Incoming Requests ({incomingBookings.length})
+            </button>
+            <button
+              className={`hd-tab-btn ${activeTab === 'active' ? 'active' : ''}`}
+              onClick={() => setActiveTab('active')}
+            >
+              <Zap size={16} /> Active Jobs ({activeBookings.length})
+            </button>
+            <button
+              className={`hd-tab-btn ${activeTab === 'completed' ? 'active' : ''}`}
+              onClick={() => setActiveTab('completed')}
+            >
+              <CheckCircle2 size={16} /> Completed Jobs ({completedBookings.length})
+            </button>
+            <button
+              className={`hd-tab-btn ${activeTab === 'cancelled' ? 'active' : ''}`}
+              onClick={() => setActiveTab('cancelled')}
+            >
+              <XCircle size={16} /> Cancelled / Declined ({cancelledBookings.length})
+            </button>
+            <button
+              className={`hd-tab-btn ${activeTab === 'earnings' ? 'active' : ''}`}
+              onClick={() => setActiveTab('earnings')}
+            >
+              <DollarSign size={16} /> Wallet & Withdrawals 🏦
+            </button>
+          </>
+        )}
         <button
           className={`hd-tab-btn ${activeTab === 'documents' ? 'active' : ''}`}
           onClick={() => setActiveTab('documents')}
@@ -598,7 +627,7 @@ const HandymanDashboard = () => {
                     <div className="job-card-head">
                       <div>
                         <span className="trade-badge">{b.trade} Service</span>
-                        <h3>📍 {b.location || 'Sivagangai Area'} <small style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 'normal' }}>(Exact address hidden until accepted)</small></h3>
+                        <h3>📍 {b.location || 'Tamil Nadu Area'} <small style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 'normal' }}>(Exact address hidden until accepted)</small></h3>
                         <p className="job-customer-info">
                           Customer: <strong>{b.customerName || b.customer?.name || 'Homeowner'}</strong>
                         </p>
@@ -612,7 +641,7 @@ const HandymanDashboard = () => {
                     <div className="job-card-body">
                       <div className="job-meta-row">
                         <span><Clock size={14} /> Requested: {b.time || 'Immediate Dispatch'}</span>
-                        <span><MapPin size={14} /> {b.location || 'Sivagangai District'}</span>
+                        <span><MapPin size={14} /> {b.location || 'Tamil Nadu'}</span>
                       </div>
                       {b.subServices && b.subServices.length > 0 && (
                         <div className="job-subservices-chips">
@@ -925,7 +954,7 @@ const HandymanDashboard = () => {
                         <td><strong>#{String(bId).slice(-6)}</strong></td>
                         <td>{b.customerName || b.customer?.name || 'Homeowner'}</td>
                         <td>{b.trade}</td>
-                        <td>{b.address || 'Sivagangai'}</td>
+                        <td>{b.address || 'Tamil Nadu'}</td>
                         <td>₹{b.price || 350}</td>
                         <td>
                           <span className="badge bg-danger text-white fw-bold px-2 py-1 rounded-pill">
@@ -1099,10 +1128,10 @@ const HandymanDashboard = () => {
               </h3>
               <p style={{ color: '#475569' }}>
                 {user?.verificationStatus === 'Pending'
-                  ? 'Your Aadhaar and ID proof documents are under review by SmartFix Admin. Verification usually takes less than 24 hours.'
+                  ? 'Your Mobile Number and ID proof documents are under review by SmartFix Admin. Verification usually takes less than 24 hours.'
                   : user?.verificationStatus === 'Rejected'
                   ? `Rejection reason: ${user?.rejectionReason || 'Please contact support or re-upload clear document proofs.'}`
-                  : 'Your Aadhaar, Driving License, & Transport documents are verified for instant customer dispatch.'}
+                  : 'Your Mobile Number and Email are verified for instant customer dispatch.'}
               </p>
             </div>
           </div>
@@ -1111,40 +1140,27 @@ const HandymanDashboard = () => {
             <div className="doc-card">
               <FileText size={24} color="#2563eb" />
               <div>
-                <h4>Aadhaar Card (12-Digits)</h4>
-                <p>{user?.aadhaarNumber || 'Provided during signup'}</p>
-                <span className={`doc-badge ${user?.verificationStatus === 'Verified' ? 'verified' : user?.verificationStatus === 'Rejected' ? 'rejected' : 'pending'}`}>
-                  {user?.verificationStatus === 'Verified' ? '✓ Verified' : user?.verificationStatus === 'Rejected' ? '✕ Rejected' : '⏳ Pending'}
-                </span>
+                <h4>Mobile Number</h4>
+                <p>{user?.phone || 'Verified during signup'}</p>
+                <span className="doc-badge verified">✓ Verified</span>
               </div>
             </div>
 
             <div className="doc-card">
               <FileText size={24} color="#2563eb" />
               <div>
-                <h4>{user?.idProofType ? user.idProofType.replace('_', ' ').toUpperCase() : 'Driving License / ID'}</h4>
-                <p>{user?.idProofNumber || 'Provided during signup'}</p>
-                <span className={`doc-badge ${user?.verificationStatus === 'Verified' ? 'verified' : user?.verificationStatus === 'Rejected' ? 'rejected' : 'pending'}`}>
-                  {user?.verificationStatus === 'Verified' ? '✓ Verified' : user?.verificationStatus === 'Rejected' ? '✕ Rejected' : '⏳ Pending'}
-                </span>
+                <h4>Email Address</h4>
+                <p>{user?.email || 'Verified during signup'}</p>
+                <span className="doc-badge verified">✓ Verified</span>
               </div>
             </div>
 
             <div className="doc-card">
               <FileText size={24} color="#2563eb" />
               <div>
-                <h4>Vehicle / Transport Reg.</h4>
-                <p>TN 59 BX 4321</p>
+                <h4>SmartFix Worker ID</h4>
+                <p>{user?.workerId || user?._id?.slice(-6).toUpperCase() || 'SFX-9988'}</p>
                 <span className="doc-badge verified">✓ Active</span>
-              </div>
-            </div>
-
-            <div className="doc-card">
-              <FileText size={24} color="#2563eb" />
-              <div>
-                <h4>SmartFix Guarantee Policy</h4>
-                <p>POL-9948-2026</p>
-                <span className="doc-badge verified">✓ Covered</span>
               </div>
             </div>
           </div>

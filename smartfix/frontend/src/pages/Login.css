@@ -495,9 +495,42 @@
   margin-bottom: 10px;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {
+  .login-card {
+    padding: 20px 16px;
+    border-radius: 12px;
+    margin: 10px;
+    max-width: 100%;
+  }
+  
+  .login-page {
+    padding: 1rem 0.5rem;
+  }
+  
+  .role-toggle {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .role-toggle button {
+    width: 100%;
+    padding: 10px;
+  }
+
+  .form-row-2 {
+    grid-template-columns: 1fr;
+  }
+
   .subservice-checkbox-grid {
     grid-template-columns: 1fr;
   }
 }
 
+
+.google-divider { display: flex; align-items: center; text-align: center; margin: 16px 0; }
+.google-divider::before, .google-divider::after { content: ''; flex: 1; border-bottom: 1px solid #e2e8f0; }
+.google-divider span { padding: 0 10px; color: #64748b; font-size: 0.8rem; font-weight: 600; }
+.google-login-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px; background: white; border: 1px solid #cbd5e1; border-radius: 10px; font-weight: 600; color: #334155; cursor: pointer; transition: background 0.2s; }
+.google-login-btn:hover { background: #f8fafc; }
+.google-icon { width: 18px; height: 18px; }

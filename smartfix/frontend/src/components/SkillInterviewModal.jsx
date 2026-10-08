@@ -118,7 +118,7 @@ const SkillInterviewModal = ({ worker, category, onClose, onCompleted }) => {
   };
 
   const questionsAsked = session?.questionsAsked || 0;
-  const isCompleted = session?.status === 'completed' || questionsAsked >= 5;
+  const isCompleted = session?.status === 'completed';
 
   return (
     <div className="interview-modal-overlay">

@@ -48,6 +48,7 @@ const LocationPickerMap = ({ onAddressSelect, onLocationSelect, initialAddress }
   const [selectedText, setSelectedText] = useState(initialAddress || 'Current Location');
   const [locating, setLocating] = useState(false);
   const [gpsActive, setGpsActive] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: hasGoogleKey ? GOOGLE_MAPS_API_KEY : '',
@@ -77,6 +78,7 @@ const LocationPickerMap = ({ onAddressSelect, onLocationSelect, initialAddress }
       setPosition({ lat, lng });
       setGpsActive(true);
       setLocating(false);
+      setErrorMsg('');
 
       const label = coords.source === 'ip' ? `Location (${coords.city || 'Tamil Nadu'})` : `Live GPS Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
       setSelectedText(label);
@@ -84,7 +86,7 @@ const LocationPickerMap = ({ onAddressSelect, onLocationSelect, initialAddress }
     } catch (err) {
       console.warn('GPS location error:', err.message);
       setLocating(false);
-      alert('Could not fetch live GPS position. Please click on the map to select location manually.');
+      setErrorMsg('Could not fetch live GPS position. Please click on the map to select location manually.');
     }
   };
 
@@ -147,6 +149,12 @@ const LocationPickerMap = ({ onAddressSelect, onLocationSelect, initialAddress }
           {locating ? 'Locating GPS...' : gpsActive ? 'GPS Location Pinpointed 📍' : 'Use My Live GPS Location'}
         </button>
       </div>
+
+      {errorMsg && (
+        <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '8px', padding: '6px 10px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px' }}>
+          {errorMsg}
+        </div>
+      )}
 
       <div className="picker-map-frame" style={{ position: 'relative' }}>
         <div className="map-floating-controls" style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 1000, display: 'flex', alignItems: 'center', gap: '8px' }}>

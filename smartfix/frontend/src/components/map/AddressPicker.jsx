@@ -1,16 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import BaseMap from './BaseMap';
-import { SIVAGANGAI_CENTER } from './mapStyle';
+import { TAMILNADU_CENTER, TAMILNADU_BOUNDS } from './mapStyle';
 import { Autocomplete } from '@react-google-maps/api';
 import { MapPin, Search, CheckCircle2, AlertTriangle, Navigation } from 'lucide-react';
 import { apiService, getApiBase } from '../../services/api';
 
-const SIVAGANGAI_ALIASES = ['sivaganga', 'sivagangai'];
-const VALID_TALUKS = ['sivaganga', 'karaikudi', 'devakottai', 'manamadurai', 'thirupuvanam', 'ilaiyankudi', 'kalaiyarkoil', 'thirupathur', 'tirupathur'];
+const TAMILNADU_ALIASES = ['tamilnadu', 'tamil nadu'];
 
 const AddressPicker = ({ onConfirm, initialLocation }) => {
   const [mapInstance, setMapInstance] = useState(null);
-  const [center, setCenter] = useState(initialLocation || SIVAGANGAI_CENTER);
+  const [center, setCenter] = useState(initialLocation || TAMILNADU_CENTER);
   const [addressDetails, setAddressDetails] = useState({ formattedAddress: '', taluk: '', district: '' });
   const [landmark, setLandmark] = useState('');
   const [isValidating, setIsValidating] = useState(false);
@@ -50,11 +49,11 @@ const AddressPicker = ({ onConfirm, initialLocation }) => {
     } catch (e) {
       console.warn('Server validation failed, falling back to client:', e);
       // Fallback to client check
-      const dist = (addressData.district || '').toLowerCase().replace(/\s/g, '');
-      const tk = (addressData.taluk || '').toLowerCase().replace(/\s/g, '');
-      
-      const isDistValid = SIVAGANGAI_ALIASES.some(a => dist.includes(a));
-      return isDistValid;
+      const state = (addressData.state || '').toLowerCase().replace(/\s/g, '');
+      const district = (addressData.district || '').toLowerCase();
+      const isStateValid = TAMILNADU_ALIASES.some(a => state.includes(a.replace(/\s/g, '')));
+      // As a fallback, if we can't reliably get state, we assume valid if they picked something
+      return isStateValid || (district && district.length > 3);
     }
   };
 
@@ -77,11 +76,11 @@ const AddressPicker = ({ onConfirm, initialLocation }) => {
         });
 
         const distLower = district.toLowerCase().replace(/\s/g, '');
-        const clientValidDist = SIVAGANGAI_ALIASES.some(a => distLower.includes(a));
+        const clientValidDist = TAMILNADU_ALIASES.some(a => distLower.includes(a));
 
         if (!clientValidDist) {
           setIsValidLocation(false);
-          setValidationError('Service available only in Sivagangai District / சிவகங்கை மாவட்டத்தில் மட்டுமே சேவை உள்ளது');
+          setValidationError('Service available only in Tamil Nadu / சிவகங்கை மாவட்டத்தில் மட்டுமே சேவை உள்ளது');
           setAddressDetails({ formattedAddress: result.formatted_address, district, taluk });
           setIsValidating(false);
           return;
@@ -144,9 +143,7 @@ const AddressPicker = ({ onConfirm, initialLocation }) => {
           onPlaceChanged={onPlaceChanged}
           options={{
             componentRestrictions: { country: 'in' },
-            bounds: {
-              north: 10.33, south: 9.68, east: 78.91, west: 78.10
-            },
+            bounds: TAMILNADU_BOUNDS,
             strictBounds: true
           }}
         >

@@ -8,7 +8,7 @@ const PolicyViolationsWidget = () => {
   useEffect(() => {
     const fetchViolations = async () => {
       try {
-        const token = localStorage.getItem('token') || localStorage.getItem('smartfix_token') || localStorage.getItem('handybook_token');
+        const token = localStorage.getItem('token') || localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token');
         const baseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
         const res = await fetch(`${baseUrl}/admin/policy-violations`, {
           headers: { Authorization: `Bearer ${token}` }

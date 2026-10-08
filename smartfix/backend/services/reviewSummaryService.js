@@ -4,7 +4,7 @@ const ReviewFlag = require('../models/ReviewFlag');
 const { callGeminiJsonApi } = require('./geminiService');
 
 const SYSTEM_PROMPT = `
-You are an AI tasked with summarising customer reviews for a HandyBook service worker.
+You are an AI tasked with summarising customer reviews for a SmartFix service worker.
 Rules:
 1. Provide a factual summary based ONLY on what the reviewers actually said (e.g. punctuality, work quality, behaviour, pricing).
 2. Do not exaggerate. Do not invent claims. 

@@ -22,6 +22,7 @@ router.get('/withdrawals', adminController.getAdminWithdrawals);
 router.patch('/withdrawals/:walletId/:transactionId/process', adminController.processWithdrawalRequest);
 router.patch('/workers/:id/toggle-block', adminController.toggleBlockWorker);
 router.post('/workers/:id/regenerate-bio', regenerateWorkerBio);
+router.get('/workers/:id/review-insights', adminController.getWorkerReviewInsights);
 router.get('/dispatch-stats', adminController.getDispatchStats);
 
 const { getHighRiskBookings } = require('../controllers/riskController');
@@ -35,6 +36,14 @@ router.get('/policy-violations', adminController.getPolicyViolations);
 
 router.get('/review-flags', adminController.getReviewFlags);
 router.patch('/review-flags/:id', adminController.manageReviewFlag);
+
+// Location management (Part 11)
+const adminLocationController = require('../controllers/adminLocationController');
+router.get('/locations/districts', adminLocationController.adminGetDistricts);
+router.patch('/locations/districts/:id/toggle-active', adminLocationController.adminToggleDistrictActive);
+router.patch('/locations/taluks/:id', adminLocationController.adminUpdateTaluk);
+router.post('/locations/villages', adminLocationController.adminAddVillage);
+router.patch('/locations/villages/:id', adminLocationController.adminUpdateVillage);
 
 module.exports = router;
 

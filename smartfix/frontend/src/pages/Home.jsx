@@ -22,10 +22,10 @@ const TESTIMONIALS = [
   {
     id: 2,
     name: 'Kavitha Subramanian',
-    town: 'Sivagangai Town',
+    town: 'Tamil Nadu',
     rating: 5,
     role: 'Customer',
-    review: 'AC gas refilling was done perfectly. I loved the live GPS tracking and upfront price estimation. Highly recommended for families in Sivagangai district!',
+    review: 'AC gas refilling was done perfectly. I loved the live GPS tracking and upfront price estimation. Highly recommended for families in Tamil Nadu!',
     avatar: '👩‍💼',
   },
   {
@@ -333,17 +333,17 @@ const Home = () => {
         <div className="container">
           <div className="section-title text-center mb-4">
             <div className="d-inline-flex align-items-center gap-2 px-3 py-1 bg-primary-subtle text-primary fw-bold rounded-pill mb-2" style={{ fontSize: '0.85rem' }}>
-              <Map size={16} /> Real-Time Sivagangai Handyman Network
+              <Map size={16} /> Real-Time Tamil Nadu Handyman Network
             </div>
             <h2>Live Technician Availability & Dispatch Map</h2>
-            <p>View verified plumbers, electricians, and technicians active in Sivagangai District.</p>
+            <p>View verified plumbers, electricians, and technicians active in Tamil Nadu.</p>
           </div>
 
           <div className="card shadow-md border-0 rounded-4 overflow-hidden mb-4">
             <div className="card-header bg-dark text-white p-3 d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2">
                 <span className="spinner-grow spinner-grow-sm text-success" role="status"></span>
-                <span className="fw-bold" style={{ fontSize: '0.9rem' }}>Live GPS Radar: Sivagangai District</span>
+                <span className="fw-bold" style={{ fontSize: '0.9rem' }}>Live GPS Radar: Tamil Nadu</span>
               </div>
               <span className="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 rounded-pill fw-bold">
                 {workers.filter(w => w.isOnline !== false).length} Active Technicians Online
@@ -360,12 +360,12 @@ const Home = () => {
       <OnlineWorkersWidget />
 
 
-      {/* Local Sivagangai District Testimonials */}
+      {/* Local Tamil Nadu Testimonials */}
       <section className="testimonials-section section-padding bg-light border-top">
         <div className="container">
           <div className="section-title text-center">
             <h2>Local Customer Testimonials</h2>
-            <p>Real reviews from homeowners and service technicians in Sivagangai district.</p>
+            <p>Real reviews from homeowners and service technicians in Tamil Nadu.</p>
           </div>
 
           <div className="testimonials-grid">

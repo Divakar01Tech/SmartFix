@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, AlertCircle } from 'lucide-react';
 
 // Privacy Note: The Web Speech API sends audio to the browser vendor's speech recognition service 
-// (e.g., Google or Apple) for processing. The audio is NEVER recorded or uploaded to the HandyBook servers;
+// (e.g., Google or Apple) for processing. The audio is NEVER recorded or uploaded to the SmartFix servers;
 // only the text transcript is sent when the user submits the form.
 const VoiceInputButton = ({ uiLanguage, onTranscript, onStartListening }) => {
   const [isSupported, setIsSupported] = useState(true);

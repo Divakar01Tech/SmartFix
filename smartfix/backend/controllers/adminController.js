@@ -75,6 +75,7 @@ exports.verifyCaptain = async (req, res) => {
           user.identity.status = 'verified';
           user.skill.status = 'verified';
           user.overallStatus = 'approved';
+
         } else if (verificationStatus === 'Rejected') {
           user.overallStatus = 'rejected';
         }
@@ -96,6 +97,30 @@ exports.verifyCaptain = async (req, res) => {
       user.isOnline = false;
     }
 
+    // Generate unique Worker ID based on trade if Verified
+    if (user.verificationStatus === 'Verified' && !user.workerId) {
+      const tradePrefixes = {
+        'Plumbing': 'PL',
+        'Electrical Repairs': 'EL',
+        'AC Service and Repair': 'AC',
+        'AC Service & Repair': 'AC',
+        'Refrigerator Repair': 'RF',
+        'Washing Machine Repair': 'WM',
+        'Water Purifier Service': 'WP'
+      };
+      const prefix = tradePrefixes[user.trade] || 'SP';
+      let isUnique = false;
+      while (!isUnique) {
+        const randomNum = Math.floor(1000 + Math.random() * 9000);
+        const newId = `${prefix}_${randomNum}`;
+        const exists = await User.findOne({ workerId: newId });
+        if (!exists) {
+          user.workerId = newId;
+          isUnique = true;
+        }
+      }
+    }
+
     await user.save();
 
     res.status(200).json({
@@ -103,6 +128,7 @@ exports.verifyCaptain = async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
+        workerId: user.workerId,
         verificationStatus: user.verificationStatus,
         overallStatus: user.overallStatus,
         identity: user.identity,
@@ -685,5 +711,81 @@ exports.manageReviewFlag = async (req, res) => {
   } catch (err) {
     console.error('Failed to manage review flag:', err.message);
     res.status(500).json({ message: 'Failed to manage review flag' });
+  }
+};
+
+const { askGroqJSON } = require('../services/aiService');
+
+exports.getWorkerReviewInsights = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const worker = await User.findById(id);
+    if (!worker || worker.role !== 'handyman') {
+      return res.status(404).json({ message: 'Worker not found' });
+    }
+
+    const bookingsWithAnalysis = await Booking.find({ worker: id, aiAnalysis: { $exists: true } });
+    
+    let totalAnalyzed = 0;
+    let suspiciousCount = 0;
+    const sums = { punctuality: 0, behaviour: 0, cleanliness: 0, price_fairness: 0 };
+    const counts = { punctuality: 0, behaviour: 0, cleanliness: 0, price_fairness: 0 };
+
+    bookingsWithAnalysis.forEach(b => {
+      if (!b.aiAnalysis || !b.aiAnalysis.aspects) return;
+      totalAnalyzed++;
+      if (b.aiAnalysis.suspicious) suspiciousCount++;
+
+      const a = b.aiAnalysis.aspects;
+      ['punctuality', 'behaviour', 'cleanliness', 'price_fairness'].forEach(asp => {
+        if (a[asp] !== null && a[asp] !== undefined) {
+          sums[asp] += a[asp];
+          counts[asp]++;
+        }
+      });
+    });
+
+    const averages = {
+      punctuality: counts.punctuality > 0 ? Number((sums.punctuality / counts.punctuality).toFixed(1)) : null,
+      behaviour: counts.behaviour > 0 ? Number((sums.behaviour / counts.behaviour).toFixed(1)) : null,
+      cleanliness: counts.cleanliness > 0 ? Number((sums.cleanliness / counts.cleanliness).toFixed(1)) : null,
+      price_fairness: counts.price_fairness > 0 ? Number((sums.price_fairness / counts.price_fairness).toFixed(1)) : null,
+    };
+
+    let reviewSummary = worker.reviewSummary || { en: '', ta: '', basedOnCount: 0 };
+    
+    if (totalAnalyzed >= (reviewSummary.basedOnCount || 0) + 5 && totalAnalyzed > 0) {
+      // Regenerate summary
+      const reviewsText = bookingsWithAnalysis.map(b => `Rating: ${b.rating}, Review: ${b.review}`).join('\n---\n');
+      const sysPrompt = `You are an AI that writes a 2-line summary of a home service worker's strengths and weaknesses based on customer reviews. 
+Output JSON format: {"en": "2-line English summary", "ta": "2-line Tamil summary"}`;
+      const userPrompt = `Reviews:\n${reviewsText}`;
+
+      try {
+        const result = await askGroqJSON({ system: sysPrompt, user: userPrompt });
+        if (result && result.en && result.ta) {
+          reviewSummary = {
+            en: result.en,
+            ta: result.ta,
+            basedOnCount: totalAnalyzed,
+            generatedAt: new Date()
+          };
+          worker.reviewSummary = reviewSummary;
+          await worker.save();
+        }
+      } catch (err) {
+        console.error('Failed to generate review summary:', err);
+      }
+    }
+
+    res.status(200).json({
+      averages,
+      totalAnalyzed,
+      suspiciousCount,
+      summary: reviewSummary
+    });
+  } catch (err) {
+    console.error('getWorkerReviewInsights error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 };

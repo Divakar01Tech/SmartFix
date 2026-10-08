@@ -33,12 +33,20 @@ const sendVerificationCode = async (phone) => {
     throw new Error('TWILIO_NOT_CONFIGURED');
   }
 
+  if (process.env.OTP_MOCK_MODE === 'true') {
+    return {
+      success: true,
+      status: 'pending',
+      mocked: true,
+    };
+  }
+
   try {
     const verification = await client.verify.v2
       .services(verifyServiceSid)
       .verifications.create({
         to: formattedPhone,
-        channel: 'sms',
+        channel: 'whatsapp',
       });
 
     return {
@@ -70,6 +78,14 @@ const checkVerificationCode = async (phone, code) => {
 
   if (!isTwilioVerifyConfigured()) {
     throw new Error('TWILIO_NOT_CONFIGURED');
+  }
+
+  if (process.env.OTP_MOCK_MODE === 'true' && code === '123456') {
+    return {
+      success: true,
+      approved: true,
+      mocked: true,
+    };
   }
 
 

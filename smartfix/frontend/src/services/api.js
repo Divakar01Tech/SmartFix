@@ -15,7 +15,7 @@ const API_BASE = getApiBase();
 
 const getHeaders = (token) => {
   const headers = { 'Content-Type': 'application/json' };
-  const authToken = token || localStorage.getItem('smartfix_token') || localStorage.getItem('handybook_token');
+  const authToken = token || localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token');
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`;
   }
@@ -23,6 +23,18 @@ const getHeaders = (token) => {
 };
 
 export const apiService = {
+  // Services Search (AI + Local)
+  searchServices: async (query) => {
+    const res = await fetch(`${API_BASE}/services/search`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ query }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Search failed');
+    return data;
+  },
+
   // Workers
   getWorkers: async (params = {}) => {
     try {
@@ -136,10 +148,21 @@ export const apiService = {
   },
 
   diagnoseCustomerIssue: async (payload) => {
+    // payload can be { text, language, image (File) }
+    const formData = new FormData();
+    if (payload.text) formData.append('text', payload.text);
+    if (payload.language) formData.append('language', payload.language);
+    if (payload.zone) formData.append('zone', payload.zone);
+    if (payload.image) formData.append('image', payload.image);
+
+    const authToken = localStorage.getItem('smartfix_token');
+    const headers = {};
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
     const res = await fetch(`${API_BASE}/ai/diagnose`, {
       method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(payload),
+      headers,
+      body: formData,
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to diagnose issue');
@@ -276,11 +299,11 @@ export const apiService = {
     }
   },
 
-  verifyCaptain: async (captainId, verificationStatus, rejectionReason = '') => {
+  verifyCaptain: async (captainId, verificationStatus, rejectionReason = '', workerId = '') => {
     const res = await fetch(`${API_BASE}/admin/verify-captain/${captainId}`, {
       method: 'PATCH',
       headers: getHeaders(),
-      body: JSON.stringify({ verificationStatus, rejectionReason }),
+      body: JSON.stringify({ verificationStatus, rejectionReason, workerId }),
     });
     return await res.json();
   },
@@ -453,4 +476,19 @@ export const apiService = {
       return null;
     }
   },
+
+  normalizeAddress: async (text) => {
+    try {
+      const res = await fetch(`${API_BASE}/address/normalize`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.warn('normalizeAddress error:', err.message);
+      return null;
+    }
+  }
 };
