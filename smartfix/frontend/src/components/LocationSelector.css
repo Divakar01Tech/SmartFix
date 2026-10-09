@@ -49,3 +49,32 @@
   color: #94a3b8;
   cursor: not-allowed;
 }
+
+.select-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.loader-icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loader-icon svg {
+  animation: spin 1s linear infinite;
+}

@@ -134,7 +134,7 @@ const Login = () => {
     setError('');
     setSuccessInfo('');
 
-    if (!validateIdentifier(form.identifier)) {
+    if (mode === 'login' && !validateIdentifier(form.identifier)) {
       setError('Enter a valid email address or 10-digit phone number');
       return;
     }
@@ -143,7 +143,7 @@ const Login = () => {
       setSubmitting(true);
       if (mode === 'signup') {
         if (!form.location) {
-          setError('Please detect and confirm your address before proceeding.');
+          setError('Please provide your address before proceeding.');
           setSubmitting(false);
           return;
         }
@@ -661,49 +661,16 @@ const Login = () => {
                     </div>
 
                     <div className="form-group" style={{ marginTop: '16px' }}>
-                      <label><Bot size={15} /> Your Home Address (Smart AI Detection) <span style={{color: '#ef4444'}}>*</span></label>
-                      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                        <input
-                          type="text"
-                          value={aiAddressText}
-                          onChange={(e) => setAiAddressText(e.target.value)}
-                          placeholder="e.g., Kalpana theater pinadi, Karaikudi"
-                          style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAiAddressDetect}
-                          disabled={aiAddressLoading || !aiAddressText.trim()}
-                          style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}
-                        >
-                          <Sparkles size={16} /> {aiAddressLoading ? 'Detecting...' : 'Detect'}
-                        </button>
-                      </div>
-
-                      {showAiAddressConfirm && aiAddressResult && (
-                        <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '8px' }}>
-                          <h4 style={{ fontSize: '0.95rem', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '6px' }}><MapPin size={16} /> Confirm Address</h4>
-                          {!aiAddressResult.insideServiceArea ? (
-                            <p style={{ color: '#ef4444', fontSize: '0.9rem', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <AlertTriangle size={15} /> {aiAddressResult.message || 'Outside service area.'}
-                            </p>
-                          ) : (
-                            <>
-                              <p style={{ fontSize: '0.9rem', margin: '0 0 10px 0', color: '#334155' }}><strong>Found:</strong> {aiAddressResult.normalizedAddress}</p>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <button type="button" onClick={confirmAiAddress} style={{ flex: 1, background: '#10b981', color: 'white', padding: '8px', borderRadius: '6px', border: 'none', fontWeight: '600' }}>Confirm</button>
-                                <button type="button" onClick={() => setShowAiAddressConfirm(false)} style={{ background: '#64748b', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none' }}>Cancel</button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {form.location && !showAiAddressConfirm && (
-                        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', color: '#065f46', fontSize: '0.9rem' }}>
-                          <CheckCircle2 size={16} /> <span><strong>Verified Address:</strong> {form.location}</span>
-                        </div>
-                      )}
+                      <label><MapPin size={15} /> Your Home Address <span style={{color: '#ef4444'}}>*</span></label>
+                      <input
+                        type="text"
+                        name="location"
+                        value={form.location}
+                        onChange={handleChange}
+                        placeholder="e.g., Kalpana theater pinadi, Karaikudi"
+                        required
+                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
+                      />
                     </div>
                   </>
                 ) : (

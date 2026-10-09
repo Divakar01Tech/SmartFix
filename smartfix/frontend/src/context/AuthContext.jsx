@@ -243,7 +243,6 @@ export const AuthProvider = ({ children }) => {
     return data.user;
   };
 
-  // Update Profile & Settings
   const updateProfile = async (formData) => {
     try {
       const savedToken = localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token');
@@ -263,11 +262,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('smartfix_user', JSON.stringify(data.user));
       return data.user;
     } catch (err) {
-      console.warn('Backend update profile error, using local fallback:', err.message);
-      const updatedUser = { ...user, ...formData };
-      setUser(updatedUser);
-      localStorage.setItem('smartfix_user', JSON.stringify(updatedUser));
-      return updatedUser;
+      console.warn('Backend update profile error:', err.message);
+      throw err;
     }
   };
 

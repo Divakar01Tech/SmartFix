@@ -1,64 +1,78 @@
 import { useState, useEffect } from 'react';
-import { MapPin } from 'lucide-react';
-import tnLocations from '../data/tamilnadu-locations.json';
+import { MapPin, Loader } from 'lucide-react';
 import './LocationSelector.css';
 
-const LocationSelector = ({ value, onChange, placeholder, required = false }) => {
-  const [district, setDistrict] = useState('');
-  const [taluk, setTaluk] = useState('');
-  const [village, setVillage] = useState('');
+const API_URL = "https://tngis.tnega.org/generic_api/v1/getAdminDropDown";
 
-  // Parse existing value if it matches the format "Village, Taluk, District, Tamil Nadu"
+const LocationSelector = ({ value, onChange, placeholder, required = false }) => {
+  const [districts, setDistricts] = useState([]);
+  const [taluks, setTaluks] = useState([]);
+  const [villages, setVillages] = useState([]);
+
+  // Store the *names* as the primary state to match the old format
+  // Or we can store codes and names together, but the onChange expects names.
+  const [district, setDistrict] = useState({ name: '', code: '' });
+  const [taluk, setTaluk] = useState({ name: '', code: '' });
+  const [village, setVillage] = useState({ name: '', code: '' });
+
+  const [loadingDistrict, setLoadingDistrict] = useState(false);
+  const [loadingTaluk, setLoadingTaluk] = useState(false);
+  const [loadingVillage, setLoadingVillage] = useState(false);
+
+  // Initialize value handling
+  // This is tricky because we receive full string (Village, Taluk, District, Tamil Nadu)
+  // But we only have codes to fetch next level. 
+  // Wait, if it's just strings we can't easily fetch Taluk without District Code.
+  // Actually, for a new form, we just start fresh. Let's try to map the initial string if possible,
+  // but it's hard without all data. If value is provided, we can just show it as a custom string.
   useEffect(() => {
-    if (value && typeof value === 'string') {
+    if (value && typeof value === 'string' && !district.name) {
       const parts = value.split(',').map(p => p.trim());
       if (parts.length >= 3) {
-        // Simple heuristic for parsing reverse
-        const v = parts[0];
-        const t = parts[1];
-        const d = parts[2];
-        
-        if (tnLocations[d]) {
-          setDistrict(d);
-          if (tnLocations[d][t]) {
-            setTaluk(t);
-            if (tnLocations[d][t].includes(v)) {
-              setVillage(v);
-            }
-          }
-        }
+        setVillage({ name: parts[0], code: '' });
+        setTaluk({ name: parts[1], code: '' });
+        setDistrict({ name: parts[2], code: '' });
       }
     }
-  }, [value]);
+  }, [value, district.name]);
 
-  const handleDistrictChange = (e) => {
-    const d = e.target.value;
-    setDistrict(d);
-    setTaluk('');
-    setVillage('');
-    triggerChange(d, '', '');
-  };
+  // Load Districts on mount
+  useEffect(() => {
+    const fetchDistricts = async () => {
+      try {
+        setLoadingDistrict(true);
+        const response = await fetch(API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-APP-NAME": "TNGIS",
+          },
+          body: JSON.stringify({
+            case: "district",
+            filter_code: "lgd_code",
+          }),
+        });
 
-  const handleTalukChange = (e) => {
-    const t = e.target.value;
-    setTaluk(t);
-    setVillage('');
-    triggerChange(district, t, '');
-  };
+        const result = await response.json();
+        if (result[0]?.success === 1) {
+          setDistricts(result[0].data);
+        }
+      } catch (error) {
+        console.error("District fetch error:", error);
+      } finally {
+        setLoadingDistrict(false);
+      }
+    };
 
-  const handleVillageChange = (e) => {
-    const v = e.target.value;
-    setVillage(v);
-    triggerChange(district, taluk, v);
-  };
+    fetchDistricts();
+  }, []);
 
-  const triggerChange = (d, t, v) => {
+  const triggerChange = (dName, tName, vName) => {
     let fullLocation = '';
-    if (v) fullLocation = `${v}, ${t}, ${d}, Tamil Nadu`;
-    else if (t) fullLocation = `${t}, ${d}, Tamil Nadu`;
-    else if (d) fullLocation = `${d}, Tamil Nadu`;
+    if (vName) fullLocation = `${vName}, ${tName}, ${dName}, Tamil Nadu`;
+    else if (tName) fullLocation = `${tName}, ${dName}, Tamil Nadu`;
+    else if (dName) fullLocation = `${dName}, Tamil Nadu`;
 
-    // Pass back to parent via onChange simulating an event object
     onChange({
       target: {
         name: 'location',
@@ -67,34 +81,174 @@ const LocationSelector = ({ value, onChange, placeholder, required = false }) =>
     });
   };
 
-  const districts = Object.keys(tnLocations);
-  const taluks = district && tnLocations[district] ? Object.keys(tnLocations[district]) : [];
-  const villages = taluk && district && tnLocations[district][taluk] ? tnLocations[district][taluk] : [];
+  const handleDistrictChange = async (e) => {
+    const districtCode = e.target.value;
+    const districtName = e.target.options[e.target.selectedIndex].text;
+    
+    setDistrict({ code: districtCode, name: districtName });
+    setTaluk({ code: '', name: '' });
+    setVillage({ code: '', name: '' });
+    setTaluks([]);
+    setVillages([]);
+    
+    if (!districtCode) {
+      triggerChange('', '', '');
+      return;
+    }
+    
+    triggerChange(districtName, '', '');
+
+    try {
+      setLoadingTaluk(true);
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-APP-NAME": "TNGIS",
+        },
+        body: JSON.stringify({
+          case: "taluk",
+          district: districtCode,
+          filter_code: "lgd_code",
+        }),
+      });
+
+      const result = await response.json();
+      if (result[0]?.success === 1) {
+        setTaluks(result[0].data);
+      }
+    } catch (error) {
+      console.error("Taluk fetch error:", error);
+    } finally {
+      setLoadingTaluk(false);
+    }
+  };
+
+  const handleTalukChange = async (e) => {
+    const talukCode = e.target.value;
+    const talukName = e.target.options[e.target.selectedIndex].text;
+
+    setTaluk({ code: talukCode, name: talukName });
+    setVillage({ code: '', name: '' });
+    setVillages([]);
+
+    if (!talukCode) {
+      triggerChange(district.name, '', '');
+      return;
+    }
+
+    triggerChange(district.name, talukName, '');
+
+    try {
+      setLoadingVillage(true);
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-APP-NAME": "TNGIS",
+        },
+        body: JSON.stringify({
+          case: "village",
+          district: district.code,
+          taluk: talukCode,
+          filter_code: "lgd_code",
+        }),
+      });
+
+      const result = await response.json();
+      if (result[0]?.success === 1) {
+        setVillages(result[0].data);
+      }
+    } catch (error) {
+      console.error("Village fetch error:", error);
+    } finally {
+      setLoadingVillage(false);
+    }
+  };
+
+  const handleVillageChange = (e) => {
+    const villageCode = e.target.value;
+    const villageName = e.target.options[e.target.selectedIndex].text;
+
+    if (!villageCode) {
+      setVillage({ code: '', name: '' });
+      triggerChange(district.name, taluk.name, '');
+      return;
+    }
+
+    setVillage({ code: villageCode, name: villageName });
+    triggerChange(district.name, taluk.name, villageName);
+  };
 
   return (
     <div className="location-selector">
       <div className="location-group">
         <label><MapPin size={14} /> District {required && <span className="req">*</span>}</label>
-        <select value={district} onChange={handleDistrictChange} required={required}>
-          <option value="">-- Select District --</option>
-          {districts.map(d => <option key={d} value={d}>{d}</option>)}
-        </select>
+        <div className="select-wrapper">
+          <select 
+            value={district.code || (district.name && !districts.find(d => d.district_name === district.name) ? "custom" : "")} 
+            onChange={handleDistrictChange} 
+            required={required}
+          >
+            <option value="">{loadingDistrict ? "Loading districts..." : "-- Select District --"}</option>
+            {/* If initial value is set but code is unknown, show it temporarily */}
+            {district.name && !district.code && !districts.find(d => d.district_name === district.name) && (
+              <option value="custom" disabled>{district.name}</option>
+            )}
+            {districts.map((item) => (
+              <option key={item.district_code} value={item.district_code}>
+                {item.district_name}
+              </option>
+            ))}
+          </select>
+          {loadingDistrict && <div className="loader-icon"><Loader size={16} /></div>}
+        </div>
       </div>
 
       <div className="location-group">
         <label>Taluk / City {required && <span className="req">*</span>}</label>
-        <select value={taluk} onChange={handleTalukChange} disabled={!district} required={required}>
-          <option value="">-- Select Taluk --</option>
-          {taluks.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <div className="select-wrapper">
+          <select 
+            value={taluk.code || (taluk.name && !taluks.find(t => t.taluk_name === taluk.name) ? "custom" : "")} 
+            onChange={handleTalukChange} 
+            disabled={!district.code} 
+            required={required}
+          >
+            <option value="">{loadingTaluk ? "Loading taluks..." : "-- Select Taluk --"}</option>
+            {taluk.name && !taluk.code && !taluks.find(t => t.taluk_name === taluk.name) && (
+              <option value="custom" disabled>{taluk.name}</option>
+            )}
+            {taluks.map((item) => (
+              <option key={item.taluk_code} value={item.taluk_code}>
+                {item.taluk_name}
+              </option>
+            ))}
+          </select>
+          {loadingTaluk && <div className="loader-icon"><Loader size={16} /></div>}
+        </div>
       </div>
 
       <div className="location-group">
         <label>Village / Area {required && <span className="req">*</span>}</label>
-        <select value={village} onChange={handleVillageChange} disabled={!taluk} required={required}>
-          <option value="">-- Select Area --</option>
-          {villages.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
+        <div className="select-wrapper">
+          <select 
+            value={village.code || (village.name && !villages.find(v => v.village_name === village.name) ? "custom" : "")} 
+            onChange={handleVillageChange} 
+            disabled={!taluk.code} 
+            required={required}
+          >
+            <option value="">{loadingVillage ? "Loading villages..." : "-- Select Area --"}</option>
+            {village.name && !village.code && !villages.find(v => v.village_name === village.name) && (
+              <option value="custom" disabled>{village.name}</option>
+            )}
+            {villages.map((item) => (
+              <option key={item.village_code} value={item.village_code}>
+                {item.village_name}
+              </option>
+            ))}
+          </select>
+          {loadingVillage && <div className="loader-icon"><Loader size={16} /></div>}
+        </div>
       </div>
     </div>
   );
