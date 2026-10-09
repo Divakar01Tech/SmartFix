@@ -154,8 +154,10 @@ const Login = () => {
           setSubmitting(false);
           return;
         }
-        await sendOtp(form.email, role, 'register');
-        await sendOtp(form.phone, role, 'register');
+        await Promise.all([
+          sendOtp(form.email, role, 'register'),
+          sendOtp(form.phone, role, 'register')
+        ]);
         setSuccessInfo(`Verification codes have been sent to your email and WhatsApp.`);
       } else {
         const res = await sendOtp(form.identifier, role, 'login');
@@ -195,8 +197,10 @@ const Login = () => {
           setSubmitting(false);
           return;
         }
-        await verifyOtp({ email: form.email, purpose: 'register', otp: emailOtpCode.trim() });
-        await verifyOtp({ phone: form.phone, purpose: 'register', otp: otpCode.trim() });
+        await Promise.all([
+          verifyOtp({ email: form.email, purpose: 'register', otp: emailOtpCode.trim() }),
+          verifyOtp({ phone: form.phone, purpose: 'register', otp: otpCode.trim() })
+        ]);
         setOtpStep(3);
         setSuccessInfo('✅ Both OTPs Verified! Now set your account Password below to finish registration.');
       } else {
