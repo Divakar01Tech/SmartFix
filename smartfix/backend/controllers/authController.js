@@ -429,6 +429,9 @@ exports.updateProfile = async (req, res) => {
       },
     });
   } catch (err) {
+    if (err.code === 11000 && err.keyPattern && err.keyPattern.phone) {
+      return res.status(400).json({ message: 'This phone number is already registered with another account.' });
+    }
     res.status(500).json({ message: 'Failed to update profile', error: err.message });
   }
 };

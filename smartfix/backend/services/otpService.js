@@ -111,17 +111,26 @@ const generateOtp = async (phone, purpose = 'login', email = null) => {
     console.log(`🔑 [DEV MODE] OTP Code for ${formattedPhone}: ${rawOtp}`);
   }
 
-  // 7. Send SMS via Fast2SMS (skip if in mock mode)
-  let smsResult = { success: true, provider: 'Mock' };
+  // 7. Send OTP via Twilio WhatsApp API (skip if in mock mode)
+  let whatsappResult = { success: true, provider: 'Mock' };
   if (process.env.OTP_MOCK_MODE !== 'true') {
-    smsResult = await sendSmsOtp(formattedPhone, rawOtp);
+    const { sendWhatsApp } = require('./twilioService');
+    const message = `Your SmartFix verification code is: *${rawOtp}*. It is valid for 5 minutes.`;
+    whatsappResult = await sendWhatsApp(formattedPhone, message);
+    
+    // Optionally fallback to SMS if WhatsApp fails
+    if (!whatsappResult.success) {
+      console.warn('⚠️ WhatsApp OTP failed, falling back to SMS...');
+      let smsResult = await sendSmsOtp(formattedPhone, rawOtp);
+      whatsappResult = { ...whatsappResult, smsFallback: smsResult };
+    }
   }
 
   return {
     success: true,
     message: `WhatsApp OTP sent successfully to ${formattedPhone}`,
     phone: formattedPhone,
-    smsStatus: smsResult,
+    whatsappStatus: whatsappResult,
   };
 };
 
