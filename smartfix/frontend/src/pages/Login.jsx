@@ -154,11 +154,8 @@ const Login = () => {
           setSubmitting(false);
           return;
         }
-        await Promise.all([
-          sendOtp(form.email, role, 'register'),
-          sendOtp(form.phone, role, 'register')
-        ]);
-        setSuccessInfo(`Verification codes have been sent to your email and WhatsApp.`);
+        await sendOtp(form.email, role, 'register');
+        setSuccessInfo(`Verification code has been sent to your email address.`);
       } else {
         const res = await sendOtp(form.identifier, role, 'login');
         const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier);
@@ -192,17 +189,14 @@ const Login = () => {
     try {
       setSubmitting(true);
       if (mode === 'signup') {
-        if (!otpCode || otpCode.trim().length < 4 || !emailOtpCode || emailOtpCode.trim().length < 4) {
-          setError('Please enter both the Email and SMS OTP codes.');
+        if (!emailOtpCode || emailOtpCode.trim().length < 4) {
+          setError('Please enter the Email OTP code.');
           setSubmitting(false);
           return;
         }
-        await Promise.all([
-          verifyOtp({ email: form.email, purpose: 'register', otp: emailOtpCode.trim() }),
-          verifyOtp({ phone: form.phone, purpose: 'register', otp: otpCode.trim() })
-        ]);
+        await verifyOtp({ email: form.email, purpose: 'register', otp: emailOtpCode.trim() });
         setOtpStep(3);
-        setSuccessInfo('✅ Both OTPs Verified! Now set your account Password below to finish registration.');
+        setSuccessInfo('✅ Email OTP Verified! Now set your account Password below to finish registration.');
       } else {
         // Step 2 for Login: Verify OTP and log in
         const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier);
@@ -718,10 +712,6 @@ const Login = () => {
                     <div className="form-group">
                       <label><KeyRound size={15} /> Enter Email OTP</label>
                       <OtpInput value={emailOtpCode} onChange={setEmailOtpCode} error={!!error} />
-                    </div>
-                    <div className="form-group" style={{ marginTop: '16px' }}>
-                      <label><KeyRound size={15} /> Enter SMS OTP</label>
-                      <OtpInput value={otpCode} onChange={setOtpCode} error={!!error} />
                     </div>
                   </>
                 ) : (
