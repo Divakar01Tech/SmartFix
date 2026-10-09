@@ -133,7 +133,7 @@ const startServer = async () => {
     initReviewSummaryCron();
     
     // Initialize Free WhatsApp Web Client
-    initWhatsApp();
+    // initWhatsApp(); // Disabled for Render deployment as it requires Google Chrome and ephemeral storage will clear the session
   } catch (err) {
     console.error('Initial DB connection failure:', err.message);
   }
