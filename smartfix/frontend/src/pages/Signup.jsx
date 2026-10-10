@@ -30,6 +30,7 @@ const Signup = () => {
   const [address, setAddress] = useState('');
   const [district, setDistrict] = useState('');
   const [stateName, setStateName] = useState('');
+  const [role, setRole] = useState('customer');
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
@@ -140,7 +141,7 @@ const Signup = () => {
     setError('');
     try {
       const res = await apiService.emailRegister(
-        { phone, password, confirmPassword, address, district, state: stateName },
+        { phone, password, confirmPassword, address, district, state: stateName, role },
         signupToken
       );
       
@@ -377,6 +378,20 @@ const Signup = () => {
                           disabled={loading}
                         />
                       </div>
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label fw-medium">{t('signup.role', 'I want to register as *')}</label>
+                      <select 
+                        className="form-select" 
+                        value={role} 
+                        onChange={(e) => setRole(e.target.value)}
+                        required
+                        disabled={loading}
+                      >
+                        <option value="customer">{t('signup.customer', 'Customer (Looking for services)')}</option>
+                        <option value="handyman">{t('signup.handyman', 'Service Expert (Looking for jobs)')}</option>
+                      </select>
                     </div>
 
                     <button type="submit" className="btn btn-primary btn-lg w-100" disabled={loading || !phone || !password || !address || !district || !stateName || password !== confirmPassword}>

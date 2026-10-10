@@ -7,6 +7,7 @@ const ProfileCompletion = () => {
   const [form, setForm] = useState({
     phone: '',
     location: '',
+    role: user?.role === 'admin' ? 'admin' : (user?.role || 'customer'),
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,7 @@ const ProfileCompletion = () => {
       await updateProfile({
         phone: `+91${form.phone.replace(/\D/g, '')}`,
         location: form.location,
+        role: form.role,
       });
       // Force reload to let ProtectedRoute re-evaluate with updated user data
       window.location.reload(); 
@@ -74,6 +76,19 @@ const ProfileCompletion = () => {
               value={form.location}
               onChange={(e) => setForm({ ...form, location: e.target ? e.target.value : e })}
             />
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>I want to register as *</label>
+            <select 
+              value={form.role} 
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+              style={{ width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}
+              disabled={user?.role === 'admin'}
+            >
+              <option value="customer">Customer (Looking for services)</option>
+              <option value="handyman">Service Expert (Looking for jobs)</option>
+            </select>
           </div>
 
           <button 

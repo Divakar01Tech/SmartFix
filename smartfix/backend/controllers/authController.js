@@ -341,7 +341,7 @@ exports.updateProfile = async (req, res) => {
       name, phone, location, trade, subServices, ratePerHour, isAvailable, newPassword,
       aadhaarNumber, aadhaarDocUrl, idProofType, idProofNumber, idProofDocUrl,
       upiId, upiPhone, bankAccountName, bankAccountNumber, bankIfscCode, bankName,
-      preferredLanguage, theme, bioEn, bioTa
+      preferredLanguage, theme, bioEn, bioTa, role
     } = req.body;
 
     const user = await User.findById(req.user.id).select('+password');
@@ -355,6 +355,20 @@ exports.updateProfile = async (req, res) => {
     if (location !== undefined) user.location = location;
     if (preferredLanguage) user.preferredLanguage = preferredLanguage;
     if (theme) user.theme = theme;
+    
+    if (role && user.role !== 'admin') {
+      if (role === 'handyman' && user.role !== 'handyman') {
+        user.role = 'handyman';
+        user.verificationStatus = 'Pending';
+        user.isAvailable = false;
+        user.isOnline = false;
+      } else if (role === 'customer' && user.role !== 'customer') {
+        user.role = 'customer';
+        user.verificationStatus = 'Verified';
+        user.isAvailable = true;
+        user.isOnline = true;
+      }
+    }
 
     if (user.role === 'handyman') {
       if (trade) user.trade = trade;

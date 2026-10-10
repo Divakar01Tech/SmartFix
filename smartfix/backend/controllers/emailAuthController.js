@@ -140,7 +140,9 @@ exports.emailRegister = async (req, res) => {
     }
 
     const email = decoded.email.toLowerCase().trim();
-    const { phone, password, address, district, state } = req.body;
+    const { phone, password, address, district, state, role: reqRole } = req.body;
+    
+    const role = reqRole === 'handyman' ? 'handyman' : 'customer';
 
     // We do NOT store confirmPassword, it should only be validated on frontend (or here). 
     // We assume frontend did it, but let's just make sure required fields exist.
@@ -187,10 +189,10 @@ exports.emailRegister = async (req, res) => {
       district,
       state,
       isEmailVerified: true,
-      role: 'customer',
-      verificationStatus: 'Verified',
-      isAvailable: true,
-      isOnline: true,
+      role: role,
+      verificationStatus: role === 'handyman' ? 'Pending' : 'Verified',
+      isAvailable: role === 'customer',
+      isOnline: role === 'customer',
       phoneVerified: true // Set to true implicitly as per prompt
     });
 
