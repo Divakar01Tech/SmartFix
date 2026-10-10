@@ -403,7 +403,20 @@ const Login = () => {
   };
 
   const handleGoogleLogin = async () => {
-    setError('Google Login is currently disabled. Please use the Email Login option above.');
+    try {
+      setSubmitting(true);
+      setError('');
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      
+      await googleLogin(idToken, role);
+      // The useEffect listening to `user` will handle the redirection.
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Google Sign-In failed or was cancelled.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // 4. Send Forgot Password OTP
