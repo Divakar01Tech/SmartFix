@@ -15,9 +15,10 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
+      unique: true,
       lowercase: true,
       trim: true,
-      default: '',
+      required: [true, 'Email is required'],
     },
     isEmailVerified: {
       type: Boolean,
@@ -352,7 +353,7 @@ userSchema.pre('save', async function (next) {
   if (!this.isModified('password') || !this.password) return next();
   // Don't re-hash already-hashed Google placeholder passwords stored as plain marker strings
   if (this.password.startsWith('google_oauth_') && !this.isNew) return next();
-  const salt = await bcrypt.genSalt(10);
+  const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });

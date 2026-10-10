@@ -72,7 +72,7 @@ const ProfileCompletion = () => {
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Location *</label>
             <LocationSelector 
               value={form.location}
-              onChange={(loc) => setForm({ ...form, location: loc })} 
+              onChange={(e) => setForm({ ...form, location: e.target ? e.target.value : e })}
             />
           </div>
 

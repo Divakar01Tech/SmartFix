@@ -413,7 +413,11 @@ const Login = () => {
       // The useEffect listening to `user` will handle the redirection.
     } catch (err) {
       console.error(err);
-      setError(err.message || 'Google Sign-In failed or was cancelled.');
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('Google sign-in was cancelled by the user.');
+      } else {
+        setError(err.message || 'Google Sign-In failed or was cancelled.');
+      }
     } finally {
       setSubmitting(false);
     }

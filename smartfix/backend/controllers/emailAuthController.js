@@ -179,6 +179,7 @@ exports.emailRegister = async (req, res) => {
 
     // Create user (default role: customer)
     const user = await User.create({
+      name: email.split('@')[0],
       email,
       phone: formattedPhone,
       password: hashedPassword,
