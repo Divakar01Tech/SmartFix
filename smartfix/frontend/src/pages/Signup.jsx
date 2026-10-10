@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import api from '../services/api';
+import { apiService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import './Signup.css';
 
@@ -57,13 +57,13 @@ const Signup = () => {
     setLoading(true);
     setError('');
     try {
-      await api.post('/auth/email/send-otp', { email });
+      await apiService.sendEmailOtp(email);
       setStep(2);
       setCountdown(300);
       setResendCooldown(60);
       setOtp(['', '', '', '', '', '']);
     } catch (err) {
-      setError(err.response?.data?.message || t('signup.emailError', 'Failed to send OTP.'));
+      setError(err.message || t('signup.emailError', 'Failed to send OTP.'));
     } finally {
       setLoading(false);
     }
@@ -97,11 +97,11 @@ const Signup = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post('/auth/email/verify-otp', { email, otp: otpValue });
-      setSignupToken(res.data.signupToken);
+      const res = await apiService.verifyEmailOtp(email, otpValue);
+      setSignupToken(res.signupToken);
       setStep(3);
     } catch (err) {
-      setError(err.response?.data?.message || t('signup.otpVerifyError', 'Invalid OTP.'));
+      setError(err.message || t('signup.otpVerifyError', 'Invalid OTP.'));
     } finally {
       setLoading(false);
     }
@@ -139,16 +139,15 @@ const Signup = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post(
-        '/auth/email/register', 
+      const res = await apiService.emailRegister(
         { phone, password, confirmPassword, address, district, state: stateName },
-        { headers: { Authorization: `Bearer ${signupToken}` } }
+        signupToken
       );
       
       // Save auth token and user
-      localStorage.setItem('token', res.data.token);
-      setToken(res.data.token);
-      setUser(res.data.user);
+      localStorage.setItem('token', res.token);
+      setToken(res.token);
+      setUser(res.user);
       
       // Redirect to dashboard
       navigate('/customer-dashboard');
@@ -159,7 +158,7 @@ const Signup = () => {
         setStep(1);
         setSignupToken('');
       } else {
-        setError(err.response?.data?.message || t('signup.registerError', 'Registration failed.'));
+        setError(err.message || t('signup.registerError', 'Registration failed.'));
       }
     } finally {
       setLoading(false);

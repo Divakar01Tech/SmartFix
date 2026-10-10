@@ -23,6 +23,43 @@ const getHeaders = (token) => {
 };
 
 export const apiService = {
+  // Authentication (Email OTP)
+  sendEmailOtp: async (email) => {
+    const res = await fetch(`${API_BASE}/auth/email/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to send OTP');
+    return data;
+  },
+
+  verifyEmailOtp: async (email, otp) => {
+    const res = await fetch(`${API_BASE}/auth/email/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Invalid OTP');
+    return data;
+  },
+
+  emailRegister: async (payload, signupToken) => {
+    const res = await fetch(`${API_BASE}/auth/email/register`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${signupToken}`
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Registration failed');
+    return data;
+  },
+
   // Services Search (AI + Local)
   searchServices: async (query) => {
     const res = await fetch(`${API_BASE}/services/search`, {
