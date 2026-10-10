@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import api from '../context/api';
+import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import './Signup.css';
 
