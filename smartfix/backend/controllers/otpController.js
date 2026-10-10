@@ -100,6 +100,21 @@ exports.sendOtp = async (req, res) => {
     // ── 2. Persistent DB-hash OTP via Fast2SMS or Email ────────────────────────────
     const result = await otpService.generateOtp(formattedPhone, purpose || 'login', normalizedEmail);
     
+    // Check if the underlying provider actually succeeded
+    const emailFailed = result.emailStatus && result.emailStatus.success === false;
+    const smsFailed = result.whatsappStatus && 
+                     result.whatsappStatus.success === false && 
+                     (!result.whatsappStatus.smsFallback || result.whatsappStatus.smsFallback.success === false);
+
+    if (emailFailed || smsFailed) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send OTP. The SMS/Email service might be down or misconfigured.',
+        smsStatus: result.whatsappStatus || result.smsStatus,
+        emailStatus: result.emailStatus
+      });
+    }
+
     const response = {
       success: true,
       message: normalizedEmail ? 'Verification code sent to your email.' : 'Verification code sent to your phone.',
@@ -107,7 +122,7 @@ exports.sendOtp = async (req, res) => {
       phone: formattedPhone,
       email: normalizedEmail,
       provider: normalizedEmail ? 'nodemailer' : 'fast2sms',
-      smsStatus: result.smsStatus,
+      smsStatus: result.whatsappStatus || result.smsStatus,
       emailStatus: result.emailStatus,
     };
 
