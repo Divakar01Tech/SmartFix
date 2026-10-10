@@ -78,6 +78,7 @@ app.use('/api', (req, res, next) => {
 app.use('/api', apiRateLimiter);
 
 app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/otp', require('./routes/otpRoutes'));
 app.use('/api/services', require('./routes/serviceRoutes'));
 app.use('/api/workers', require('./routes/workerRoutes'));

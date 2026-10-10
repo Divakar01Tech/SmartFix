@@ -19,6 +19,19 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    address: {
+      type: String,
+    },
+    district: {
+      type: String,
+    },
+    state: {
+      type: String,
+    },
     googleUid: {
       type: String,
       // sparse index defined below
@@ -347,6 +360,16 @@ userSchema.pre('save', async function (next) {
 // Compare entered password with hashed password
 userSchema.methods.comparePassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Return safe user object
+userSchema.methods.toSafeUser = function () {
+  return {
+    _id: this._id,
+    name: this.name,
+    role: this.role,
+    isEmailVerified: this.isEmailVerified,
+  };
 };
 
 // 2dsphere index for location-based search

@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
+const Signup = lazy(() => import('./pages/Signup'));
 const Browse = lazy(() => import('./pages/Browse'));
 const Booking = lazy(() => import('./pages/Booking'));
 const CustomerDashboard = lazy(() => import('./pages/CustomerDashboard'));
@@ -45,6 +46,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
             <Route path="/browse" element={<ProtectedRoute><Browse /></ProtectedRoute>} />
             <Route path="/booking/:workerId" element={<ProtectedRoute allowedRoles={['customer']}><Booking /></ProtectedRoute>} />
             <Route path="/customer-dashboard" element={<ProtectedRoute allowedRoles={['customer']}><CustomerDashboard /></ProtectedRoute>} />

@@ -9,6 +9,7 @@ const { validateSubServicesForTrade } = require('../config/serviceCategories');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'smartfix_secret_key';
 const ADMIN_PHONE = '+917604975206';
+const ADMIN_EMAIL = 'muthudivakar01022006@gmail.com';
 
 const generateToken = (id) => {
   return jwt.sign({ id }, JWT_SECRET, { expiresIn: '7d' });
@@ -41,8 +42,8 @@ exports.register = async (req, res) => {
 
     // Security Rule: Restrict Admin registration
     if (role === 'admin') {
-      if (formattedPhone !== ADMIN_PHONE) {
-        return res.status(403).json({ message: 'Public Admin registration is disabled. Unauthorized phone number.' });
+      if (formattedPhone !== ADMIN_PHONE && normalizedEmail !== ADMIN_EMAIL) {
+        return res.status(403).json({ message: 'Public Admin registration is disabled. Unauthorized credentials.' });
       }
     }
 
@@ -181,9 +182,9 @@ exports.login = async (req, res) => {
     const formattedPhone = phone ? formatPhone(phone) : null;
     const normalizedEmail = email ? email.toLowerCase().trim() : null;
 
-    // Security Rule: Admin login restriction to 7604975206
-    if (role === 'admin' && formattedPhone !== ADMIN_PHONE) {
-      return res.status(403).json({ message: 'Access denied. Only the single authorized admin phone number (7604975206) can log in as Admin.' });
+    // Security Rule: Admin login restriction
+    if (role === 'admin' && formattedPhone !== ADMIN_PHONE && normalizedEmail !== ADMIN_EMAIL) {
+      return res.status(403).json({ message: 'Access denied. Only authorized admin credentials can log in as Admin.' });
     }
 
     if (mongoose.connection.readyState !== 1) {
@@ -206,9 +207,9 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: `This number is registered as ${user.role}, not ${role}` });
     }
 
-    // Double check admin role phone match
-    if (user.role === 'admin' && formattedPhone !== ADMIN_PHONE) {
-      return res.status(403).json({ message: 'Access denied for this phone number.' });
+    // Double check admin role phone/email match
+    if (user.role === 'admin' && formattedPhone !== ADMIN_PHONE && normalizedEmail !== ADMIN_EMAIL) {
+      return res.status(403).json({ message: 'Access denied for this credentials.' });
     }
 
     if (user.isBlocked) {
