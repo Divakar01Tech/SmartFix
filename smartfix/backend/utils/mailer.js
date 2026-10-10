@@ -1,17 +1,19 @@
 const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
-  pool: true,
-  maxConnections: 5,
-  maxMessages: 100,
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const getTransporter = () => {
+  return nodemailer.createTransport({
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+};
 
 const sendOtpEmail = async (toEmail, otp) => {
   try {
@@ -36,7 +38,7 @@ const sendOtpEmail = async (toEmail, otp) => {
       `,
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const info = await getTransporter().sendMail(mailOptions);
     console.log('Email sent: %s', info.messageId);
     return true;
   } catch (error) {
