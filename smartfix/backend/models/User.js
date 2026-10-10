@@ -10,7 +10,6 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      // Google-auth users get a placeholder; real phone users get Indian number format
       // Unique sparse index is declared via userSchema.index() below
     },
     email: {
@@ -19,10 +18,7 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
-    googleUid: {
-      type: String,
-      // sparse index defined below
-    },
+
     avatar: {
       type: String,
       default: '',
@@ -337,8 +333,7 @@ userSchema.pre('save', async function (next) {
   }
 
   if (!this.isModified('password') || !this.password) return next();
-  // Don't re-hash already-hashed Google placeholder passwords stored as plain marker strings
-  if (this.password.startsWith('google_oauth_') && !this.isNew) return next();
+
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();
@@ -354,7 +349,6 @@ userSchema.index({ locationPoint: '2dsphere' });
 userSchema.index({ currentLocation: '2dsphere' });
 // Sparse unique indexes for optional fields
 userSchema.index({ phone: 1 }, { unique: true, sparse: true });
-userSchema.index({ googleUid: 1 }, { unique: true, sparse: true });
 userSchema.index({ email: 1 }, { sparse: true });
 
 module.exports = mongoose.model('User', userSchema);

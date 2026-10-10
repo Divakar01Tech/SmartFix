@@ -110,27 +110,6 @@ export const AuthProvider = ({ children }) => {
     return data.user;
   };
 
-  // Google OAuth Login
-  const googleLogin = async (idToken, role = 'customer') => {
-    const res = await fetch(`${API_BASE}/google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, role }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.message || 'Google Sign-In failed');
-    }
-
-    setUser(data.user);
-    setToken(data.token);
-    localStorage.setItem('smartfix_token', data.token);
-    localStorage.setItem('smartfix_user', JSON.stringify(data.user));
-
-    return data.user;
-  };
 
   // Register new customer or handyman
   // Automatically includes the phoneVerifyToken stored in memory from the previous verifyOtp() call.
@@ -304,7 +283,6 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated: !!token,
         loading,
         login,
-        googleLogin,
         register,
         sendOtp,
         verifyOtp,

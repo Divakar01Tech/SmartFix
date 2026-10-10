@@ -2,8 +2,7 @@ import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
   RecaptchaVerifier, 
-  signInWithPhoneNumber, 
-  GoogleAuthProvider 
+  signInWithPhoneNumber
 } from "firebase/auth";
 
 export const firebaseConfig = {
@@ -19,12 +18,6 @@ export const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Google OAuth Provider — use the explicit Web Client ID
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({
-  client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '979711564592-72s6n7srov6140ljd0706c95vlgn7916.apps.googleusercontent.com',
-  prompt: 'select_account', // Always show account picker
-});
 
 export const setupRecaptcha = (containerId = 'recaptcha-container') => {
   if (typeof window === 'undefined') return null;
