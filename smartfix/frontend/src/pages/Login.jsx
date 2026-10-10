@@ -7,12 +7,13 @@ import { Phone, Lock, User, Wrench, MapPin, ShieldCheck, KeyRound, RotateCcw, Ch
 import OtpInput from '../components/OtpInput';
 import LocationSelector from '../components/LocationSelector';
 import { apiService } from '../services/api';
-import { auth } from '../firebase';
+import { auth, googleProvider } from '../firebase';
+import { signInWithPopup } from 'firebase/auth';
 import './Login.css';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { user, login, register, sendOtp, verifyOtp, resetPassword } = useAuth();
+  const { user, login, googleLogin, register, sendOtp, verifyOtp, resetPassword } = useAuth();
   const { language, setLanguage, t } = useLanguage();
 
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
@@ -401,6 +402,22 @@ const Login = () => {
     setShowAiAddressConfirm(false);
   };
 
+  const handleGoogleLogin = async () => {
+    try {
+      setSubmitting(true);
+      setError('');
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      
+      await googleLogin(idToken, role);
+      // The useEffect listening to `user` will handle the redirection.
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Google Sign-In failed or was cancelled.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // 4. Send Forgot Password OTP
   const handleSendForgotOtp = async (e) => {
@@ -946,6 +963,20 @@ const Login = () => {
             </button>
           </form>
         )}
+        {/* Google SSO Divider */}
+        <div className="google-divider">
+          <span>OR</span>
+        </div>
+
+        <button 
+          type="button" 
+          className="google-login-btn"
+          onClick={handleGoogleLogin}
+          disabled={submitting}
+        >
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="google-icon" />
+          Continue with Google
+        </button>
 
         {/* Footer Toggle Switch */}
         <div className="auth-footer-switcher">
