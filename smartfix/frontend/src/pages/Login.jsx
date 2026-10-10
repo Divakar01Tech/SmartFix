@@ -134,9 +134,17 @@ const Login = () => {
     setError('');
     setSuccessInfo('');
 
-    if (mode === 'login' && !validateIdentifier(form.identifier)) {
-      setError('Enter a valid email address or 10-digit phone number');
-      return;
+    if (mode === 'login') {
+      const cleaned = form.identifier.replace(/\D/g, '');
+      if (cleaned.length !== 10 && cleaned.length !== 12) {
+        setError('Enter a valid 10-digit phone number');
+        return;
+      }
+    } else {
+      if (!validateIdentifier(form.identifier)) {
+        setError('Enter a valid email address or 10-digit phone number');
+        return;
+      }
     }
 
     try {
@@ -291,9 +299,17 @@ const Login = () => {
     e.preventDefault();
     setError('');
 
-    if (!validateIdentifier(form.identifier)) {
-      setError('Enter a valid email address or 10-digit phone number');
-      return;
+    if (mode === 'login') {
+      const cleaned = form.identifier.replace(/\D/g, '');
+      if (cleaned.length !== 10 && cleaned.length !== 12) {
+        setError('Enter a valid 10-digit phone number');
+        return;
+      }
+    } else {
+      if (!validateIdentifier(form.identifier)) {
+        setError('Enter a valid email address or 10-digit phone number');
+        return;
+      }
     }
 
     if (form.password.length < 6) {
@@ -505,23 +521,25 @@ const Login = () => {
           </button>
         </div>
 
-        {/* Role Toggle: Customer vs Handyman */}
-        <div className="role-toggle">
-          <button
-            type="button"
-            className={role === 'customer' ? 'active' : ''}
-            onClick={() => setRole('customer')}
-          >
-            👤 Customer Account
-          </button>
-          <button
-            type="button"
-            className={role === 'handyman' ? 'active' : ''}
-            onClick={() => setRole('handyman')}
-          >
-            🛠️ Handyman Pro
-          </button>
-        </div>
+        {/* Role Toggle: Customer vs Handyman (Only show during signup) */}
+        {mode === 'signup' && (
+          <div className="role-toggle">
+            <button
+              type="button"
+              className={role === 'customer' ? 'active' : ''}
+              onClick={() => setRole('customer')}
+            >
+              👤 Customer Account
+            </button>
+            <button
+              type="button"
+              className={role === 'handyman' ? 'active' : ''}
+              onClick={() => setRole('handyman')}
+            >
+              🛠️ Handyman Pro
+            </button>
+          </div>
+        )}
 
 
 
@@ -673,14 +691,18 @@ const Login = () => {
                   </>
                 ) : (
                   <div className="form-group">
-                    <label><User size={15} /> Email or Mobile Number</label>
+                    <label><Phone size={15} /> Mobile Number (+91)</label>
                     <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', fontWeight: '700', color: '#475569' }}>
+                        🇮🇳 +91
+                      </span>
                       <input
-                        type="text"
+                        type="tel"
                         name="identifier"
                         value={form.identifier}
                         onChange={handleChange}
-                        placeholder="Enter Email or 10-digit mobile number"
+                        placeholder="Enter 10-digit mobile number"
+                        maxLength={10}
                         required
                         autoFocus
                         style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
@@ -805,17 +827,38 @@ const Login = () => {
               </div>
             )}
 
-            <div className="form-group">
-              <label><User size={15} /> Email or Mobile Number</label>
-              <input
-                type="text"
-                name="identifier"
-                value={form.identifier}
-                onChange={handleChange}
-                placeholder="Enter Email or 10-digit mobile number"
-                required
-              />
-            </div>
+            {mode === 'signup' ? (
+              <div className="form-group">
+                <label><User size={15} /> Email or Mobile Number</label>
+                <input
+                  type="text"
+                  name="identifier"
+                  value={form.identifier}
+                  onChange={handleChange}
+                  placeholder="Enter Email or 10-digit mobile number"
+                  required
+                />
+              </div>
+            ) : (
+              <div className="form-group">
+                <label><Phone size={15} /> Mobile Number (+91)</label>
+                <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', fontWeight: '700', color: '#475569' }}>
+                    🇮🇳 +91
+                  </span>
+                  <input
+                    type="tel"
+                    name="identifier"
+                    value={form.identifier}
+                    onChange={handleChange}
+                    placeholder="Enter 10-digit mobile number"
+                    maxLength={10}
+                    required
+                    style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="form-group">
               <div className="label-with-action">
