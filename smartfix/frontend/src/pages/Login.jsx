@@ -135,9 +135,8 @@ const Login = () => {
     setSuccessInfo('');
 
     if (mode === 'login') {
-      const cleaned = form.identifier.replace(/\D/g, '');
-      if (cleaned.length !== 10 && cleaned.length !== 12) {
-        setError('Enter a valid 10-digit phone number');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier)) {
+        setError('Please enter a valid email address');
         return;
       }
     } else {
@@ -166,10 +165,7 @@ const Login = () => {
         setSuccessInfo(`Verification code has been sent to your email address.`);
       } else {
         const res = await sendOtp(form.identifier, role, 'login');
-        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier);
-        let target = form.identifier;
-        if (!isEmail && !target.startsWith('+')) target = `+91 ${target.replace(/\D/g, '')}`;
-        setSuccessInfo(res.message || `A 6-digit WhatsApp OTP has been sent to ${target}.`);
+        setSuccessInfo(res.message || `A 6-digit OTP has been sent to your email address.`);
       }
       
       setOtpStep(2);
@@ -190,7 +186,7 @@ const Login = () => {
     setSuccessInfo('');
 
     if (!otpCode || otpCode.trim().length < 4) {
-      setError('Please enter the 6-digit OTP code sent to your WhatsApp.');
+      setError('Please enter the 6-digit OTP code sent to your email.');
       return;
     }
 
@@ -300,9 +296,8 @@ const Login = () => {
     setError('');
 
     if (mode === 'login') {
-      const cleaned = form.identifier.replace(/\D/g, '');
-      if (cleaned.length !== 10 && cleaned.length !== 12) {
-        setError('Enter a valid 10-digit phone number');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier)) {
+        setError('Please enter a valid email address');
         return;
       }
     } else {
@@ -408,20 +403,7 @@ const Login = () => {
   };
 
   const handleGoogleLogin = async () => {
-    try {
-      setSubmitting(true);
-      setError('');
-      const result = await signInWithPopup(auth, googleProvider);
-      const idToken = await result.user.getIdToken();
-      
-      await googleLogin(idToken, role);
-      // The useEffect listening to `user` will handle the redirection.
-    } catch (err) {
-      console.error(err);
-      setError(err.message || 'Google Sign-In failed or was cancelled.');
-    } finally {
-      setSubmitting(false);
-    }
+    setError('Google Login is currently disabled. Please use the Email Login option above.');
   };
 
   // 4. Send Forgot Password OTP
@@ -506,7 +488,7 @@ const Login = () => {
               setSuccessInfo('');
             }}
           >
-            <Phone size={14} /> Mobile OTP Login
+            <User size={14} /> Email OTP Login
           </button>
           <button
             type="button"
@@ -691,18 +673,14 @@ const Login = () => {
                   </>
                 ) : (
                   <div className="form-group">
-                    <label><Phone size={15} /> Mobile Number (+91)</label>
+                    <label><User size={15} /> Email Address</label>
                     <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', fontWeight: '700', color: '#475569' }}>
-                        🇮🇳 +91
-                      </span>
                       <input
-                        type="tel"
+                        type="email"
                         name="identifier"
                         value={form.identifier}
                         onChange={handleChange}
-                        placeholder="Enter 10-digit mobile number"
-                        maxLength={10}
+                        placeholder="Enter your Email Address"
                         required
                         autoFocus
                         style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
@@ -723,7 +701,7 @@ const Login = () => {
                   <div className="otp-demo-alert">
                     <CheckCircle2 size={18} color="#059669" />
                     <div>
-                      <strong>SMS OTP Sent Successfully!</strong>
+                      <strong>Email OTP Sent Successfully!</strong>
                       <p>{successInfo}</p>
                     </div>
                   </div>
@@ -841,18 +819,14 @@ const Login = () => {
               </div>
             ) : (
               <div className="form-group">
-                <label><Phone size={15} /> Mobile Number (+91)</label>
+                <label><User size={15} /> Email Address</label>
                 <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', fontWeight: '700', color: '#475569' }}>
-                    🇮🇳 +91
-                  </span>
                   <input
-                    type="tel"
+                    type="email"
                     name="identifier"
                     value={form.identifier}
                     onChange={handleChange}
-                    placeholder="Enter 10-digit mobile number"
-                    maxLength={10}
+                    placeholder="Enter your Email Address"
                     required
                     style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
                   />
