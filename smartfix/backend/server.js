@@ -58,17 +58,39 @@ app.use(helmet({
   contentSecurityPolicy: false, // Allows flexible media rendering
 }));
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS
+const defaultOrigins = [
+  'https://smart-fix-two.vercel.app',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:5000',
+  'http://localhost:3000',
+];
+
+const envOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
-  : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5000', 'http://localhost:3000'];
+  : [];
+
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl) or allowed origins
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
-      callback(null, true);
-    } else {
-      callback(new Error('CORS blocked by origin policy'));
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    
+    try {
+      const parsedUrl = new URL(origin);
+      const isVercelDomain = parsedUrl.hostname.endsWith('.vercel.app');
+      const isAllowed = 
+        process.env.NODE_ENV !== 'production' ||
+        allowedOrigins.includes(origin) ||
+        isVercelDomain;
+
+      if (isAllowed) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    } catch {
+      return callback(null, false);
     }
   },
   credentials: true,

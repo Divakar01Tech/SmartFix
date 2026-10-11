@@ -20,7 +20,8 @@ const twilioVerifyService = require('../services/twilioVerifyService');
 const { formatPhoneE164, isTwilioVerifyConfigured } = require('../config/twilio');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'smartfix_secret_key_2026';
-const ADMIN_PHONE = '+917604975206';
+const ADMIN_PHONE = process.env.ADMIN_PHONE || '+917604975206';
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'muthudivakar01022006@gmail.com').toLowerCase().trim();
 
 const generateToken = (id, role) => {
   return jwt.sign({ userId: id, id, role }, JWT_SECRET, { expiresIn: '7d' });
@@ -60,9 +61,13 @@ exports.sendOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Enter a valid Indian mobile number.' });
     }
 
-    // Admin security restriction
-    if (role === 'admin' && formattedPhone !== ADMIN_PHONE) {
-      return res.status(403).json({ success: false, message: 'Admin access is restricted to the authorized phone number.' });
+    // Admin security restriction: only allow authorized admin phone or authorized admin email
+    if (role === 'admin') {
+      const isAuthorizedPhone = formattedPhone && formattedPhone === ADMIN_PHONE;
+      const isAuthorizedEmail = normalizedEmail && normalizedEmail === ADMIN_EMAIL;
+      if (!isAuthorizedPhone && !isAuthorizedEmail) {
+        return res.status(403).json({ success: false, message: 'Admin access is restricted to authorized credentials.' });
+      }
     }
 
     // Duplicate check for registration

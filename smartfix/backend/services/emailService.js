@@ -2,12 +2,17 @@ const nodemailer = require('nodemailer');
 
 // Define a function to get the transporter lazily
 const getTransporter = () => {
+  const user = process.env.EMAIL_USER || process.env.GMAIL_USER;
+  const pass = process.env.EMAIL_PASS || process.env.GMAIL_PASS;
+  if (!user || !pass) {
+    console.warn('⚠️ [emailService] EMAIL_USER or EMAIL_PASS environment variable is not defined.');
+  }
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {
-      user: process.env.EMAIL_USER, // Your Gmail address
-      pass: process.env.EMAIL_PASS  // Your Gmail App Password
-    }
+      user,
+      pass,
+    },
   });
 };
 
@@ -18,8 +23,13 @@ const getTransporter = () => {
  */
 exports.sendEmailOTP = async (email, otp) => {
   try {
+    const user = process.env.EMAIL_USER || process.env.GMAIL_USER;
+    if (!user) {
+      throw new Error('EMAIL_USER environment variable is missing.');
+    }
+
     const mailOptions = {
-      from: `"SmartFix Tamil Nadu" <${process.env.EMAIL_USER}>`,
+      from: `"SmartFix Tamil Nadu" <${user}>`,
       to: email,
       subject: 'SmartFix - Login Verification Code',
       html: `
@@ -41,7 +51,7 @@ exports.sendEmailOTP = async (email, otp) => {
     console.log('✅ Email OTP sent: %s', info.messageId);
     return true;
   } catch (error) {
-    console.error('❌ Error sending email OTP:', error.message);
+    console.error('❌ Error sending email OTP:', error && error.message ? error.message : error);
     return false;
   }
 };
