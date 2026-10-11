@@ -53,3 +53,8 @@ Thumbs.db
 # Vite cache
 .vite/
 **/.vite/
+
+# Private KYC Storage (uploads must not be tracked, keep .gitkeep)
+**/storage/kyc/*
+!**/storage/kyc/.gitkeep
+

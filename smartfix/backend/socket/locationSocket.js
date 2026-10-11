@@ -70,6 +70,16 @@ function initLocationSocket(io) {
           return;
         }
 
+        // Check requireApprovedWorker for worker joining live location tracking
+        if (isWorker) {
+          const workerDoc = await User.findById(socket.user.userId);
+          const isApproved = workerDoc && (workerDoc.verificationStatus === 'approved' || workerDoc.verificationStatus === 'Verified' || workerDoc.overallStatus === 'approved');
+          if (!isApproved) {
+            socket.emit('error', 'Access denied: Worker KYC must be approved before joining live-location tracking.');
+            return;
+          }
+        }
+
         // Verify status is Accepted, Confirmed, En Route, or Arrived
         const allowedStatuses = ['Accepted', 'Confirmed', 'EnRoute', 'Arrived'];
         if (!allowedStatuses.includes(booking.status)) {

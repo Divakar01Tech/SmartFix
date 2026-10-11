@@ -80,11 +80,16 @@ const Navbar = () => {
     navigate('/');
   };
 
+  const isWorkerRole = user?.role === 'worker' || user?.role === 'handyman';
   const dashboardPath =
     user?.role === 'admin'
       ? '/admin'
-      : user?.role === 'handyman'
-      ? '/handyman-dashboard'
+      : isWorkerRole
+      ? (user?.verificationStatus === 'rejected'
+          ? '/worker/rejected'
+          : user?.verificationStatus === 'pending_verification' || user?.verificationStatus === 'pending'
+          ? '/worker/pending'
+          : '/worker/dashboard')
       : '/customer-dashboard';
 
   return (
@@ -203,9 +208,9 @@ const Navbar = () => {
                   <div className="dropdown-user-info">
                     <strong>{user?.name}</strong>
                     <small className="d-flex align-items-center gap-1 mt-1">
-                      {user?.role === 'handyman' ? (
-                        <span className="badge bg-success-subtle text-success border d-flex align-items-center gap-1 px-2 py-1 rounded-pill">
-                          <Wrench size={12} /> {user?.trade || 'Handyman Service'}
+                      {isWorkerRole ? (
+                        <span className="badge bg-warning-subtle text-warning-emphasis border d-flex align-items-center gap-1 px-2 py-1 rounded-pill">
+                          <Wrench size={12} /> {user?.role === 'worker' ? 'Service Partner' : (user?.trade || 'Handyman Service')}
                         </span>
                       ) : user?.role === 'admin' ? (
                         <span className="badge bg-primary-subtle text-primary border d-flex align-items-center gap-1 px-2 py-1 rounded-pill">
@@ -255,9 +260,14 @@ const Navbar = () => {
               )}
             </div>
           ) : (
-            <Link to="/login" className="login-btn">
-              {t('login_register')}
-            </Link>
+            <div className="d-flex align-items-center gap-2">
+              <Link to="/worker/login" className="btn btn-outline-warning btn-sm d-none d-md-inline-flex align-items-center gap-1" style={{ borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600 }}>
+                <Wrench size={13} /> Partner Hub
+              </Link>
+              <Link to="/login" className="login-btn">
+                {t('login_register')}
+              </Link>
+            </div>
           )}
         </div>
       </div>

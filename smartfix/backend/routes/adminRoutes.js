@@ -25,6 +25,11 @@ router.post('/workers/:id/regenerate-bio', regenerateWorkerBio);
 router.get('/workers/:id/review-insights', adminController.getWorkerReviewInsights);
 router.get('/dispatch-stats', adminController.getDispatchStats);
 
+// Worker KYC & AI Recommendation Review Endpoints
+router.get('/workers/review-queue', adminController.getWorkerReviewQueue);
+router.get('/workers/:id/kyc/:docKey', adminController.serveKycDocument);
+router.patch('/workers/:id/review', adminController.reviewWorkerApplication);
+
 const { getHighRiskBookings } = require('../controllers/riskController');
 router.get('/bookings/high-risk', getHighRiskBookings);
 

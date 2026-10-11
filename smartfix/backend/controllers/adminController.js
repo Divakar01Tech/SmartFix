@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Booking = require('../models/Booking');
 const SOSAlert = require('../models/SOSAlert');
@@ -18,17 +19,25 @@ exports.getPolicyViolations = async (req, res) => {
 };
 
 // @route GET /api/admin/pending-captains
-// @desc Get list of Handymen with KYC details and verification status
+// @desc Get list of Handymen and Workers with KYC details and verification status
 exports.getPendingCaptains = async (req, res) => {
   try {
     const { status } = req.query;
-    const filter = { role: 'handyman' };
+    const filter = { role: { $in: ['handyman', 'worker'] } };
     if (status) {
-      filter.verificationStatus = status;
+      if (status === 'Pending' || status === 'pending_verification') {
+        filter.verificationStatus = { $in: ['Pending', 'pending_verification'] };
+      } else if (status === 'Verified' || status === 'approved') {
+        filter.verificationStatus = { $in: ['Verified', 'approved'] };
+      } else if (status === 'Rejected' || status === 'rejected') {
+        filter.verificationStatus = { $in: ['Rejected', 'rejected'] };
+      } else {
+        filter.verificationStatus = status;
+      }
     }
 
     const captains = await User.find(filter)
-      .select('name phone role trade location ratePerHour verificationStatus aadhaarNumber aadhaarDocUrl idProofType idProofNumber idProofDocUrl rejectionReason rating ratingCount createdAt')
+      .select('name fullName email phone role trade categories location district state ratePerHour verificationStatus aadhaarNumber aadhaarDocUrl idProofType idProofNumber idProofDocUrl rejectionReason rating ratingCount createdAt interview')
       .sort({ createdAt: -1 });
 
     res.status(200).json({ captains });
@@ -38,14 +47,14 @@ exports.getPendingCaptains = async (req, res) => {
 };
 
 // @route PATCH /api/admin/verify-captain/:id
-// @desc Approve or reject Handyman verification status (supports identity, skill, experience tabs)
+// @desc Approve or reject Handyman/Worker verification status (supports identity, skill, experience tabs)
 exports.verifyCaptain = async (req, res) => {
   try {
     const { id } = req.params;
     const { verificationStatus, rejectionReason, identityStatus, skillStatus, experienceStatus } = req.body;
 
     const user = await User.findById(id);
-    if (!user || user.role !== 'handyman') {
+    if (!user || !['handyman', 'worker'].includes(user.role)) {
       return res.status(404).json({ message: 'Worker profile not found' });
     }
 
@@ -69,28 +78,36 @@ exports.verifyCaptain = async (req, res) => {
 
     // Direct overall status update or evaluated dual status
     if (verificationStatus) {
-      if (['Verified', 'Rejected', 'Pending'].includes(verificationStatus)) {
-        user.verificationStatus = verificationStatus;
-        if (verificationStatus === 'Verified') {
+      if (['Verified', 'approved', 'Rejected', 'rejected', 'Pending', 'pending_verification'].includes(verificationStatus)) {
+        if (verificationStatus === 'Verified' || verificationStatus === 'approved') {
+          user.verificationStatus = user.role === 'worker' ? 'approved' : 'Verified';
+          user.overallStatus = 'approved';
           user.identity.status = 'verified';
           user.skill.status = 'verified';
-          user.overallStatus = 'approved';
-
-        } else if (verificationStatus === 'Rejected') {
+          user.rejectionReason = '';
+          user.isAvailable = true;
+          user.isOnline = true;
+        } else if (verificationStatus === 'Rejected' || verificationStatus === 'rejected') {
+          user.verificationStatus = user.role === 'worker' ? 'rejected' : 'Rejected';
           user.overallStatus = 'rejected';
+          user.rejectionReason = rejectionReason || 'Documents or skill verification requirements were not met.';
+          user.isAvailable = false;
+          user.isOnline = false;
+        } else {
+          user.verificationStatus = user.role === 'worker' ? 'pending_verification' : 'Pending';
         }
       }
     }
 
     // Evaluate dual verification approval rule
     if (user.identity.status === 'verified' && user.skill.status === 'verified') {
-      user.verificationStatus = 'Verified';
+      user.verificationStatus = user.role === 'worker' ? 'approved' : 'Verified';
       user.overallStatus = 'approved';
       user.rejectionReason = '';
       user.isAvailable = true;
       user.isOnline = true;
-    } else if (user.identity.status === 'rejected' || user.skill.status === 'rejected' || user.verificationStatus === 'Rejected') {
-      user.verificationStatus = 'Rejected';
+    } else if (user.identity.status === 'rejected' || user.skill.status === 'rejected' || user.verificationStatus === 'Rejected' || user.verificationStatus === 'rejected') {
+      user.verificationStatus = user.role === 'worker' ? 'rejected' : 'Rejected';
       user.overallStatus = 'rejected';
       user.rejectionReason = rejectionReason || 'Documents or skill verification requirements were not met.';
       user.isAvailable = false;
@@ -789,3 +806,216 @@ Output JSON format: {"en": "2-line English summary", "ta": "2-line Tamil summary
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+// ============================================================================
+// Worker Review Queue & KYC Inspection (Part 6 & Admin Review)
+// ============================================================================
+
+// @route GET /api/admin/workers/review-queue
+// @desc List workers pending verification or all workers with KYC + AI interview summary
+exports.getWorkerReviewQueue = async (req, res) => {
+  try {
+    const { status } = req.query;
+    const filter = { role: { $in: ['worker', 'handyman'] } };
+
+    if (status) {
+      if (status === 'pending_verification') {
+        filter.$or = [{ verificationStatus: 'pending_verification' }, { verificationStatus: 'Pending' }];
+      } else {
+        filter.verificationStatus = status;
+      }
+    }
+
+    const rawWorkers = await User.find(filter)
+      .select('+kyc')
+      .sort({ createdAt: -1 });
+
+    const { toSafeWorker } = require('../utils/serializers');
+    const queue = (rawWorkers || []).map((w) => {
+      const safe = toSafeWorker(w);
+      return {
+        ...safe,
+        hasKycFiles: {
+          aadhaarFront: !!w.kyc?.aadhaarFrontPath,
+          aadhaarBack: !!w.kyc?.aadhaarBackPath,
+          secondId: !!w.kyc?.secondIdPath,
+        },
+      };
+    });
+
+    res.status(200).json({ success: true, count: queue.length, queue });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to fetch review queue: ' + err.message });
+  }
+};
+
+// @route GET /api/admin/workers/:id/kyc/:docKey
+// @desc Authenticated Admin-only download/stream of private KYC documents
+exports.serveKycDocument = async (req, res) => {
+  try {
+    const { id, docKey } = req.params;
+    const fs = require('fs');
+    const path = require('path');
+
+    const worker = await User.findById(id).select('+kyc');
+    if (!worker) {
+      return res.status(404).json({ success: false, message: 'Worker not found.' });
+    }
+
+    let filePath = null;
+    if (docKey === 'aadhaarFront') filePath = worker.kyc?.aadhaarFrontPath;
+    else if (docKey === 'aadhaarBack') filePath = worker.kyc?.aadhaarBackPath;
+    else if (docKey === 'secondId') filePath = worker.kyc?.secondIdPath;
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: 'KYC document file not found on server.' });
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.pdf': 'application/pdf',
+    };
+
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${docKey}_${id}${ext}"`);
+
+    const fileStream = fs.createReadStream(filePath);
+    return fileStream.pipe(res);
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Error serving KYC document: ' + err.message });
+  }
+};
+
+// @route PATCH /api/admin/workers/:id/review
+// @desc Admin final decision: approve or reject worker application (reject requires reason)
+exports.reviewWorkerApplication = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decision, reason } = req.body;
+
+    if (!['approved', 'rejected'].includes(decision)) {
+      return res.status(400).json({
+        success: false,
+        message: "Decision must be either 'approved' or 'rejected'.",
+      });
+    }
+
+    if (decision === 'rejected' && (!reason || !reason.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'A rejection reason is mandatory when rejecting a worker application.',
+      });
+    }
+
+    const worker = await User.findById(id);
+    if (!worker || (worker.role !== 'worker' && worker.role !== 'handyman')) {
+      return res.status(404).json({ success: false, message: 'Worker profile not found.' });
+    }
+
+    const cleanReason = (reason || '').trim();
+    const now = new Date();
+
+    worker.verificationStatus = decision;
+    worker.overallStatus = decision;
+    if (req.user?.id && mongoose.Types.ObjectId.isValid(req.user.id)) {
+      worker.reviewedBy = req.user.id;
+    }
+    worker.reviewedAt = now;
+
+    if (decision === 'approved') {
+      worker.rejectionReason = '';
+      worker.isAvailable = true;
+      worker.isOnline = true;
+      worker.availability = 'available';
+      if (!worker.identity) worker.identity = {};
+      if (!worker.skill) worker.skill = {};
+      worker.identity.status = 'verified';
+      worker.identity.verifiedAt = now;
+      worker.skill.status = 'verified';
+      worker.skill.verifiedAt = now;
+
+      // Assign unique Worker ID if not already generated
+      if (!worker.workerId) {
+        const tradePrefixes = {
+          'Plumbing': 'PL',
+          'Electrical Repairs': 'EL',
+          'AC Service and Repair': 'AC',
+          'AC Service & Repair': 'AC',
+          'Refrigerator Repair': 'RF',
+          'Washing Machine Repair': 'WM',
+          'Water Purifier Service': 'WP',
+        };
+        const primaryCat = (worker.categories && worker.categories[0]) || worker.trade || 'General';
+        const prefix = tradePrefixes[primaryCat] || 'SP';
+        let isUnique = false;
+        while (!isUnique) {
+          const randomNum = Math.floor(1000 + Math.random() * 9000);
+          const newId = `${prefix}_${randomNum}`;
+          const exists = await User.findOne({ workerId: newId });
+          if (!exists) {
+            worker.workerId = newId;
+            isUnique = true;
+          }
+        }
+      }
+    } else {
+      // Rejection
+      worker.rejectionReason = cleanReason;
+      worker.availability = 'offline';
+      worker.isAvailable = false;
+      worker.isOnline = false;
+      if (!worker.identity) worker.identity = {};
+      worker.identity.status = 'rejected';
+      worker.identity.rejectionReason = cleanReason;
+    }
+
+    await worker.save();
+
+    // Log decision in AuditLog
+    const AuditLog = require('../models/AuditLog');
+    await AuditLog.create({
+      adminId: req.user.id,
+      workerId: worker._id,
+      aiVerdict: worker.interview?.aiVerdict || 'none',
+      adminDecision: decision,
+      reason: cleanReason,
+      timestamp: now,
+    }).catch((e) => console.warn('Audit log write notice:', e.message));
+
+    // Trigger Notification Email via mailer
+    const { sendWorkerApprovalEmail, sendWorkerRejectionEmail } = require('../utils/mailer');
+    if (decision === 'approved') {
+      sendWorkerApprovalEmail(worker.email, worker.fullName || worker.name).catch((e) =>
+        console.warn('Approval email trigger error:', e.message)
+      );
+    } else {
+      sendWorkerRejectionEmail(worker.email, worker.fullName || worker.name, cleanReason).catch((e) =>
+        console.warn('Rejection email trigger error:', e.message)
+      );
+    }
+
+    // Socket notification
+    const io = req.app?.get('io');
+    if (io) {
+      io.to(`user-${worker._id}`).emit('worker:status-changed', {
+        status: decision,
+        reason: cleanReason,
+      });
+    }
+
+    const { toSafeWorker } = require('../utils/serializers');
+    return res.status(200).json({
+      success: true,
+      message: `Worker application marked as ${decision}. Notification email sent to ${worker.email}.`,
+      worker: toSafeWorker(worker),
+    });
+  } catch (err) {
+    console.error('Review Worker Application Error:', err);
+    res.status(500).json({ success: false, message: 'Server error: ' + err.message });
+  }
+};
+

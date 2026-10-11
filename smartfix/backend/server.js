@@ -48,11 +48,33 @@ const io = new Server(server, {
   },
 });
 
+const helmet = require('helmet');
 const { httpLogger, errorHandler } = require('./middleware/logger');
 const { apiRateLimiter } = require('./middleware/rateLimiter');
 
-app.use(cors());
-app.use(express.json());
+// Enhanced security headers
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: false, // Allows flexible media rendering
+}));
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5000', 'http://localhost:3000'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl) or allowed origins
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS blocked by origin policy'));
+    }
+  },
+  credentials: true,
+}));
+
+app.use(express.json({ limit: '10mb' }));
 app.use(httpLogger);
 app.set('io', io);
 
@@ -76,6 +98,10 @@ app.use('/api', (req, res, next) => {
 });
 
 app.use('/api', apiRateLimiter);
+
+// Worker (Service Provider) Routes
+app.use('/api/worker/auth', require('./routes/workerAuthRoutes'));
+app.use('/api/worker', require('./routes/workerRoutes'));
 
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));

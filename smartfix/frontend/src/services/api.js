@@ -527,5 +527,212 @@ export const apiService = {
       console.warn('normalizeAddress error:', err.message);
       return null;
     }
-  }
+  },
+
+  // ==========================================================================
+  // Worker (Service Provider) Portal APIs
+  // ==========================================================================
+  workerSendOtp: async (email) => {
+    const res = await fetch(`${API_BASE}/worker/auth/email/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to send verification code.');
+    return data;
+  },
+
+  workerVerifyOtp: async (email, otp) => {
+    const res = await fetch(`${API_BASE}/worker/auth/email/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Invalid or expired OTP.');
+    return data;
+  },
+
+  workerRegister: async (formData, signupToken) => {
+    const isFormData = formData instanceof FormData;
+    const headers = isFormData ? {} : { 'Content-Type': 'application/json' };
+    if (signupToken) {
+      headers['Authorization'] = `Bearer ${signupToken}`;
+    }
+
+    const res = await fetch(`${API_BASE}/worker/auth/register`, {
+      method: 'POST',
+      headers,
+      body: isFormData ? formData : JSON.stringify(formData),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Worker registration failed.');
+    return data;
+  },
+
+  workerLogin: async (identifier, password) => {
+    const res = await fetch(`${API_BASE}/worker/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const error = new Error(data.message || 'Invalid credentials');
+      error.status = res.status;
+      error.data = data;
+      throw error;
+    }
+    return data;
+  },
+
+  workerLogout: async () => {
+    try {
+      const token = localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+      await fetch(`${API_BASE}/worker/auth/logout`, {
+        method: 'POST',
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' },
+      });
+    } catch (e) {}
+  },
+
+  workerGetMe: async (token) => {
+    const authToken = token || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const res = await fetch(`${API_BASE}/worker/me`, {
+      headers: { 'Authorization': `Bearer ${authToken}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch worker profile');
+    return data.worker;
+  },
+
+  workerUploadKyc: async (formData, token) => {
+    const authToken = token || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const res = await fetch(`${API_BASE}/worker/kyc/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to upload KYC documents.');
+    return data;
+  },
+
+  workerInterviewStart: async (category, language, token) => {
+    const authToken = token || sessionStorage.getItem('worker_signup_token') || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const res = await fetch(`${API_BASE}/worker/interview/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ category, language }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to start interview.');
+    return data;
+  },
+
+  workerInterviewAnswer: async (sessionId, answerText, language, token) => {
+    const authToken = token || sessionStorage.getItem('worker_signup_token') || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const res = await fetch(`${API_BASE}/worker/interview/answer`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ sessionId, answerText, language }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to submit interview answer.');
+    return data;
+  },
+
+  workerToggleAvailability: async (availability, token) => {
+    const authToken = token || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const res = await fetch(`${API_BASE}/worker/availability`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ availability }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update availability.');
+    return data;
+  },
+
+  workerGetEarnings: async (token) => {
+    const authToken = token || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const res = await fetch(`${API_BASE}/worker/earnings`, {
+      headers: { 'Authorization': `Bearer ${authToken}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch earnings.');
+    return data.earnings;
+  },
+
+  workerForgotPassSendOtp: async (email) => {
+    const res = await fetch(`${API_BASE}/worker/auth/forgot-password/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to send password reset code.');
+    return data;
+  },
+
+  workerForgotPassVerifyOtp: async (email, otp) => {
+    const res = await fetch(`${API_BASE}/worker/auth/forgot-password/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Invalid or expired OTP.');
+    return data;
+  },
+
+  workerForgotPassReset: async (payload, resetToken) => {
+    const res = await fetch(`${API_BASE}/worker/auth/forgot-password/reset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${resetToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to reset password.');
+    return data;
+  },
+
+  adminGetWorkerReviewQueue: async (status, token) => {
+    const authToken = token || localStorage.getItem('smartfix_token');
+    const url = status ? `${API_BASE}/admin/workers/review-queue?status=${status}` : `${API_BASE}/admin/workers/review-queue`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${authToken}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to load review queue');
+    return data.queue || [];
+  },
+
+  adminReviewWorker: async (workerId, decision, reason, token) => {
+    const authToken = token || localStorage.getItem('smartfix_token');
+    const res = await fetch(`${API_BASE}/admin/workers/${workerId}/review`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ decision, reason }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to record review decision.');
+    return data;
+  },
 };

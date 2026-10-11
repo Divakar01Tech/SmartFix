@@ -56,3 +56,54 @@ exports.serializeBookingForWorker = (booking) => {
   
   return safeBooking;
 };
+
+/**
+ * Worker Safe Allowlist Serializer
+ * Used for worker self-endpoints (login, me, register).
+ * Never leaks password, unmasked IDs, or raw disk file paths.
+ */
+exports.toSafeWorker = (worker) => {
+  if (!worker) return null;
+  const w = typeof worker.toObject === 'function' ? worker.toObject() : worker;
+  const catList = Array.isArray(w.categories) && w.categories.length > 0
+    ? w.categories
+    : (w.trade ? [w.trade] : []);
+
+  return {
+    _id: w._id,
+    id: w._id,
+    fullName: w.fullName || w.name,
+    name: w.name || w.fullName,
+    email: w.email,
+    phone: w.phone,
+    role: w.role || 'worker',
+    address: w.address || '',
+    district: w.district || '',
+    state: w.state || '',
+    categories: catList,
+    trade: w.trade || catList[0] || '',
+    verificationStatus: w.verificationStatus || 'pending_verification',
+    rejectionReason: w.rejectionReason || '',
+    isEmailVerified: !!w.isEmailVerified,
+    kyc: {
+      aadhaarLast4: w.kyc?.aadhaarLast4 ? `XXXX-XXXX-${w.kyc.aadhaarLast4}` : '',
+      secondIdType: w.kyc?.secondIdType || '',
+      secondIdLast4: w.kyc?.secondIdLast4 ? `XXXX-${w.kyc.secondIdLast4}` : '',
+      hasAadhaarFront: !!w.kyc?.aadhaarFrontPath,
+      hasAadhaarBack: !!w.kyc?.aadhaarBackPath,
+      hasSecondId: !!w.kyc?.secondIdPath,
+    },
+    interview: {
+      transcriptSummary: w.interview?.transcriptSummary || '',
+      scores: w.interview?.scores || null,
+      aiVerdict: w.interview?.aiVerdict || '',
+      completedAt: w.interview?.completedAt || null,
+    },
+    availability: w.availability || (w.availabilityStatus?.toLowerCase() || 'offline'),
+    rating: w.rating,
+    ratingCount: w.ratingCount || 0,
+    workerId: w.workerId || '',
+    createdAt: w.createdAt,
+  };
+};
+

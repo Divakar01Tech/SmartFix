@@ -8,6 +8,10 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Name is required'],
       trim: true,
     },
+    fullName: {
+      type: String,
+      trim: true,
+    },
     phone: {
       type: String,
       // Google-auth users get a placeholder; real phone users get Indian number format
@@ -16,9 +20,9 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       unique: true,
+      sparse: true,
       lowercase: true,
       trim: true,
-      required: [true, 'Email is required'],
     },
     isEmailVerified: {
       type: Boolean,
@@ -33,6 +37,11 @@ const userSchema = new mongoose.Schema(
     state: {
       type: String,
     },
+    categories: [
+      {
+        type: String,
+      },
+    ],
     googleUid: {
       type: String,
       // sparse index defined below
@@ -48,7 +57,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['customer', 'handyman', 'admin'],
+      enum: ['customer', 'handyman', 'worker', 'admin'],
       required: true,
       default: 'customer',
     },
@@ -173,12 +182,58 @@ const userSchema = new mongoose.Schema(
     },
     verificationStatus: {
       type: String,
-      enum: ['Pending', 'Verified', 'Rejected'],
-      default: 'Pending',
+      enum: ['pending_verification', 'approved', 'rejected', 'suspended', 'Pending', 'Verified', 'Rejected'],
+      default: 'pending_verification',
     },
     rejectionReason: {
       type: String,
       default: '',
+    },
+    // Worker KYC fields (Masked IDs and private documents)
+    kyc: {
+      aadhaarLast4: { type: String, default: '' },
+      secondIdType: { type: String, default: '' },
+      secondIdLast4: { type: String, default: '' },
+      aadhaarFrontPath: { type: String, default: '' },
+      aadhaarBackPath: { type: String, default: '' },
+      secondIdPath: { type: String, default: '' },
+    },
+    // AI Skill Interview results
+    interview: {
+      transcriptSummary: { type: String, default: '' },
+      scores: {
+        practicalSpecificity: { type: Number, default: 0 },
+        safetyAwareness: { type: Number, default: 0 },
+        diagnosisLogic: { type: Number, default: 0 },
+        communicationClarity: { type: Number, default: 0 },
+      },
+      aiVerdict: { type: String, enum: ['pass', 'borderline', 'fail', ''], default: '' },
+      completedAt: { type: Date },
+    },
+    // Worker availability enum: 'available', 'busy', 'offline'
+    availability: {
+      type: String,
+      enum: ['available', 'busy', 'offline'],
+      default: 'offline',
+    },
+    // Login lockout security fields
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lockUntil: {
+      type: Date,
+      default: null,
+    },
+    // Admin review metadata
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    reviewedAt: {
+      type: Date,
+      default: null,
     },
     identity: {
       status: {
@@ -336,6 +391,22 @@ const userSchema = new mongoose.Schema(
 
 // Hash password before saving and generate customer ID
 userSchema.pre('save', async function (next) {
+  // Sync name and fullName
+  if (this.fullName && !this.name) {
+    this.name = this.fullName;
+  }
+  if (this.name && !this.fullName) {
+    this.fullName = this.name;
+  }
+
+  // Sync availability enum with legacy status fields
+  if (this.availability) {
+    const capitalized = this.availability.charAt(0).toUpperCase() + this.availability.slice(1);
+    this.availabilityStatus = capitalized;
+    this.isAvailable = this.availability === 'available';
+    this.isOnline = this.availability !== 'offline';
+  }
+
   // Generate customerId for new customers
   if (this.isNew && this.role === 'customer' && !this.customerId) {
     let isUnique = false;
@@ -373,12 +444,55 @@ userSchema.methods.toSafeUser = function () {
   };
 };
 
+// Return safe worker object (allowlist-based, never leaks passwords, unmasked IDs, or raw KYC files)
+userSchema.methods.toSafeWorker = function () {
+  const catList = Array.isArray(this.categories) && this.categories.length > 0
+    ? this.categories
+    : (this.trade ? [this.trade] : []);
+
+  return {
+    _id: this._id,
+    id: this._id,
+    fullName: this.fullName || this.name,
+    name: this.name || this.fullName,
+    email: this.email,
+    phone: this.phone,
+    role: this.role,
+    address: this.address || '',
+    district: this.district || '',
+    state: this.state || '',
+    categories: catList,
+    trade: this.trade || catList[0] || '',
+    verificationStatus: this.verificationStatus || 'pending_verification',
+    rejectionReason: this.rejectionReason || '',
+    isEmailVerified: !!this.isEmailVerified,
+    kyc: {
+      aadhaarLast4: this.kyc?.aadhaarLast4 ? `XXXX-XXXX-${this.kyc.aadhaarLast4}` : '',
+      secondIdType: this.kyc?.secondIdType || '',
+      secondIdLast4: this.kyc?.secondIdLast4 ? `XXXX-${this.kyc.secondIdLast4}` : '',
+      hasAadhaarFront: !!this.kyc?.aadhaarFrontPath,
+      hasAadhaarBack: !!this.kyc?.aadhaarBackPath,
+      hasSecondId: !!this.kyc?.secondIdPath,
+    },
+    interview: {
+      transcriptSummary: this.interview?.transcriptSummary || '',
+      scores: this.interview?.scores || null,
+      aiVerdict: this.interview?.aiVerdict || '',
+      completedAt: this.interview?.completedAt || null,
+    },
+    availability: this.availability || (this.availabilityStatus?.toLowerCase() || 'offline'),
+    rating: this.rating,
+    ratingCount: this.ratingCount || 0,
+    workerId: this.workerId || '',
+    createdAt: this.createdAt,
+  };
+};
+
 // 2dsphere index for location-based search
 userSchema.index({ locationPoint: '2dsphere' });
 userSchema.index({ currentLocation: '2dsphere' });
 // Sparse unique indexes for optional fields
 userSchema.index({ phone: 1 }, { unique: true, sparse: true });
 userSchema.index({ googleUid: 1 }, { unique: true, sparse: true });
-userSchema.index({ email: 1 }, { sparse: true });
 
 module.exports = mongoose.model('User', userSchema);

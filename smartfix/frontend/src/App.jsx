@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from './components/ProtectedRoute';
+import ProtectedWorkerRoute from './components/ProtectedWorkerRoute';
 
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
@@ -15,6 +16,12 @@ const HandymanDashboard = lazy(() => import('./pages/HandymanDashboard'));
 const ProfileSettings = lazy(() => import('./pages/ProfileSettings'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const AdminAnalytics = lazy(() => import('./pages/AdminAnalytics'));
+
+const WorkerSignup = lazy(() => import('./pages/WorkerSignup'));
+const WorkerLogin = lazy(() => import('./pages/WorkerLogin'));
+const WorkerPending = lazy(() => import('./pages/WorkerPending'));
+const WorkerRejected = lazy(() => import('./pages/WorkerRejected'));
+const WorkerForgotPassword = lazy(() => import('./pages/WorkerForgotPassword'));
 
 const About = lazy(() => import('./pages/About'));
 const Contact = lazy(() => import('./pages/Contact'));
@@ -53,7 +60,15 @@ function App() {
             <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['customer']}><CustomerDashboard /></ProtectedRoute>} />
             <Route path="/my-bookings" element={<ProtectedRoute allowedRoles={['customer']}><CustomerDashboard /></ProtectedRoute>} />
             <Route path="/customer/dashboard" element={<ProtectedRoute allowedRoles={['customer']}><CustomerDashboard /></ProtectedRoute>} />
-            <Route path="/handyman-dashboard" element={<ProtectedRoute allowedRoles={['handyman']}><HandymanDashboard /></ProtectedRoute>} />
+            
+            {/* Worker (Service Provider) Portal Routes */}
+            <Route path="/worker/signup" element={<WorkerSignup />} />
+            <Route path="/worker/login" element={<WorkerLogin />} />
+            <Route path="/worker/pending" element={<WorkerPending />} />
+            <Route path="/worker/rejected" element={<WorkerRejected />} />
+            <Route path="/worker/forgot-password" element={<WorkerForgotPassword />} />
+            <Route path="/worker/dashboard" element={<ProtectedWorkerRoute><HandymanDashboard /></ProtectedWorkerRoute>} />
+            <Route path="/handyman-dashboard" element={<ProtectedWorkerRoute><HandymanDashboard /></ProtectedWorkerRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminPanel /></ProtectedRoute>} />
             <Route path="/admin/analytics" element={<ProtectedRoute allowedRoles={['admin']}><AdminAnalytics /></ProtectedRoute>} />

@@ -85,41 +85,90 @@ exports.authorizeRoles = (...roles) => {
 };
 
 /**
- * Server-side KYC Guard: Ensures worker has overallStatus === 'approved' or verificationStatus === 'Verified'
- * before accessing active job list or taking actions on bookings.
+ * requireWorker Middleware:
+ * Verifies valid JWT token and worker role ('worker' or 'handyman').
+ * Checks account suspension.
+ */
+exports.requireWorker = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required. No token payload.' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Worker account not found.' });
+    }
+
+    if (user.role !== 'worker' && user.role !== 'handyman') {
+      return res.status(403).json({ success: false, message: 'Access restricted to service providers.' });
+    }
+
+    if (user.isBlocked || user.isSuspended || user.verificationStatus === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        suspended: true,
+        message: 'Account suspended, contact support',
+      });
+    }
+
+    req.currentUser = user;
+    req.worker = user;
+    next();
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Worker authorization failed', error: err.message });
+  }
+};
+
+/**
+ * requireApprovedWorker Middleware:
+ * Re-reads worker verification status FROM DB on EVERY call (never trusts status in JWT).
+ * Strictly forbids pending, rejected, or suspended workers from accessing job features.
  */
 exports.requireApprovedWorker = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.user?.userId;
     if (!userId) {
-      return res.status(401).json({ message: 'Not authorized, no user ID found in token' });
+      return res.status(401).json({ success: false, message: 'Authentication required. No token payload.' });
     }
 
+    // Re-read fresh record from MongoDB
     const user = await User.findById(userId);
-    if (!user || user.role !== 'handyman') {
-      return res.status(403).json({ message: 'Access restricted to service providers.' });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Worker account not found.' });
     }
 
-    if (user.isBlocked) {
-      return res.status(403).json({ message: '🚫 Account suspended by SmartFix Admin.' });
+    if (user.role !== 'worker' && user.role !== 'handyman') {
+      return res.status(403).json({ success: false, message: 'Access restricted to service providers.' });
     }
 
-    // Check dual KYC & Skill verification rule
-    const isIdentityVerified = user.identity?.status === 'verified' || user.verificationStatus === 'Verified';
-    const isSkillVerified = user.skill?.status === 'verified' || user.verificationStatus === 'Verified';
-    const isFullyApproved = (user.overallStatus === 'approved' || user.verificationStatus === 'Verified') && isIdentityVerified && isSkillVerified;
-
-    if (!isFullyApproved) {
+    if (user.isBlocked || user.isSuspended || user.verificationStatus === 'suspended') {
       return res.status(403).json({
-        message: '🚫 KYC Gate Block: Your worker account requires both Identity & Skill Verification approval by SmartFix Admin before you can access job requests or accept bookings.',
-        verificationStatus: user.verificationStatus || 'Pending',
-        overallStatus: user.overallStatus || 'pending',
+        success: false,
+        suspended: true,
+        message: 'Account suspended, contact support',
+      });
+    }
+
+    // Server-side check: Must be 'approved' or 'Verified'
+    const isApproved = user.verificationStatus === 'approved' ||
+                       user.verificationStatus === 'Verified' ||
+                       user.overallStatus === 'approved';
+
+    if (!isApproved) {
+      return res.status(403).json({
+        success: false,
+        message: 'KYC Gate Block: Your worker account requires admin approval before accessing job features.',
+        verificationStatus: user.verificationStatus || 'pending_verification',
+        rejectionReason: user.rejectionReason || '',
       });
     }
 
     req.currentUser = user;
+    req.worker = user;
     next();
   } catch (err) {
-    res.status(500).json({ message: 'Worker verification check failed', error: err.message });
+    res.status(500).json({ success: false, message: 'Worker approval verification check failed', error: err.message });
   }
 };
