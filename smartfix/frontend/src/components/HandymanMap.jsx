@@ -18,11 +18,16 @@ const getWorkerLatLng = (worker, index) => {
 };
 
 const createLeafletWorkerIcon = (worker, isSelected) => {
+  const isImg = worker.avatar && (worker.avatar.startsWith('http://') || worker.avatar.startsWith('https://') || worker.avatar.startsWith('/'));
+  const avatarMarkup = isImg
+    ? `<img src="${worker.avatar}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;vertical-align:middle;" />`
+    : `<span class="pin-emoji">${worker.avatar || '👨‍🔧'}</span>`;
+
   return L.divIcon({
     className: `custom-map-pin ${isSelected ? 'pin-selected' : ''}`,
     html: `
       <div class="pin-badge ${isSelected ? 'badge-active' : ''}">
-        <span class="pin-emoji">${worker.avatar || '👨‍🔧'}</span>
+        ${avatarMarkup}
         <span class="pin-price">₹${worker.ratePerHour}</span>
       </div>
     `,
@@ -282,7 +287,11 @@ const HandymanMap = ({ workers = [], selectedLocation = 'all', onSelectWorker })
             >
               <div className="clean-gmap-popup">
                 <div className="popup-head">
-                  <span className="popup-avatar">{selectedWorker.avatar || '👨‍🔧'}</span>
+                  {selectedWorker.avatar && (selectedWorker.avatar.startsWith('http://') || selectedWorker.avatar.startsWith('https://') || selectedWorker.avatar.startsWith('/')) ? (
+                    <img src={selectedWorker.avatar} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                  ) : (
+                    <span className="popup-avatar">{selectedWorker.avatar || '👨‍🔧'}</span>
+                  )}
                   <div>
                     <h4>{selectedWorker.name}</h4>
                     <p className="popup-trade"><Wrench size={12} /> {selectedWorker.trade}</p>

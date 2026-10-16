@@ -58,9 +58,31 @@ const WorkerCard = ({ worker = {}, index = 0, confirmedBooking = false }) => {
       </div>
 
       <div className="d-flex align-items-center gap-3 mb-3">
-        <div className="worker-avatar-circle bg-light rounded-circle border p-2 d-flex align-items-center justify-content-center shadow-sm position-relative" style={{ width: 56, height: 56, fontSize: '1.8rem' }}>
-          {safeWorker.avatar || '👨‍🔧'}
-          <span className={`position-absolute bottom-0 end-0 border border-white rounded-circle p-1 ${isWorkerOnline ? 'bg-success' : 'bg-secondary'}`} title={isWorkerOnline ? "Online" : "Offline"}></span>
+        <div
+          className="worker-avatar-circle bg-light rounded-circle border d-flex align-items-center justify-content-center shadow-sm position-relative overflow-hidden"
+          style={{ width: 56, height: 56, minWidth: 56, flexShrink: 0, fontSize: '1.8rem' }}
+        >
+          {safeWorker.avatar && (safeWorker.avatar.startsWith('http://') || safeWorker.avatar.startsWith('https://') || safeWorker.avatar.startsWith('/')) ? (
+            <img
+              src={safeWorker.avatar}
+              alt={safeWorker.name || 'Worker'}
+              className="w-100 h-100 rounded-circle"
+              style={{ objectFit: 'cover' }}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                if (e.currentTarget.parentElement) {
+                  e.currentTarget.parentElement.innerText = '👨‍🔧';
+                }
+              }}
+            />
+          ) : (
+            safeWorker.avatar || '👨‍🔧'
+          )}
+          <span
+            className={`position-absolute bottom-0 end-0 border border-white rounded-circle p-1 ${isWorkerOnline ? 'bg-success' : 'bg-secondary'}`}
+            style={{ zIndex: 2, transform: 'translate(-2px, -2px)' }}
+            title={isWorkerOnline ? 'Online' : 'Offline'}
+          ></span>
         </div>
         <div>
           <h5 className="fw-bold text-dark mb-0">{typeof safeWorker.name === 'string' ? safeWorker.name : 'Specialist'}</h5>

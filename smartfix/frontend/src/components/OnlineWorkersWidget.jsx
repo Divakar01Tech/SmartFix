@@ -105,8 +105,12 @@ const OnlineWorkersWidget = ({ title }) => {
                 </span>
 
                 <div className="d-flex align-items-center gap-2 mb-2">
-                  <div className="avatar-box rounded-circle bg-light border p-2 text-center" style={{ width: 44, height: 44, fontSize: '1.4rem' }}>
-                    {worker.avatar || '👨‍🔧'}
+                  <div className="avatar-box rounded-circle bg-light border text-center overflow-hidden d-flex align-items-center justify-content-center" style={{ width: 44, height: 44, minWidth: 44, fontSize: '1.4rem' }}>
+                    {worker.avatar && (worker.avatar.startsWith('http://') || worker.avatar.startsWith('https://') || worker.avatar.startsWith('/')) ? (
+                      <img src={worker.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    ) : (
+                      worker.avatar || '👨‍🔧'
+                    )}
                   </div>
                   <div>
                     <h6 className="fw-bold mb-0 text-dark text-truncate" style={{ maxWidth: 130 }}>{worker.name}</h6>

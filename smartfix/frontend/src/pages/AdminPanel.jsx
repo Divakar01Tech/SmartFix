@@ -980,7 +980,11 @@ const AdminPanel = ({ initialTab }) => {
                       <tr key={wId} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '14px 12px', fontWeight: '700', color: '#0f172a' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '1.4rem' }}>{w.avatar || '👨‍🔧'}</span>
+                            {w.avatar && (w.avatar.startsWith('http://') || w.avatar.startsWith('https://') || w.avatar.startsWith('/')) ? (
+                              <img src={w.avatar} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                            ) : (
+                              <span style={{ fontSize: '1.4rem' }}>{w.avatar || '👨‍🔧'}</span>
+                            )}
                             <div>
                               <div>{w.name} {w.workerId && <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>{w.workerId}</span>}</div>
                               {w.isBlocked ? (
