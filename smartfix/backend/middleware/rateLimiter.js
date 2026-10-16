@@ -22,6 +22,21 @@ const emailOtpVerifyLimiter = rateLimit({
   message: { message: 'Too many OTP verification attempts, please try again after 15 minutes.' }
 });
 
+const authLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { success: false, message: 'Too many sign-in attempts from this network. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const paymentRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { success: false, message: 'Too many payment requests from this network. Please try again shortly.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 module.exports = {
   apiRateLimiter,
@@ -29,4 +44,7 @@ module.exports = {
   otpVerifyRateLimiter,
   emailOtpSendLimiter,
   emailOtpVerifyLimiter,
+  authLoginLimiter,
+  paymentRateLimiter,
 };
+

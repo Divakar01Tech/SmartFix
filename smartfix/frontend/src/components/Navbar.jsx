@@ -261,11 +261,15 @@ const Navbar = () => {
             </div>
           ) : (
             <div className="d-flex align-items-center gap-2">
-              <Link to="/worker/login" className="btn btn-outline-warning btn-sm d-none d-md-inline-flex align-items-center gap-1" style={{ borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600 }}>
-                <Wrench size={13} /> Partner Hub
+              <Link
+                to="/worker/login"
+                className="partner-hub-nav-btn"
+                title="Worker / Handyman Partner Hub"
+              >
+                <Wrench size={14} /> Partner Hub
               </Link>
-              <Link to="/login" className="login-btn">
-                {t('login_register')}
+              <Link to="/login" className="login-btn" title="Customer Login">
+                <User size={14} className="d-none d-sm-inline" /> {t('login', 'Login')}
               </Link>
             </div>
           )}

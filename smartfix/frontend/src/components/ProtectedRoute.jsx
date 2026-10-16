@@ -15,30 +15,39 @@ const ProtectedRoute = ({ children, allowedRoles, adminEmail = 'muthudivakar0102
     );
   }
 
+  const isWorkerTarget = allowedRoles && (allowedRoles.includes('worker') || allowedRoles.includes('handyman'));
+  const isAdminTarget = allowedRoles && allowedRoles.includes('admin');
+
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    if (isAdminTarget) {
+      return <Navigate to="/admin/login" replace />;
+    }
+    if (isWorkerTarget) {
+      return <Navigate to="/worker/login" replace />;
+    }
+    return <Navigate to="/customer/login" replace />;
   }
 
-  // Profile completion check for Google users
-  if (!user.phone || user.phone.startsWith('google_')) {
+  // Profile completion check for Google users (customers)
+  if (user?.role === 'customer' && (!user.phone || user.phone.startsWith('google_') || !user.profileCompleted)) {
     return <ProfileCompletion />;
   }
 
   // Check if route requires specific roles
   if (allowedRoles && allowedRoles.length > 0) {
-    if (!allowedRoles.includes(user?.role)) {
-      // If user is logged in but doesn't have the right role, redirect to their respective dashboard
-      if (user?.role === 'admin') return <Navigate to="/admin" replace />;
-      if (user?.role === 'handyman') return <Navigate to="/handyman-dashboard" replace />;
-      return <Navigate to="/dashboard" replace />;
+    const userRole = user?.role === 'handyman' ? 'worker' : user?.role;
+    const match = allowedRoles.some((r) => (r === 'handyman' ? 'worker' : r) === userRole);
+
+    if (!match) {
+      if (isAdminTarget) return <Navigate to="/admin/login" replace />;
+      if (isWorkerTarget) return <Navigate to="/worker/login" replace />;
+      return <Navigate to="/customer/login" replace />;
     }
 
-    // Extra security check for Admin role based on user's requirements
-    if (allowedRoles.includes('admin')) {
-      const isAuthorizedAdmin = user?.email === adminEmail || user?.phone === adminPhone || user?.phone === `+91${adminPhone}`;
+    if (isAdminTarget) {
+      const isAuthorizedAdmin = user?.email?.toLowerCase() === adminEmail.toLowerCase();
       if (!isAuthorizedAdmin) {
-        // Fallback if someone somehow got the admin role but doesn't match the specific credentials
-        return <Navigate to="/" replace />;
+        return <Navigate to="/admin/login" replace />;
       }
     }
   }

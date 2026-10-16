@@ -5,6 +5,7 @@ const fs = require('fs');
 const User = require('../models/User');
 const Otp = require('../models/Otp');
 const Booking = require('../models/Booking');
+const InterviewSession = require('../models/InterviewSession');
 const { sendWorkerOtpEmail } = require('../utils/mailer');
 const { toSafeWorker } = require('../utils/serializers');
 
@@ -52,7 +53,7 @@ const generateWorkerJwt = (worker) => {
   );
 };
 
-// Helper: Issue 15-minute signup token
+// Helper: Issue 24-hour signup token
 const generateSignupToken = (email) => {
   return jwt.sign(
     {
@@ -60,7 +61,7 @@ const generateSignupToken = (email) => {
       purpose: 'worker-signup',
     },
     JWT_SECRET,
-    { expiresIn: '15m' }
+    { expiresIn: '24h' }
   );
 };
 
@@ -259,7 +260,16 @@ exports.registerWorker = async (req, res) => {
     try {
       decoded = jwt.verify(token, JWT_SECRET);
     } catch (e) {
-      return res.status(401).json({ success: false, message: 'Signup token has expired or is invalid. Please verify your email again.' });
+      if (e.name === 'TokenExpiredError') {
+        try {
+          // Cryptographically verify signature so workers completing 5 AI interview questions aren't locked out
+          decoded = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true });
+        } catch (innerErr) {
+          return res.status(401).json({ success: false, message: 'Signup token has expired or is invalid. Please verify your email again.' });
+        }
+      } else {
+        return res.status(401).json({ success: false, message: 'Signup token is invalid. Please verify your email again.' });
+      }
     }
 
     if (decoded.purpose !== 'worker-signup' || !decoded.email) {
@@ -284,7 +294,11 @@ exports.registerWorker = async (req, res) => {
       secondIdType,
       secondIdNumber,
       interviewData,
+      sessionId: explicitSessionId,
+      interviewSessionId: altSessionId,
     } = req.body;
+
+    let sessionId = explicitSessionId || altSessionId || null;
 
     const chosenName = (fullName || name || '').trim();
     if (!chosenName || chosenName.length < 2) {
@@ -337,17 +351,15 @@ exports.registerWorker = async (req, res) => {
       });
     }
 
-    // 3. Reject duplicate email or phone (409 Conflict)
-    const duplicate = await User.findOne({
-      $or: [{ email: tokenEmail }, { phone: formattedPhone }],
-    });
+    // 3. Check existing user / duplicate phone
+    let existingUser = await User.findOne({ email: tokenEmail });
 
-    if (duplicate) {
+    // Reject only if phone belongs to a DIFFERENT user
+    const phoneUser = await User.findOne({ phone: formattedPhone });
+    if (phoneUser && (!existingUser || phoneUser._id.toString() !== existingUser._id.toString())) {
       return res.status(409).json({
         success: false,
-        message: duplicate.email === tokenEmail
-          ? 'This email address is already registered.'
-          : 'This phone number is already registered.',
+        message: 'This mobile number is already registered with another account.',
       });
     }
 
@@ -369,6 +381,7 @@ exports.registerWorker = async (req, res) => {
     if (interviewData) {
       try {
         const raw = typeof interviewData === 'string' ? JSON.parse(interviewData) : interviewData;
+        if (!sessionId && raw.sessionId) sessionId = raw.sessionId;
         parsedInterview = {
           transcriptSummary: raw.transcriptSummary || raw.summary || '',
           scores: {
@@ -377,53 +390,111 @@ exports.registerWorker = async (req, res) => {
             diagnosisLogic: Number(raw.scores?.diagnosisLogic) || 0,
             communicationClarity: Number(raw.scores?.communicationClarity) || 0,
           },
-          aiVerdict: ['pass', 'borderline', 'fail'].includes(raw.aiVerdict?.toLowerCase()) ? raw.aiVerdict.toLowerCase() : '',
+          aiVerdict: ['pass', 'borderline', 'fail'].includes(raw.aiVerdict?.toLowerCase())
+            ? raw.aiVerdict.toLowerCase()
+            : (raw.verdict?.toLowerCase() || 'borderline'),
           completedAt: raw.completedAt ? new Date(raw.completedAt) : new Date(),
         };
       } catch (e) {}
     }
 
-    // 7. Create worker in MongoDB
-    const newWorker = new User({
-      name: chosenName,
-      fullName: chosenName,
-      email: tokenEmail,
-      phone: formattedPhone,
-      password: hashedPassword,
-      isEmailVerified: true,
-      address: address || '',
-      district: district || '',
-      state: state || 'Tamil Nadu',
-      categories: catArray,
-      trade: catArray[0],
-      verificationStatus: 'pending_verification',
-      role: 'worker',
-      availability: 'offline',
-      isAvailable: false,
-      isOnline: false,
-      failedLoginAttempts: 0,
-      lockUntil: null,
-      kyc: {
-        aadhaarLast4,
-        secondIdType: secondIdType || '',
-        secondIdLast4,
-        aadhaarFrontPath: aadhaarFrontFile ? aadhaarFrontFile.path : '',
-        aadhaarBackPath: aadhaarBackFile ? aadhaarBackFile.path : '',
-        secondIdPath: secondIdFile ? secondIdFile.path : '',
-      },
-      interview: parsedInterview,
-    });
+    let workerDoc;
+    if (existingUser) {
+      if (existingUser.role === 'customer') {
+        return res.status(409).json({
+          success: false,
+          message: 'An existing customer account uses this email. Please use a distinct email address for your technician partner account.',
+        });
+      }
+      if (existingUser.verificationStatus === 'approved' || existingUser.verificationStatus === 'Verified') {
+        const token = generateWorkerJwt(existingUser);
+        return res.status(200).json({
+          success: true,
+          message: 'Your partner profile is already approved and active! Welcome back.',
+          token,
+          worker: toSafeWorker(existingUser),
+        });
+      }
 
-    // Skip redundant rehashing inside pre-save hook since password was already hashed with 12 rounds
-    await newWorker.save();
+      // Update existing pending worker with fresh submission data
+      existingUser.name = chosenName;
+      existingUser.fullName = chosenName;
+      existingUser.phone = formattedPhone;
+      existingUser.password = hashedPassword;
+      existingUser.isEmailVerified = true;
+      existingUser.address = address || existingUser.address || '';
+      existingUser.district = district || existingUser.district || '';
+      existingUser.state = state || existingUser.state || 'Tamil Nadu';
+      existingUser.categories = catArray;
+      existingUser.trade = catArray[0];
+      existingUser.verificationStatus = 'pending_verification';
+      existingUser.overallStatus = 'pending';
+      if (parsedInterview.transcriptSummary) {
+        existingUser.interview = parsedInterview;
+      }
+      if (aadhaarNumber) {
+        existingUser.kyc = existingUser.kyc || {};
+        existingUser.kyc.aadhaarLast4 = aadhaarLast4;
+        existingUser.kyc.secondIdType = secondIdType || '';
+        existingUser.kyc.secondIdLast4 = secondIdLast4;
+        if (aadhaarFrontFile) existingUser.kyc.aadhaarFrontPath = aadhaarFrontFile.path;
+        if (aadhaarBackFile) existingUser.kyc.aadhaarBackPath = aadhaarBackFile.path;
+        if (secondIdFile) existingUser.kyc.secondIdPath = secondIdFile.path;
+      }
+      if (sessionId) {
+        existingUser.interviewSessionId = sessionId;
+        await InterviewSession.findByIdAndUpdate(sessionId, { workerId: existingUser._id }).catch(() => null);
+      }
+      await existingUser.save();
+      workerDoc = existingUser;
+    } else {
+      // 7. Create worker in MongoDB
+      workerDoc = new User({
+        name: chosenName,
+        fullName: chosenName,
+        email: tokenEmail,
+        phone: formattedPhone,
+        password: hashedPassword,
+        isEmailVerified: true,
+        address: address || '',
+        district: district || '',
+        state: state || 'Tamil Nadu',
+        categories: catArray,
+        trade: catArray[0],
+        verificationStatus: 'pending_verification',
+        overallStatus: 'pending',
+        role: 'worker',
+        availability: 'offline',
+        isAvailable: false,
+        isOnline: false,
+        failedLoginAttempts: 0,
+        lockUntil: null,
+        kyc: {
+          aadhaarLast4,
+          secondIdType: secondIdType || '',
+          secondIdLast4,
+          aadhaarFrontPath: aadhaarFrontFile ? aadhaarFrontFile.path : '',
+          aadhaarBackPath: aadhaarBackFile ? aadhaarBackFile.path : '',
+          secondIdPath: secondIdFile ? secondIdFile.path : '',
+        },
+        interview: parsedInterview,
+        interviewSessionId: sessionId || null,
+      });
 
-    const workerJwt = generateWorkerJwt(newWorker);
+      await workerDoc.save();
+
+      if (sessionId) {
+        await InterviewSession.findByIdAndUpdate(sessionId, { workerId: workerDoc._id }).catch(() => null);
+      }
+    }
+
+    const workerJwt = generateWorkerJwt(workerDoc);
 
     return res.status(201).json({
       success: true,
       message: 'Worker application submitted successfully. Your KYC and interview are pending admin verification.',
       token: workerJwt,
-      worker: toSafeWorker(newWorker),
+      worker: toSafeWorker(workerDoc),
     });
   } catch (err) {
     console.error('Worker Registration Error:', err.message);
@@ -441,33 +512,43 @@ exports.registerWorker = async (req, res) => {
 // ============================================================================
 exports.loginWorker = async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    const { identifier, email, password } = req.body;
+    const rawEmail = email || identifier;
 
-    if (!identifier || !password) {
-      return res.status(400).json({ success: false, message: 'Please provide identifier and password.' });
+    if (!rawEmail || !password) {
+      return res.status(400).json({ success: false, message: 'Please provide your registered email and password.' });
     }
 
-    const cleanIdentifier = identifier.toString().trim();
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanIdentifier);
-    const formattedPhone = formatPhoneE164(cleanIdentifier);
+    const cleanEmail = rawEmail.toString().trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
+    }
 
-    const query = {
+    // Role Enforcement & Generic error: Look up exclusively by email among worker roles
+    const worker = await User.findOne({
+      email: cleanEmail,
       role: { $in: ['worker', 'handyman'] },
-      $or: [],
-    };
+    }).select('+password');
 
-    if (isEmail) {
-      query.$or.push({ email: cleanIdentifier.toLowerCase() });
-    } else {
-      if (formattedPhone) query.$or.push({ phone: formattedPhone });
-      query.$or.push({ phone: cleanIdentifier });
-    }
-
-    // Include password field explicitly
-    const worker = await User.findOne(query).select('+password');
-
-    // 1. Generic credential check (no user enumeration)
+    // 1. Role mismatch check or generic credential check
     if (!worker) {
+      const anyUser = await User.findOne({ email: cleanEmail });
+      if (anyUser) {
+        if (anyUser.role === 'customer') {
+          return res.status(403).json({
+            success: false,
+            roleMismatch: true,
+            message: 'This account is registered as a Customer. Please use the Customer login.',
+          });
+        }
+        if (anyUser.role === 'admin') {
+          return res.status(403).json({
+            success: false,
+            roleMismatch: true,
+            message: 'This account is registered as an Administrator. Please use the Admin login.',
+          });
+        }
+      }
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 

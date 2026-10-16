@@ -1,106 +1,317 @@
+const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
-const { verifyIdToken } = require('../config/firebaseAdmin');
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'smartfix_secret_key';
+const JWT_SECRET = process.env.JWT_SECRET || 'smartfix_secret_key_2026';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '979711564592-72s6n7srov6140ljd0706c95vlgn7916.apps.googleusercontent.com';
+const googleOAuthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-const generateToken = (id) => jwt.sign({ id }, JWT_SECRET, { expiresIn: '7d' });
+const generateToken = (user) => {
+  return jwt.sign(
+    {
+      id: user._id,
+      userId: user._id,
+      role: user.role,
+      email: user.email,
+    },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+};
+
+const generateSignupToken = (email, role) => {
+  return jwt.sign(
+    {
+      email: email.toLowerCase().trim(),
+      role,
+      purpose: role === 'worker' ? 'worker-signup' : 'google-complete-profile',
+    },
+    JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+};
 
 /**
  * POST /api/auth/google
- * Body: { idToken: <Firebase ID token from Google Sign-In> }
- *
- * Flow:
- *  1. Verify Firebase idToken with Admin SDK (lazy — dotenv already loaded)
- *  2. Find or create a User document (role = 'customer')
- *  3. Return SmartFix JWT + user object
+ * Body: { credential (Google ID token), role: "customer" | "worker" }
  */
 exports.googleAuth = async (req, res) => {
   try {
-    const { idToken, role: reqRole } = req.body;
-    if (!idToken) {
-      return res.status(400).json({ message: 'Firebase ID token is required.' });
-    }
-    const role = reqRole || 'customer';
+    const { credential, idToken, role: reqRole } = req.body;
+    const token = credential || idToken;
 
-    // 1. Verify token with Firebase Admin
-    let decoded;
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Google credential token is required.' });
+    }
+
+    const role = (reqRole || 'customer').toLowerCase();
+
+    // Security Gate: Admin MUST NOT use Google Sign-in
+    if (role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Administrator accounts cannot authenticate using Google. Use the designated admin login portal.',
+      });
+    }
+
+    const targetRole = role === 'worker' || role === 'handyman' ? 'worker' : 'customer';
+
+    // 1. Verify Google ID token using google-auth-library
+    let ticket;
     try {
-      decoded = await verifyIdToken(idToken);
-    } catch (err) {
-      console.error('❌ Firebase token verification failed:', err.message);
-      return res.status(401).json({ message: 'Invalid or expired Google ID token. Please sign in again.' });
+      ticket = await googleOAuthClient.verifyIdToken({
+        idToken: token,
+        audience: GOOGLE_CLIENT_ID,
+      });
+    } catch (verifyErr) {
+      console.error('Google token verification error:', verifyErr.message);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired Google credential. Please try signing in with Google again.',
+      });
     }
 
-    const { uid, email, name: googleName, picture } = decoded;
-
-    if (!email) {
-      return res.status(400).json({ message: 'Google account must have a verified email address.' });
+    const payload = ticket.getPayload();
+    if (!payload) {
+      return res.status(401).json({ success: false, message: 'Failed to retrieve Google identity token payload.' });
     }
 
-    // 2. Find or create user by googleUid (preferred) or email fallback
-    let user = await User.findOne({ googleUid: uid });
-    
-    // Force admin role for the specific owner email
-    const assignedRole = email.toLowerCase() === 'muthudivakar01022006@gmail.com' ? 'admin' : role;
+    // Issuer check
+    const validIssuers = ['accounts.google.com', 'https://accounts.google.com'];
+    if (!validIssuers.includes(payload.iss)) {
+      return res.status(401).json({ success: false, message: 'Invalid token issuer.' });
+    }
 
-    if (!user) {
-      // Check if an account already exists with same email but registered via phone
-      const emailUser = await User.findOne({ email: email.toLowerCase() });
-      if (emailUser) {
-        // Link Google UID to existing account
-        emailUser.googleUid = uid;
-        if (!emailUser.avatar && picture) emailUser.avatar = picture;
-        await emailUser.save();
-        user = emailUser;
-      } else {
-        // Create brand-new account
-        user = await User.create({
-          name: googleName || email.split('@')[0],
-          email: email.toLowerCase(),
-          googleUid: uid,
-          avatar: picture || '',
-          role: assignedRole,
-          phone: `google_${uid}`,                         // unique placeholder
-          password: `google_oauth_${uid}_${Date.now()}`,  // never used to login
-          verificationStatus: assignedRole === 'handyman' ? 'Pending' : 'Verified',
-          phoneVerified: true,
-          isOnline: role === 'customer',
-          isAvailable: role === 'customer',
+    // Expiry check
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      return res.status(401).json({ success: false, message: 'Google authentication token has expired.' });
+    }
+
+    // REQUIRE payload.email_verified === true
+    if (payload.email_verified !== true) {
+      return res.status(400).json({
+        success: false,
+        message: 'Your Google email is not verified. Please verify your email with Google first.',
+      });
+    }
+
+    // Never trust client body for identity; take strictly from verified token payload
+    const googleId = payload.sub;
+    const verifiedEmail = payload.email.toLowerCase().trim();
+    const googleName = payload.name || payload.given_name || verifiedEmail.split('@')[0];
+    const picture = payload.picture || '';
+
+    // Check if user exists by email or googleId
+    let user = await User.findOne({
+      $or: [{ email: verifiedEmail }, { googleId }, { googleUid: googleId }],
+    }).select('+password');
+
+    if (user) {
+      // Role enforcement check: A user with role X cannot log in through the other portal's role selector
+      const userRole = (user.role === 'handyman' || user.role === 'worker') ? 'worker' : user.role;
+      if (userRole !== targetRole) {
+        const portalName = targetRole === 'worker' ? 'Service Provider' : 'Customer';
+        const actualName = userRole === 'worker' ? 'Service Provider' : (userRole === 'admin' ? 'Administrator' : 'Customer');
+        return res.status(403).json({
+          success: false,
+          roleMismatch: true,
+          message: `This Google account is registered as a ${actualName}, but you are trying to sign in to the ${portalName} portal. Please switch tabs.`,
         });
       }
-    }
-    
-    // Ensure if admin logs in, their existing role is forcefully updated to admin just in case
-    if (user && email.toLowerCase() === 'muthudivakar01022006@gmail.com' && user.role !== 'admin') {
-      user.role = 'admin';
-      await user.save();
+
+      if (user.isBlocked || user.isSuspended || user.verificationStatus === 'suspended') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account has been suspended by Administration. Please contact customer support.',
+        });
+      }
+
+      // Link Google ID and update authProviders if not already linked
+      let modified = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.googleUid = googleId;
+        modified = true;
+      }
+      if (!user.authProviders) {
+        user.authProviders = ['google'];
+        modified = true;
+      } else if (!user.authProviders.includes('google')) {
+        user.authProviders.push('google');
+        modified = true;
+      }
+      if (!user.avatar && picture) {
+        user.avatar = picture;
+        modified = true;
+      }
+      if (!user.isEmailVerified) {
+        user.isEmailVerified = true;
+        modified = true;
+      }
+      if (modified) {
+        await user.save();
+      }
+
+      const authToken = generateToken(user);
+      const isProfileDone = user.profileCompleted || (!!user.phone && !user.phone.startsWith('google_') && !!user.address);
+
+      return res.status(200).json({
+        success: true,
+        token: authToken,
+        user: targetRole === 'worker' ? user.toSafeWorker() : user.toSafeUser(),
+        worker: targetRole === 'worker' ? user.toSafeWorker() : undefined,
+        needsProfileCompletion: targetRole === 'customer' && !isProfileDone,
+        message: 'Signed in with Google successfully.',
+      });
     }
 
-    if (user.isBlocked) {
-      return res.status(403).json({ message: '🚫 Your account has been suspended by Admin. Please contact support.' });
+    // 2. New User Creation via Google
+    if (targetRole === 'customer') {
+      const newUser = await User.create({
+        name: googleName,
+        fullName: googleName,
+        email: verifiedEmail,
+        isEmailVerified: true,
+        profileCompleted: false,
+        authProviders: ['google'],
+        googleId,
+        googleUid: googleId,
+        avatar: picture,
+        role: 'customer',
+        verificationStatus: 'Verified',
+        isOnline: true,
+        isAvailable: true,
+        phone: '', // Will be completed in profile form
+      });
+
+      const authToken = generateToken(newUser);
+      const signupToken = generateSignupToken(verifiedEmail, 'customer');
+
+      return res.status(201).json({
+        success: true,
+        isNewUser: true,
+        needsProfileCompletion: true,
+        token: authToken,
+        signupToken,
+        user: newUser.toSafeUser(),
+        message: 'Google account verified. Please complete your customer profile.',
+      });
     }
 
-    const token = generateToken(user._id);
+    // New Worker via Google: Stays pending_verification and continues KYC / AI interview
+    const newWorker = await User.create({
+      name: googleName,
+      fullName: googleName,
+      email: verifiedEmail,
+      isEmailVerified: true,
+      profileCompleted: false,
+      authProviders: ['google'],
+      googleId,
+      googleUid: googleId,
+      avatar: picture,
+      role: 'worker',
+      verificationStatus: 'pending_verification',
+      overallStatus: 'pending',
+      availability: 'offline',
+      isAvailable: false,
+      isOnline: false,
+      phone: '',
+    });
 
-    return res.status(200).json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        phone: user.phone?.startsWith('google_') ? '' : user.phone,
-        role: user.role,
-        verificationStatus: user.verificationStatus,
-        preferredLanguage: user.preferredLanguage || 'en',
-        theme: user.theme || 'light',
-        isGoogleUser: true,
-      },
+    const authToken = generateToken(newWorker);
+    const signupToken = generateSignupToken(verifiedEmail, 'worker');
+
+    return res.status(201).json({
+      success: true,
+      isNewUser: true,
+      needsProfileCompletion: true,
+      token: authToken,
+      signupToken,
+      worker: newWorker.toSafeWorker(),
+      user: newWorker.toSafeWorker(),
+      message: 'Google account linked. Please proceed with professional verification and KYC.',
     });
   } catch (err) {
-    console.error('Google Auth Error:', err);
-    res.status(500).json({ message: err.message || 'Google sign-in failed.' });
+    console.error('googleAuth Error:', err);
+    return res.status(500).json({ success: false, message: 'Google sign-in server error: ' + err.message });
+  }
+};
+
+/**
+ * POST /api/auth/complete-profile
+ * Completes the profile for newly registered Google customers
+ * Body: { phone, address, district, state, password (optional) }
+ */
+exports.completeGoogleProfile = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const { phone, address, district, state, password } = req.body;
+
+    if (!phone || !address || !district || !state) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number, address, district, and state are required to complete your profile.',
+      });
+    }
+
+    // Validate phone: +91 format /^[6-9]\d{9}$/
+    const rawPhone = phone.toString().replace(/\D/g, '');
+    const cleanPhone = (rawPhone.length === 12 && rawPhone.startsWith('91')) ? rawPhone.slice(2) : rawPhone;
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid 10-digit Indian mobile number starting with 6-9.',
+      });
+    }
+    const formattedPhone = `+91${cleanPhone}`;
+
+    if (address.trim().length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a complete address with street/locality details.',
+      });
+    }
+
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User profile not found.' });
+    }
+
+    user.phone = formattedPhone;
+    user.address = address.trim();
+    user.district = district.trim();
+    user.state = state.trim();
+    user.profileCompleted = true;
+
+    // Optional password set
+    if (password && password.trim().length >= 8) {
+      if (!/(?=.*[A-Za-z])(?=.*\d)/.test(password)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password must contain at least 1 letter and 1 number.',
+        });
+      }
+      const salt = await bcrypt.genSalt(12);
+      user.password = await bcrypt.hash(password, salt);
+      if (!user.authProviders.includes('password')) {
+        user.authProviders.push('password');
+      }
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile completed successfully.',
+      user: user.toSafeUser(),
+    });
+  } catch (err) {
+    console.error('completeGoogleProfile Error:', err);
+    return res.status(500).json({ success: false, message: 'Server error while saving profile.' });
   }
 };

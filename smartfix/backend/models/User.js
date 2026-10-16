@@ -14,19 +14,37 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      // Google-auth users get a placeholder; real phone users get Indian number format
-      // Unique sparse index is declared via userSchema.index() below
+      trim: true,
+      // Phone is strictly a profile detail (+91 format /^[6-9]\d{9}$/)
+      // Stored privately and never used as an identifier for authentication
     },
     email: {
       type: String,
       unique: true,
-      sparse: true,
       lowercase: true,
       trim: true,
+      required: [true, 'Email is required'],
     },
     isEmailVerified: {
       type: Boolean,
       default: false,
+    },
+    profileCompleted: {
+      type: Boolean,
+      default: false,
+    },
+    authProviders: {
+      type: [String],
+      default: ['password'],
+    },
+    googleId: {
+      type: String,
+      sparse: true,
+      unique: true,
+    },
+    googleUid: {
+      type: String,
+      sparse: true,
     },
     address: {
       type: String,
@@ -42,10 +60,6 @@ const userSchema = new mongoose.Schema(
         type: String,
       },
     ],
-    googleUid: {
-      type: String,
-      // sparse index defined below
-    },
     avatar: {
       type: String,
       default: '',
@@ -53,7 +67,7 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       minlength: 6,
-      select: false, // never return password by default
+      select: false, // never return password by default (optional for Google-only users)
     },
     role: {
       type: String,
@@ -185,6 +199,10 @@ const userSchema = new mongoose.Schema(
       enum: ['pending_verification', 'approved', 'rejected', 'suspended', 'Pending', 'Verified', 'Rejected'],
       default: 'pending_verification',
     },
+    isApproved: {
+      type: Boolean,
+      default: false,
+    },
     rejectionReason: {
       type: String,
       default: '',
@@ -198,7 +216,6 @@ const userSchema = new mongoose.Schema(
       aadhaarBackPath: { type: String, default: '' },
       secondIdPath: { type: String, default: '' },
     },
-    // AI Skill Interview results
     interview: {
       transcriptSummary: { type: String, default: '' },
       scores: {
@@ -209,6 +226,11 @@ const userSchema = new mongoose.Schema(
       },
       aiVerdict: { type: String, enum: ['pass', 'borderline', 'fail', ''], default: '' },
       completedAt: { type: Date },
+    },
+    interviewSessionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'InterviewSession',
+      default: null,
     },
     // Worker availability enum: 'available', 'busy', 'offline'
     availability: {
@@ -235,6 +257,25 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Admin feedback, instructions, warnings, and disciplinary directives
+    adminFeedbacks: [
+      {
+        feedbackId: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+        message: { type: String, required: true },
+        feedbackType: {
+          type: String,
+          enum: ['instruction', 'warning', 'praise', 'disciplinary', 'correction'],
+          default: 'instruction',
+        },
+        adminEmail: { type: String, default: '' },
+        actionTaken: {
+          type: String,
+          enum: ['none', 'warning_issued', 'suspended', 'reinstated', 'blocked'],
+          default: 'none',
+        },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
     identity: {
       status: {
         type: String,
@@ -347,6 +388,15 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Worker Earnings Tracking (in INR)
+    earnings: {
+      type: Number,
+      default: 0,
+    },
+    totalEarnings: {
+      type: Number,
+      default: 0,
+    },
     isBlocked: {
       type: Boolean,
       default: false,
@@ -424,6 +474,8 @@ userSchema.pre('save', async function (next) {
   if (!this.isModified('password') || !this.password) return next();
   // Don't re-hash already-hashed Google placeholder passwords stored as plain marker strings
   if (this.password.startsWith('google_oauth_') && !this.isNew) return next();
+  // Skip if password is already hashed with bcrypt ($2a$ or $2b$)
+  if (this.password.startsWith('$2a$') || this.password.startsWith('$2b$')) return next();
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
   next();
@@ -431,6 +483,9 @@ userSchema.pre('save', async function (next) {
 
 // Compare entered password with hashed password
 userSchema.methods.comparePassword = async function (enteredPassword) {
+  if (!this.password || !enteredPassword) {
+    return false;
+  }
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
@@ -438,9 +493,22 @@ userSchema.methods.comparePassword = async function (enteredPassword) {
 userSchema.methods.toSafeUser = function () {
   return {
     _id: this._id,
+    id: this._id,
     name: this.name,
+    fullName: this.fullName || this.name,
+    email: this.email,
+    phone: this.phone || '',
     role: this.role,
-    isEmailVerified: this.isEmailVerified,
+    isEmailVerified: !!this.isEmailVerified,
+    profileCompleted: !!this.profileCompleted,
+    authProviders: this.authProviders || ['password'],
+    address: this.address || '',
+    district: this.district || '',
+    state: this.state || '',
+    avatar: this.avatar || '',
+    preferredLanguage: this.preferredLanguage || 'en',
+    theme: this.theme || 'light',
+    verificationStatus: this.verificationStatus,
   };
 };
 
@@ -466,6 +534,8 @@ userSchema.methods.toSafeWorker = function () {
     verificationStatus: this.verificationStatus || 'pending_verification',
     rejectionReason: this.rejectionReason || '',
     isEmailVerified: !!this.isEmailVerified,
+    profileCompleted: !!this.profileCompleted,
+    authProviders: this.authProviders || ['password'],
     kyc: {
       aadhaarLast4: this.kyc?.aadhaarLast4 ? `XXXX-XXXX-${this.kyc.aadhaarLast4}` : '',
       secondIdType: this.kyc?.secondIdType || '',
@@ -484,6 +554,9 @@ userSchema.methods.toSafeWorker = function () {
     rating: this.rating,
     ratingCount: this.ratingCount || 0,
     workerId: this.workerId || '',
+    isBlocked: !!this.isBlocked,
+    isSuspended: !!this.isSuspended,
+    adminFeedbacks: this.adminFeedbacks || [],
     createdAt: this.createdAt,
   };
 };
@@ -491,8 +564,7 @@ userSchema.methods.toSafeWorker = function () {
 // 2dsphere index for location-based search
 userSchema.index({ locationPoint: '2dsphere' });
 userSchema.index({ currentLocation: '2dsphere' });
-// Sparse unique indexes for optional fields
-userSchema.index({ phone: 1 }, { unique: true, sparse: true });
-userSchema.index({ googleUid: 1 }, { unique: true, sparse: true });
+// Phone is profile-only (non-unique index)
+userSchema.index({ phone: 1 });
 
 module.exports = mongoose.model('User', userSchema);

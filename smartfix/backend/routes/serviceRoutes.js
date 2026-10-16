@@ -8,6 +8,61 @@ const normalizeString = (str) => {
   return str.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
 };
 
+// @route  GET /api/services/categories
+// @desc   Get the 6 fixed categories and their sub-services from DB (no hardcoded lists in UI)
+// @access Public
+router.get('/categories', async (req, res) => {
+  try {
+    const ServicePricing = require('../models/ServicePricing');
+    const { SERVICE_CATEGORIES } = require('../config/serviceCategories');
+
+    // Fetch subservices from DB ServicePricing collection
+    const dbPricing = await ServicePricing.find().lean();
+
+    // Map the 6 canonical categories
+    const categories = SERVICE_CATEGORIES.map((cat) => {
+      // Find subservices from DB matching this category or its trade/aliases
+      const matchingDb = dbPricing.filter(
+        (p) =>
+          p.category === cat.name ||
+          p.category === cat.trade ||
+          (cat.aliases && cat.aliases.includes(p.category))
+      );
+
+      // Extract subservice names from DB if available, fallback to cat.subServices
+      const subServices =
+        matchingDb.length > 0
+          ? [...new Set(matchingDb.map((p) => p.subService))]
+          : cat.subServices;
+
+      const subServiceDetails = subServices.map((subName) => {
+        const pricingInfo = matchingDb.find((p) => p.subService === subName);
+        return {
+          name: subName,
+          minPrice: pricingInfo?.minPrice || 250,
+          maxPrice: pricingInfo?.maxPrice || 750,
+          avgDurationMinutes: pricingInfo?.avgDurationMinutes || 60,
+        };
+      });
+
+      return {
+        id: cat.id,
+        name: cat.name,
+        trade: cat.trade,
+        icon: cat.icon,
+        description: cat.description,
+        subServices: subServices,
+        subServiceDetails,
+      };
+    });
+
+    res.status(200).json({ success: true, categories });
+  } catch (err) {
+    console.error('Error fetching categories:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch service categories' });
+  }
+});
+
 // @route  POST /api/services/search
 // @desc   Search for services using local match and AI fallback
 // @access Public (with AI rate limit)

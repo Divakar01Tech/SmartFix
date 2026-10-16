@@ -1,1129 +1,1539 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { HOME_SERVICES } from '../data/servicesData';
-import { Phone, Lock, User, Wrench, MapPin, ShieldCheck, KeyRound, RotateCcw, CheckCircle2, Globe, Bot, Sparkles, AlertTriangle } from 'lucide-react';
-import OtpInput from '../components/OtpInput';
-import LocationSelector from '../components/LocationSelector';
 import { apiService } from '../services/api';
-import { auth, googleProvider } from '../firebase';
-import { signInWithPopup } from 'firebase/auth';
+import OtpInput from '../components/OtpInput';
+import {
+  Wrench,
+  ShieldCheck,
+  MapPin,
+  CreditCard,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  CheckCircle,
+  X,
+  Lock,
+  Mail,
+  Phone,
+  User as UserIcon,
+  Globe,
+  WifiOff,
+} from 'lucide-react';
 import './Login.css';
 
-const Login = () => {
+const TN_DISTRICTS = [
+  'Sivagangai',
+  'Madurai',
+  'Chennai',
+  'Coimbatore',
+  'Tiruchirappalli',
+  'Salem',
+  'Tirunelveli',
+  'Dindigul',
+  'Thanjavur',
+  'Virudhunagar',
+  'Ramanathapuram',
+  'Theni',
+  'Kanyakumari',
+  'Erode',
+  'Vellore',
+];
+
+export default function Login({ initialPortal, initialMode }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
-  const { user, login, googleLogin, register, sendOtp, verifyOtp, resetPassword } = useAuth();
-  const { language, setLanguage, t } = useLanguage();
+  const {
+    user,
+    customerUser,
+    customerToken,
+    workerUser,
+    workerToken,
+    adminUser,
+    adminToken,
+    login,
+    setAuthSession,
+    googleLogin,
+    completeProfile,
+    forgotPasswordSendOtp,
+    forgotPasswordVerifyOtp,
+    forgotPasswordReset,
+  } = useAuth();
+  const location = useLocation();
+  const { language, setLanguage } = useLanguage();
 
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
-  const [authMethod, setAuthMethod] = useState('otp'); // 'otp' | 'password'
-  const [role, setRole] = useState('customer'); // 'customer' | 'handyman'
-  const [otpStep, setOtpStep] = useState(1); // 1 = enter phone, 2 = enter OTP code
-  const [otpCode, setOtpCode] = useState('');
-  const [emailOtpCode, setEmailOtpCode] = useState('');
-  const [timer, setTimer] = useState(30);
-  const [timerActive, setTimerActive] = useState(false);
+  // Query parameter support: ?portal=worker or ?mode=signup
+  const queryParams = new URLSearchParams(location.search);
+  const portalParam = queryParams.get('portal');
+  const modeParam = queryParams.get('mode');
 
-  // AI Address State
-  const [aiAddressText, setAiAddressText] = useState('');
-  const [aiAddressLoading, setAiAddressLoading] = useState(false);
-  const [aiAddressResult, setAiAddressResult] = useState(null);
-  const [showAiAddressConfirm, setShowAiAddressConfirm] = useState(false);
+  // Role: 'customer' or 'worker'
+  const [role, setRole] = useState(
+    initialPortal || (portalParam === 'worker' ? 'worker' : 'customer')
+  );
 
-  // Handyman sub-service selection state
-  const [selectedSubServices, setSelectedSubServices] = useState([]);
+  // Form Fields
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Auto-redirect logged in users to their respective dashboards
-  useEffect(() => {
-    if (user?.role === 'admin') {
-      navigate('/admin', { replace: true });
-    } else if (user?.role === 'handyman') {
-      navigate('/handyman-dashboard', { replace: true });
-    } else if (user?.role === 'customer') {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [user, navigate]);
-
-  // Forgot Password State
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotStep, setForgotStep] = useState(1); // 1 = enter phone, 2 = enter OTP + new password
-  const [forgotPhone, setForgotPhone] = useState('');
-  const [forgotOtp, setForgotOtp] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
-
-  const [error, setError] = useState('');
-  const [successInfo, setSuccessInfo] = useState('');
+  // Validation & Error States
+  const [errors, setErrors] = useState({});
+  const [generalError, setGeneralError] = useState('');
+  const [roleMismatchError, setRoleMismatchError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Form fields
-  const [form, setForm] = useState({
+  // Lockout State
+  const [lockoutInfo, setLockoutInfo] = useState(null); // { lockUntil, remainingMinutes }
+  const [lockoutSecondsLeft, setLockoutSecondsLeft] = useState(0);
+
+  // Offline detection
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  // Modals
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showSignupModal, setShowSignupModal] = useState(
+    modeParam === 'signup' || initialMode === 'signup'
+  );
+  const [showGoogleProfileModal, setShowGoogleProfileModal] = useState(false);
+
+  // Forgot Password Flow State (step 1 = email, 2 = otp, 3 = new pass, 4 = success)
+  const [forgotStep, setForgotStep] = useState(1);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotResetToken, setForgotResetToken] = useState('');
+  const [forgotNewPass, setForgotNewPass] = useState('');
+  const [forgotConfirmPass, setForgotConfirmPass] = useState('');
+  const [forgotTimer, setForgotTimer] = useState(300); // 5 min
+  const [forgotResendTimer, setForgotResendTimer] = useState(60);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+
+  // Signup Flow State (step 1 = email, 2 = otp, 3 = profile)
+  const [signupStep, setSignupStep] = useState(1);
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupOtp, setSignupOtp] = useState('');
+  const signupOtpRef = useRef('');
+  const [showSignupPass, setShowSignupPass] = useState(false);
+  const [showSignupConfirmPass, setShowSignupConfirmPass] = useState(false);
+  const [signupToken, setSignupToken] = useState('');
+  const [signupForm, setSignupForm] = useState({
     name: '',
-    identifier: '',
-    email: '',
     phone: '',
     password: '',
     confirmPassword: '',
-    trade: 'Plumbing',
-    location: '',
-    ratePerHour: '350',
-    preferredLanguage: language || 'en',
-    aadhaarNumber: '',
-    idProofType: 'driving_license',
-    idProofNumber: '',
+    address: '',
+    district: 'Sivagangai',
+    state: 'Tamil Nadu',
   });
+  const [signupTimer, setSignupTimer] = useState(300);
+  const [signupResendTimer, setSignupResendTimer] = useState(60);
+  const [signupLoading, setSignupLoading] = useState(false);
+  const [signupError, setSignupError] = useState('');
 
-  // Get sub-services for currently selected trade
-  const getSubServicesForTrade = (tradeName) => {
-    const cat = HOME_SERVICES.find((c) => c.name === tradeName);
-    return cat ? cat.subServices : [];
-  };
+  // Google Profile Completion State
+  const [googleProfileForm, setGoogleProfileForm] = useState({
+    phone: '',
+    address: '',
+    district: 'Sivagangai',
+    state: 'Tamil Nadu',
+    password: '',
+  });
+  const [googleProfileLoading, setGoogleProfileLoading] = useState(false);
+  const [googleProfileError, setGoogleProfileError] = useState('');
 
-  // Toggle a sub-service checkbox
-  const handleSubServiceToggle = (sub) => {
-    setSelectedSubServices((prev) =>
-      prev.includes(sub) ? prev.filter((s) => s !== sub) : [...prev, sub]
-    );
-  };
-
-  // Reset sub-services when trade changes
-  const handleTradeChange = (e) => {
-    handleChange(e);
-    setSelectedSubServices([]);
-  };
-
-  // Countdown timer for resend OTP (60 seconds)
+  // Offline listener
   useEffect(() => {
-    let interval = null;
-    if (timerActive && timer > 0) {
-      interval = setInterval(() => {
-        setTimer((t) => t - 1);
-      }, 1000);
-    } else if (timer === 0) {
-      setTimerActive(false);
-    }
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Lockout countdown timer
+  useEffect(() => {
+    if (!lockoutInfo || !lockoutInfo.lockUntil) return;
+    const expiry = new Date(lockoutInfo.lockUntil).getTime();
+
+    const tick = () => {
+      const now = Date.now();
+      const diffSec = Math.max(0, Math.ceil((expiry - now) / 1000));
+      setLockoutSecondsLeft(diffSec);
+      if (diffSec <= 0) setLockoutInfo(null);
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [timerActive, timer]);
+  }, [lockoutInfo]);
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    setError('');
-  };
+  // Forgot password OTP countdown
+  useEffect(() => {
+    if (forgotStep !== 2) return;
+    const interval = setInterval(() => {
+      setForgotTimer((prev) => Math.max(0, prev - 1));
+      setForgotResendTimer((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [forgotStep]);
 
-  const validateIdentifier = (id) => {
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id);
-    const cleaned = id.replace(/\D/g, '');
-    const isPhone = cleaned.length === 10 || (cleaned.length === 12 && cleaned.startsWith('91'));
-    return isEmail || isPhone;
-  };
+  // Signup OTP countdown
+  useEffect(() => {
+    if (signupStep !== 2) return;
+    const interval = setInterval(() => {
+      setSignupTimer((prev) => Math.max(0, prev - 1));
+      setSignupResendTimer((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [signupStep]);
 
-  const redirectByRole = (userRole) => {
-    if (userRole === 'admin') {
-      navigate('/admin');
-    } else if (userRole === 'handyman') {
-      navigate('/handyman-dashboard');
-    } else {
-      navigate('/dashboard');
-    }
-  };
-
-  // 1. Send OTP Request via Twilio Verify API or Email
-  const handleSendOtp = async (e) => {
-    if (e) e.preventDefault();
-    setError('');
-    setSuccessInfo('');
-
-    if (mode === 'login') {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier)) {
-        setError('Please enter a valid email address');
-        return;
-      }
-    } else {
-      if (!validateIdentifier(form.identifier)) {
-        setError('Enter a valid email address or 10-digit phone number');
-        return;
-      }
-    }
-
-    try {
-      setSubmitting(true);
-      if (mode === 'signup') {
-        if (!form.location) {
-          setError('Please provide your address before proceeding.');
-          setSubmitting(false);
-          return;
-        }
-        const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
-        const isPhoneValid = /^\d{10}$/.test(form.phone.replace(/\D/g, ''));
-        if (!isEmailValid || !isPhoneValid) {
-          setError('Please provide both a valid email and a 10-digit mobile number.');
-          setSubmitting(false);
-          return;
-        }
-        await sendOtp(form.email, role, 'register');
-        setSuccessInfo(`Verification code has been sent to your email address.`);
+  // Redirect only if authenticated FOR THIS SPECIFIC ROLE/PORTAL
+  useEffect(() => {
+    if (role === 'worker' && workerUser && workerToken) {
+      const status = (workerUser.verificationStatus || '').toLowerCase();
+      if (status === 'approved' || status === 'verified') {
+        navigate('/worker/dashboard', { replace: true });
+      } else if (status === 'rejected') {
+        navigate('/worker/rejected', { replace: true });
       } else {
-        const res = await sendOtp(form.identifier, role, 'login');
-        setSuccessInfo(res.message || `A 6-digit OTP has been sent to your email address.`);
+        navigate('/worker/pending', { replace: true });
       }
-      
-      setOtpStep(2);
-      setTimer(60);
-      setTimerActive(true);
-    } catch (err) {
-      setError(err.message || 'Failed to send OTP. Try again.');
-    } finally {
-      setSubmitting(false);
+    } else if (role === 'customer' && customerUser && customerToken) {
+      navigate('/customer/home', { replace: true });
+    } else if (role === 'admin' && adminUser && adminToken) {
+      navigate('/admin/dashboard', { replace: true });
+    }
+  }, [role, workerUser, workerToken, customerUser, customerToken, adminUser, adminToken, navigate]);
+
+  // Validate Email
+  const validateEmailFormat = (val) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
+  };
+
+  const handleEmailBlur = () => {
+    if (!email) {
+      setErrors((prev) => ({ ...prev, email: 'Email address is required.' }));
+    } else if (!validateEmailFormat(email)) {
+      setErrors((prev) => ({ ...prev, email: 'Please enter a valid email address.' }));
+    } else {
+      setErrors((prev) => ({ ...prev, email: '' }));
     }
   };
 
-
-  // 2. Verify OTP Request
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccessInfo('');
-
-    if (!otpCode || otpCode.trim().length < 4) {
-      setError('Please enter the 6-digit OTP code sent to your email.');
-      return;
+  const handlePasswordBlur = () => {
+    if (!password) {
+      setErrors((prev) => ({ ...prev, password: 'Password is required.' }));
+    } else {
+      setErrors((prev) => ({ ...prev, password: '' }));
     }
+  };
 
-    try {
-      setSubmitting(true);
-      if (mode === 'signup') {
-        if (!emailOtpCode || emailOtpCode.trim().length < 4) {
-          setError('Please enter the Email OTP code.');
-          setSubmitting(false);
-          return;
-        }
-        await verifyOtp({ email: form.email, purpose: 'register', otp: emailOtpCode.trim() });
-        setOtpStep(3);
-        setSuccessInfo('✅ Email OTP Verified! Now set your account Password below to finish registration.');
+  // Helper: Post-login redirect
+  const handleRedirectAfterLogin = (authUser, isWorker = false) => {
+    if (isWorker) {
+      const status = (authUser.verificationStatus || '').toLowerCase();
+      if (status === 'approved' || status === 'verified') {
+        navigate('/worker/dashboard');
+      } else if (status === 'rejected') {
+        navigate('/worker/rejected');
       } else {
-        // Step 2 for Login: Verify OTP and log in
-        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier);
-        const payload = {
-          phone: !isEmail ? form.identifier : undefined,
-          email: isEmail ? form.identifier : undefined,
-          otp: otpCode.trim(),
-          role,
-          name: form.name,
-          trade: form.trade,
-          location: form.location,
-          ratePerHour: Number(form.ratePerHour) || 350,
-          preferredLanguage: form.preferredLanguage,
-        };
-        const user = await verifyOtp(payload);
-        if (user?.preferredLanguage) setLanguage(user.preferredLanguage);
-        redirectByRole(user.role);
-      }
-    } catch (err) {
-      setError(err.message || 'OTP verification failed. Check the code and try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // 3. Complete Signup with Password Creation
-  const handleCompleteSignupWithPassword = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    if (!form.password || form.password.length < 6) {
-      setError('Password must be at least 6 characters long.');
-      return;
-    }
-
-    if (form.password !== form.confirmPassword) {
-      setError('Passwords do not match. Please check and try again.');
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-
-      if (role === 'handyman' && selectedSubServices.length === 0) {
-        setError('Please select at least one sub-service you offer.');
-        setSubmitting(false);
-        return;
-      }
-
-
-
-      if (role === 'handyman' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier)) {
-        if (!/^\d{10}$/.test(form.phone.replace(/\D/g, ''))) {
-          setError('Please enter a valid 10-digit mobile number for Live Tracking.');
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      const payload = {
-        name: form.name || (role === 'handyman' ? 'Service Partner' : 'SmartFix Customer'),
-        phone: form.phone ? `+91${form.phone.replace(/\D/g, '')}` : undefined,
-        email: form.email,
-        password: form.password,
-        role,
-        preferredLanguage: form.preferredLanguage,
-        location: form.location || 'Unknown Location, Tamil Nadu',
-        lat: form.lat,
-        lng: form.lng,
-        ...(role === 'handyman' && {
-          trade: form.trade,
-          subServices: selectedSubServices,
-          ratePerHour: Number(form.ratePerHour) || 350,
-          aadhaarNumber: form.aadhaarNumber.trim(),
-          idProofType: form.idProofType,
-          idProofNumber: form.idProofNumber.trim(),
-        }),
-      };
-
-      const user = await register(payload);
-      if (user?.preferredLanguage) setLanguage(user.preferredLanguage);
-      redirectByRole(user.role);
-    } catch (err) {
-      setError(err.message || 'Registration failed. Try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // 3. Password Authentication (Legacy fallback)
-  const handlePasswordSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    if (mode === 'login') {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier)) {
-        setError('Please enter a valid email address');
-        return;
+        navigate('/worker/pending');
       }
     } else {
-      if (!validateIdentifier(form.identifier)) {
-        setError('Enter a valid email address or 10-digit phone number');
+      navigate('/customer/home');
+    }
+  };
+
+  // 1. Submit Email + Password
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setGeneralError('');
+    setRoleMismatchError('');
+
+    const newErrors = {};
+    if (!email) newErrors.email = 'Email address is required.';
+    else if (!validateEmailFormat(email)) newErrors.email = 'Please enter a valid email address.';
+
+    if (!password) newErrors.password = 'Password is required.';
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const authUser = await login(email, password, role);
+      handleRedirectAfterLogin(authUser, role === 'worker');
+    } catch (err) {
+      if (err.locked) {
+        setLockoutInfo({
+          lockUntil: new Date(Date.now() + (err.remainingMinutes || 15) * 60 * 1000),
+          remainingMinutes: err.remainingMinutes || 15,
+        });
+        setGeneralError(
+          `Account temporarily locked for ${err.remainingMinutes || 15} minutes due to 5 consecutive failed attempts.`
+        );
+      } else if (err.roleMismatch) {
+        setRoleMismatchError(err.message);
+      } else {
+        setGeneralError(err.message || 'Invalid credentials. Please verify your email and password.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // 2. Google Sign-In Success Handler
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setGoogleLoading(true);
+    setGeneralError('');
+    setRoleMismatchError('');
+
+    try {
+      const res = await googleLogin(credentialResponse.credential, role);
+
+      if (res.needsProfileCompletion && role === 'customer') {
+        setShowGoogleProfileModal(true);
         return;
       }
-    }
 
-    if (form.password.length < 6) {
-      setError('Password must be at least 6 characters');
+      if (role === 'worker') {
+        if (res.isNewUser) {
+          navigate('/worker/signup');
+        } else {
+          handleRedirectAfterLogin(res.user || res.worker, true);
+        }
+      } else {
+        navigate('/customer/home');
+      }
+    } catch (err) {
+      if (err.roleMismatch) {
+        setRoleMismatchError(err.message);
+      } else {
+        setGeneralError(err.message || 'Google sign-in could not be completed.');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  // 3. Complete Profile Submit (Google New User)
+  const handleGoogleProfileSubmit = async (e) => {
+    e.preventDefault();
+    setGoogleProfileError('');
+
+    const { phone, address, district, state, password: newPass } = googleProfileForm;
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+      setGoogleProfileError('Please enter a valid 10-digit Indian mobile number starting with 6-9.');
       return;
     }
 
-    try {
-      setSubmitting(true);
-
-      if (mode === 'login') {
-        const user = await login(form.identifier, form.password, role);
-        if (user?.preferredLanguage) setLanguage(user.preferredLanguage);
-        redirectByRole(user.role);
-      } else {
-        if (form.password !== form.confirmPassword) {
-          setError('Passwords do not match');
-          setSubmitting(false);
-          return;
-        }
-
-        if (!form.name.trim()) {
-          setError('Full name is required');
-          setSubmitting(false);
-          return;
-        }
-
-        if (role === 'handyman' && selectedSubServices.length === 0) {
-          setError('Please select at least one sub-service you offer.');
-          setSubmitting(false);
-          return;
-        }
-
-
-
-        const payload = {
-          name: form.name,
-          phone: !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier) ? form.identifier : undefined,
-          email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.identifier) ? form.identifier : undefined,
-          password: form.password,
-          role,
-          preferredLanguage: form.preferredLanguage,
-          ...(role === 'handyman' && {
-            trade: form.trade,
-            subServices: selectedSubServices,
-            location: form.location || 'Tamil Nadu, Tamil Nadu',
-            ratePerHour: Number(form.ratePerHour) || 350,
-            aadhaarNumber: form.aadhaarNumber.trim(),
-            idProofType: form.idProofType,
-            idProofNumber: form.idProofNumber.trim(),
-          }),
-        };
-
-        const user = await register(payload);
-        if (user?.preferredLanguage) setLanguage(user.preferredLanguage);
-        redirectByRole(user.role);
-      }
-    } catch (err) {
-      setError(err.message || 'Authentication failed. Check your details.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleAiAddressDetect = async (e) => {
-    e.preventDefault();
-    if (!aiAddressText.trim()) return;
-    setAiAddressLoading(true);
-    try {
-      const res = await apiService.normalizeAddress(aiAddressText);
-      if (res && res.success && res.normalizedAddress) {
-        setAiAddressResult(res);
-        setShowAiAddressConfirm(true);
-      } else {
-        setError('AI could not detect the address properly. Please try again.');
-      }
-    } catch (err) {
-      console.error('AI Address API error:', err);
-      setError('AI Address service is unavailable right now.');
-    } finally {
-      setAiAddressLoading(false);
-    }
-  };
-
-  const confirmAiAddress = (e) => {
-    e.preventDefault();
-    if (aiAddressResult?.normalizedAddress) {
-      setForm(prev => ({
-        ...prev,
-        location: aiAddressResult.normalizedAddress,
-        lat: aiAddressResult.lat,
-        lng: aiAddressResult.lng
-      }));
-    }
-    setShowAiAddressConfirm(false);
-  };
-
-  const handleGoogleLogin = async () => {
-    try {
-      setSubmitting(true);
-      setError('');
-      const result = await signInWithPopup(auth, googleProvider);
-      const idToken = await result.user.getIdToken();
-      
-      await googleLogin(idToken, role);
-      // The useEffect listening to `user` will handle the redirection.
-    } catch (err) {
-      console.error(err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Google sign-in was cancelled by the user.');
-      } else {
-        setError(err.message || 'Google Sign-In failed or was cancelled.');
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // 4. Send Forgot Password OTP
-  const handleSendForgotOtp = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    if (!validateIdentifier(forgotPhone)) {
-      setError('Enter a valid email address or 10-digit phone number');
+    if (!address.trim() || address.trim().length < 5) {
+      setGoogleProfileError('Please enter your complete street address.');
       return;
     }
 
+    if (newPass && (newPass.length < 8 || !/(?=.*[A-Za-z])(?=.*\d)/.test(newPass))) {
+      setGoogleProfileError('Optional password must have at least 8 characters with letters and numbers.');
+      return;
+    }
+
+    setGoogleProfileLoading(true);
     try {
-      setSubmitting(true);
-      await sendOtp(forgotPhone, role);
+      await completeProfile({
+        phone: cleanPhone,
+        address: address.trim(),
+        district,
+        state,
+        password: newPass || undefined,
+      });
+      setShowGoogleProfileModal(false);
+      navigate('/customer/home');
+    } catch (err) {
+      setGoogleProfileError(err.message || 'Failed to save profile.');
+    } finally {
+      setGoogleProfileLoading(false);
+    }
+  };
+
+  // 4. Forgot Password Steps
+  const handleForgotSendOtp = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+    if (!forgotEmail || !validateEmailFormat(forgotEmail)) {
+      setForgotError('Please enter a valid registered email address.');
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      await forgotPasswordSendOtp(forgotEmail);
       setForgotStep(2);
-      setSuccessInfo(`A 6-digit reset code has been sent to +91 ${forgotPhone}.`);
+      setForgotTimer(300);
+      setForgotResendTimer(60);
     } catch (err) {
-      setError(err.message || 'Failed to send Reset OTP. Try again.');
+      setForgotError(err.message || 'Failed to send verification code.');
     } finally {
-      setSubmitting(false);
+      setForgotLoading(false);
     }
   };
 
-  // 5. Submit Password Reset
-  const handleResetPasswordSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    if (!forgotOtp || forgotOtp.trim().length < 4) {
-      setError('Please enter the 6-digit Reset OTP code.');
+  const handleForgotVerifyOtp = async (e, directOtp) => {
+    if (e?.preventDefault) e.preventDefault();
+    setForgotError('');
+    const code = (typeof directOtp === 'string' ? directOtp : (typeof e === 'string' ? e : forgotOtp)).trim();
+    if (!code || code.length < 6) {
+      setForgotError('Please enter the complete 6-digit verification code.');
       return;
     }
-
-    if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters long.');
-      return;
-    }
-
-    if (newPassword !== confirmNewPassword) {
-      setError('New passwords do not match.');
-      return;
-    }
-
+    setForgotLoading(true);
     try {
-      setSubmitting(true);
-      const user = await resetPassword(forgotPhone, forgotOtp.trim(), newPassword);
-      setShowForgotPassword(false);
-      redirectByRole(user.role);
+      const res = await forgotPasswordVerifyOtp(forgotEmail.trim().toLowerCase(), code);
+      setForgotResetToken(res.resetToken);
+      setForgotStep(3);
     } catch (err) {
-      setError(err.message || 'Failed to reset password. Check OTP and try again.');
+      setForgotError(err.message || 'Invalid or expired verification code.');
     } finally {
-      setSubmitting(false);
+      setForgotLoading(false);
     }
+  };
+
+  const handleForgotResetPassword = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+
+    if (forgotNewPass.length < 8) {
+      setForgotError('Password must be at least 8 characters long.');
+      return;
+    }
+    if (!/(?=.*[A-Za-z])(?=.*\d)/.test(forgotNewPass)) {
+      setForgotError('Password must contain at least 1 letter and 1 number.');
+      return;
+    }
+    if (forgotNewPass !== forgotConfirmPass) {
+      setForgotError('Password confirmation does not match.');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      await forgotPasswordReset(forgotResetToken, forgotNewPass);
+      setForgotStep(4);
+    } catch (err) {
+      setForgotError(err.message || 'Failed to update password.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // 5. Customer Signup Steps
+  const handleSignupSendOtp = async (e) => {
+    e.preventDefault();
+    setSignupError('');
+    if (!signupEmail || !validateEmailFormat(signupEmail)) {
+      setSignupError('Please enter a valid email address.');
+      return;
+    }
+    setSignupLoading(true);
+    try {
+      await apiService.sendEmailOtp(signupEmail.trim().toLowerCase());
+      setSignupStep(2);
+      setSignupTimer(300);
+      setSignupResendTimer(60);
+    } catch (err) {
+      setSignupError(err.message || 'Failed to send verification code.');
+    } finally {
+      setSignupLoading(false);
+    }
+  };
+
+  const handleSignupVerifyOtp = async (e, directOtp) => {
+    if (e?.preventDefault) e.preventDefault();
+    if (signupLoading) return;
+
+    let code = '';
+    if (typeof directOtp === 'string' && directOtp.trim().length > 0) {
+      code = directOtp.trim();
+    } else if (typeof e === 'string' && e.trim().length > 0) {
+      code = e.trim();
+    } else {
+      code = (signupOtpRef.current || signupOtp || '').trim();
+    }
+
+    code = code.replace(/\D/g, '');
+
+    if (!code || code.length < 6) {
+      setSignupError('Please enter all 6 digits of the verification code.');
+      return;
+    }
+
+    setSignupError('');
+    setSignupLoading(true);
+    try {
+      const res = await apiService.verifyEmailOtp(signupEmail.trim().toLowerCase(), code);
+      if (res?.signupToken) {
+        setSignupToken(res.signupToken);
+        setSignupStep(3);
+        setSignupError('');
+      } else {
+        throw new Error(res?.message || 'Verification token missing. Please try again.');
+      }
+    } catch (err) {
+      setSignupError(err.message || 'Invalid or expired verification code.');
+    } finally {
+      setSignupLoading(false);
+    }
+  };
+
+  const handleSignupComplete = async (e) => {
+    e.preventDefault();
+    setSignupError('');
+
+    const { name, phone, password: p, confirmPassword: cp, address, district, state } = signupForm;
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    if (!name.trim()) {
+      setSignupError('Full name is required.');
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+      setSignupError('Enter a valid 10-digit Indian mobile number starting with 6-9.');
+      return;
+    }
+    if (p.length < 8 || !/(?=.*[A-Za-z])(?=.*\d)/.test(p)) {
+      setSignupError('Password must be at least 8 characters with letters and numbers.');
+      return;
+    }
+    if (p !== cp) {
+      setSignupError('Passwords do not match.');
+      return;
+    }
+    if (!address.trim() || address.trim().length < 10) {
+      setSignupError('Address must be at least 10 characters long.');
+      return;
+    }
+
+    setSignupLoading(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        phone: cleanPhone,
+        password: p,
+        address: address.trim(),
+        district,
+        state,
+        role: 'customer',
+      };
+      const res = await apiService.emailRegister(payload, signupToken);
+      setShowSignupModal(false);
+      setAuthSession(res.user, res.token);
+      navigate('/customer/dashboard');
+    } catch (err) {
+      setSignupError(err.message || 'Registration failed.');
+    } finally {
+      setSignupLoading(false);
+    }
+  };
+
+  // Password Strength Calculator
+  const getPasswordStrength = (pass) => {
+    let score = 0;
+    if (pass.length >= 8) score++;
+    if (/[A-Z]/.test(pass) && /[a-z]/.test(pass)) score++;
+    if (/\d/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+    return score; // 0 to 4
   };
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        {/* Top Header */}
-        <div className="auth-header">
-          <div className="auth-icon-badge">
-            <ShieldCheck size={32} color="#2563eb" />
-          </div>
-          <h1>{mode === 'login' ? 'Welcome to SmartFix' : 'Join SmartFix Network'}</h1>
-          <p>
-            {authMethod === 'otp'
-              ? 'Instant Real-Time Mobile OTP Login & Registration'
-              : 'Login or create account using Phone & Password'}
-          </p>
+    <div className="auth-viewport">
+      {/* Offline Alert Banner */}
+      {isOffline && (
+        <div className="auth-offline-banner">
+          <WifiOff size={16} />
+          <span>You appear to be offline. Please check your internet connection.</span>
         </div>
+      )}
 
-        {/* Auth Method Switcher Tabs */}
-        <div className="auth-method-switcher">
-          <button
-            type="button"
-            className={`method-btn ${authMethod === 'otp' ? 'active' : ''}`}
-            onClick={() => {
-              setAuthMethod('otp');
-              setOtpStep(1);
-              setError('');
-              setSuccessInfo('');
-            }}
-          >
-            <User size={14} /> Email OTP Login
-          </button>
-          <button
-            type="button"
-            className={`method-btn ${authMethod === 'password' ? 'active' : ''}`}
-            onClick={() => {
-              setAuthMethod('password');
-              setError('');
-              setSuccessInfo('');
-            }}
-          >
-            <KeyRound size={14} /> Password Login
-          </button>
-        </div>
+      <div className="auth-split-wrapper">
+        {/* ==================================================================
+            LEFT 45%: Brand Trust Panel (Collapses on mobile)
+            ================================================================== */}
+        <section className="auth-brand-panel" aria-label="Brand Introduction">
+          <div className="brand-header-row">
+            <Link to="/" className="brand-logo-link">
+              <div className="brand-logo-badge">
+                <Wrench size={22} />
+              </div>
+              <span className="brand-logo-text">SmartFix</span>
+            </Link>
 
-        {/* Role Toggle: Customer vs Handyman (Only show during signup) */}
-        {mode === 'signup' && (
-          <div className="role-toggle">
             <button
               type="button"
-              className={role === 'customer' ? 'active' : ''}
-              onClick={() => setRole('customer')}
+              className="brand-lang-toggle"
+              onClick={() => setLanguage(language === 'ta' ? 'en' : 'ta')}
+              aria-label="Toggle language"
             >
-              👤 Customer Account
-            </button>
-            <button
-              type="button"
-              className={role === 'handyman' ? 'active' : ''}
-              onClick={() => setRole('handyman')}
-            >
-              🛠️ Handyman Pro
+              <Globe size={14} />
+              <span>{language === 'ta' ? 'English' : 'தமிழ்'}</span>
             </button>
           </div>
-        )}
 
+          <div className="brand-content">
+            <h1 className="brand-headline">
+              {t('auth.brand_headline', 'Verified home services across Tamil Nadu')}
+            </h1>
+            <p className="brand-subheadline">
+              {t(
+                'auth.brand_subheadline',
+                'Connect with top-rated plumbers, electricians, and technicians in Sivagangai, Madurai, and throughout Tamil Nadu.'
+              )}
+            </p>
 
+            <div className="brand-trust-list">
+              <div className="brand-trust-item">
+                <div className="brand-trust-icon">
+                  <ShieldCheck size={18} />
+                </div>
+                <div className="brand-trust-text">
+                  <strong>{t('auth.trust_point_1', 'KYC-verified skilled technicians')}</strong>
+                  <br />
+                  Background and Aadhaar-verified trade experts.
+                </div>
+              </div>
 
-        {/* OTP Authentication Flow */}
-        {authMethod === 'otp' ? (
-          <div className="otp-auth-container">
-            {otpStep === 1 ? (
-              <form onSubmit={handleSendOtp} className="login-form">
-                {mode === 'signup' && (
-                  <div className="form-group">
-                    <label><User size={15} /> Full Name</label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={form.name}
-                      onChange={handleChange}
-                      placeholder="Enter your full name"
-                      required={mode === 'signup'}
-                    />
+              <div className="brand-trust-item">
+                <div className="brand-trust-icon">
+                  <MapPin size={18} />
+                </div>
+                <div className="brand-trust-text">
+                  <strong>{t('auth.trust_point_2', 'Live GPS tracking & arrival ETA')}</strong>
+                  <br />
+                  Real-time turn-by-turn technician updates to your door.
+                </div>
+              </div>
+
+              <div className="brand-trust-item">
+                <div className="brand-trust-icon">
+                  <CreditCard size={18} />
+                </div>
+                <div className="brand-trust-text">
+                  <strong>{t('auth.trust_point_3', 'Safe digital payments & zero hidden fees')}</strong>
+                  <br />
+                  Transparent hourly rates and instant Razorpay processing.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="brand-footer">
+            <span>© {new Date().getFullYear()} SmartFix Home Services India Pvt. Ltd.</span>
+          </div>
+        </section>
+
+        {/* ==================================================================
+            RIGHT 55%: Centered Login Card (max-width 420px)
+            ================================================================== */}
+        <section className="auth-form-panel">
+          <div className="auth-card">
+            {/* Header */}
+            <div className="auth-card-header">
+              <h2 className="auth-card-title">{t('auth.welcome_back', 'Welcome back')}</h2>
+              <p className="auth-card-subtitle">
+                {role === 'customer'
+                  ? 'Sign in to manage bookings and request verified local services.'
+                  : 'Sign in to access provider jobs, live duty toggle, and payouts.'}
+              </p>
+            </div>
+
+            {/* Segmented Control: Customer | Service Provider */}
+            <div className="auth-segmented-control" role="tablist" aria-label="Portal Selection">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={role === 'customer'}
+                className={`segmented-btn ${role === 'customer' ? 'active customer' : ''}`}
+                onClick={() => {
+                  setRole('customer');
+                  setRoleMismatchError('');
+                  setGeneralError('');
+                }}
+              >
+                <UserIcon size={16} />
+                <span>{t('auth.customer', 'Customer')}</span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={role === 'worker'}
+                className={`segmented-btn ${role === 'worker' ? 'active worker' : ''}`}
+                onClick={() => {
+                  setRole('worker');
+                  setRoleMismatchError('');
+                  setGeneralError('');
+                }}
+              >
+                <Wrench size={16} />
+                <span>{t('auth.worker', 'Service provider')}</span>
+              </button>
+            </div>
+
+            {/* Lockout Warning Banner */}
+            {lockoutInfo && (
+              <div className="auth-alert auth-alert-danger" role="alert">
+                <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                <div>
+                  <strong>Account temporarily locked</strong>
+                  <div>
+                    Too many failed login attempts. Please wait{' '}
+                    <span style={{ fontWeight: 700 }}>
+                      {Math.floor(lockoutSecondsLeft / 60)}:
+                      {String(lockoutSecondsLeft % 60).padStart(2, '0')}
+                    </span>{' '}
+                    or reset your password.
                   </div>
-                )}
+                </div>
+              </div>
+            )}
 
-                {mode === 'signup' && (
-                  <div className="form-group">
-                    <label><Globe size={15} /> {t('select_language')}</label>
-                    <select
-                      name="preferredLanguage"
-                      value={form.preferredLanguage}
-                      onChange={(e) => {
-                        handleChange(e);
-                        setLanguage(e.target.value);
+            {/* Role Mismatch Warning Banner */}
+            {roleMismatchError && (
+              <div className="auth-alert auth-alert-warning" role="alert">
+                <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                <div>{roleMismatchError}</div>
+              </div>
+            )}
+
+            {/* General Error Banner */}
+            {generalError && !lockoutInfo && !roleMismatchError && (
+              <div className="auth-alert auth-alert-danger" role="alert">
+                <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                <div>{generalError}</div>
+              </div>
+            )}
+
+            {/* Official Google Button */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setGeneralError('Google sign-in could not be completed. Please try again.')}
+                theme="outline"
+                size="large"
+                shape="rectangular"
+                width="100%"
+                text="continue_with"
+                disabled={submitting || googleLoading || !!lockoutInfo}
+              />
+            </div>
+
+            {/* Divider */}
+            <div className="auth-divider">
+              <span className="auth-divider-text">{t('auth.or_sign_in_email', 'or sign in with email')}</span>
+            </div>
+
+            {/* Email + Password Form */}
+            <form className="auth-form" onSubmit={handleSubmit} noValidate>
+              {/* Email Field */}
+              <div className="auth-form-group">
+                <label htmlFor="login-email" className="auth-label">
+                  {t('auth.email_label', 'Email address')}
+                </label>
+                <div className="auth-input-wrapper">
+                  <input
+                    id="login-email"
+                    type="email"
+                    autoComplete="email"
+                    className={`auth-input ${role === 'worker' ? 'worker' : ''} ${
+                      errors.email ? 'is-invalid' : ''
+                    }`}
+                    placeholder="name@example.com"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
+                    }}
+                    onBlur={handleEmailBlur}
+                    disabled={submitting || !!lockoutInfo}
+                  />
+                </div>
+                {errors.email && (
+                  <span className="auth-error-text" role="alert">
+                    <AlertCircle size={12} /> {errors.email}
+                  </span>
+                )}
+              </div>
+
+              {/* Password Field */}
+              <div className="auth-form-group">
+                <div className="auth-label-row">
+                  <label htmlFor="login-password" className="auth-label">
+                    {t('auth.password_label', 'Password')}
+                  </label>
+                  <button
+                    type="button"
+                    className={`btn-link-action ${role === 'worker' ? 'worker' : ''}`}
+                    onClick={() => {
+                      setForgotEmail(email);
+                      setForgotStep(1);
+                      setShowForgotPassword(true);
+                    }}
+                  >
+                    {t('auth.forgot_password', 'Forgot password?')}
+                  </button>
+                </div>
+                <div className="auth-input-wrapper">
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    className={`auth-input ${role === 'worker' ? 'worker' : ''} ${
+                      errors.password ? 'is-invalid' : ''
+                    }`}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errors.password) setErrors((prev) => ({ ...prev, password: '' }));
+                    }}
+                    onBlur={handlePasswordBlur}
+                    disabled={submitting || !!lockoutInfo}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                {errors.password && (
+                  <span className="auth-error-text" role="alert">
+                    <AlertCircle size={12} /> {errors.password}
+                  </span>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                className={`btn-primary-auth ${role}`}
+                disabled={submitting || googleLoading || !!lockoutInfo}
+              >
+                {submitting ? (
+                  <span>Signing in...</span>
+                ) : (
+                  <span>{t('auth.sign_in', 'Sign in')}</span>
+                )}
+              </button>
+            </form>
+
+            {/* Footer Links & ISO Security Note */}
+            <div className="auth-card-footer">
+              <div className="auth-footer-prompt">
+                {role === 'customer' ? (
+                  <>
+                    <span>New to SmartFix? </span>
+                    <button
+                      type="button"
+                      className="btn-link-action"
+                      style={{ fontWeight: 600 }}
+                      onClick={() => {
+                        signupOtpRef.current = '';
+                        setSignupOtp('');
+                        setSignupError('');
+                        setSignupStep(1);
+                        setShowSignupModal(true);
                       }}
                     >
-                      <option value="en">English (Default)</option>
-                      <option value="ta">தமிழ் (Tamil)</option>
-                    </select>
+                      Create an account
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span>Want to offer services? </span>
+                    <Link to="/worker/signup" className="auth-footer-link worker">
+                      {t('auth.apply_as_provider', 'Apply as a provider')}
+                    </Link>
+                  </>
+                )}
+              </div>
+
+              <div className="auth-security-badge">
+                <Lock size={12} />
+                <span>{t('auth.security_note', '256-bit SSL encrypted • ISO certified security')}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* ==================================================================
+          MODAL: Forgot Password (Email OTP -> Reset Token -> New Password)
+          ================================================================== */}
+      {showForgotPassword && (
+        <div className="auth-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="auth-modal-card">
+            <button
+              type="button"
+              className="auth-modal-close"
+              onClick={() => setShowForgotPassword(false)}
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+
+            {forgotStep === 1 && (
+              <div>
+                <h3 className="auth-card-title">Reset password</h3>
+                <p className="auth-card-subtitle" style={{ marginBottom: '20px' }}>
+                  Enter your registered email address and we will send you a 6-digit verification code.
+                </p>
+
+                {forgotError && (
+                  <div className="auth-alert auth-alert-danger">
+                    <AlertCircle size={16} /> <span>{forgotError}</span>
                   </div>
                 )}
 
-                {mode === 'signup' && role === 'handyman' && (
-                  <div className="handyman-fields-box">
-                    <div className="form-group">
-                      <label><Wrench size={15} /> Select Primary Trade</label>
-                      <select name="trade" value={form.trade} onChange={handleTradeChange}>
-                        {HOME_SERVICES.map((cat) => (
-                          <option key={cat.id} value={cat.name}>
-                            {cat.icon} {cat.name}
+                <form onSubmit={handleForgotSendOtp}>
+                  <div className="auth-form-group">
+                    <label className="auth-label">Email address</label>
+                    <input
+                      type="email"
+                      className="auth-input"
+                      placeholder="name@example.com"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="btn-primary-auth customer"
+                    style={{ marginTop: '20px' }}
+                    disabled={forgotLoading}
+                  >
+                    {forgotLoading ? 'Sending code...' : 'Send verification code'}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {forgotStep === 2 && (
+              <div>
+                <h3 className="auth-card-title">Verify code</h3>
+                <p className="auth-card-subtitle">
+                  We sent a 6-digit code to <strong>{forgotEmail}</strong>.
+                </p>
+
+                {forgotError && (
+                  <div className="auth-alert auth-alert-danger">
+                    <AlertCircle size={16} /> <span>{forgotError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={(e) => handleForgotVerifyOtp(e, forgotOtp)}>
+                  <OtpInput
+                    value={forgotOtp}
+                    onChange={(val) => {
+                      setForgotOtp(val);
+                      if (forgotError) setForgotError('');
+                      if (val.length === 6) {
+                        handleForgotVerifyOtp(null, val);
+                      }
+                    }}
+                    disabled={forgotLoading}
+                    autoFocus
+                  />
+
+                  <button
+                    type="submit"
+                    className="btn-primary-auth customer"
+                    style={{ marginTop: '16px', width: '100%' }}
+                    disabled={forgotLoading || forgotOtp.length < 6}
+                  >
+                    {forgotLoading ? 'Verifying code...' : 'Verify code'}
+                  </button>
+                </form>
+
+                <div className="otp-meta-row" style={{ marginTop: '14px' }}>
+                  <span>
+                    Expires in {Math.floor(forgotTimer / 60)}:
+                    {String(forgotTimer % 60).padStart(2, '0')}
+                  </span>
+                  {forgotResendTimer > 0 ? (
+                    <span>Resend in {forgotResendTimer}s</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-link-action"
+                      onClick={handleForgotSendOtp}
+                      disabled={forgotLoading}
+                    >
+                      Resend code
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn-link-action"
+                    onClick={() => {
+                      setForgotOtp('');
+                      setForgotError('');
+                      setForgotStep(1);
+                    }}
+                  >
+                    Change email
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {forgotStep === 3 && (
+              <div>
+                <h3 className="auth-card-title">Set new password</h3>
+                <p className="auth-card-subtitle" style={{ marginBottom: '16px' }}>
+                  Choose a secure password for your account.
+                </p>
+
+                {forgotError && (
+                  <div className="auth-alert auth-alert-danger">
+                    <AlertCircle size={16} /> <span>{forgotError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleForgotResetPassword}>
+                  <div className="auth-form-group">
+                    <label className="auth-label">New password</label>
+                    <input
+                      type="password"
+                      className="auth-input"
+                      placeholder="At least 8 characters"
+                      value={forgotNewPass}
+                      onChange={(e) => setForgotNewPass(e.target.value)}
+                      required
+                    />
+
+                    {/* Password Strength Meter */}
+                    <div className="password-strength-bar">
+                      <div
+                        className={`strength-segment ${
+                          getPasswordStrength(forgotNewPass) >= 1 ? 'active-weak' : ''
+                        }`}
+                      />
+                      <div
+                        className={`strength-segment ${
+                          getPasswordStrength(forgotNewPass) >= 2 ? 'active-fair' : ''
+                        }`}
+                      />
+                      <div
+                        className={`strength-segment ${
+                          getPasswordStrength(forgotNewPass) >= 3 ? 'active-good' : ''
+                        }`}
+                      />
+                    </div>
+
+                    <div className="password-checklist">
+                      <span
+                        className={`checklist-item ${
+                          forgotNewPass.length >= 8 ? 'valid' : ''
+                        }`}
+                      >
+                        <CheckCircle size={12} /> Minimum 8 characters
+                      </span>
+                      <span
+                        className={`checklist-item ${
+                          /(?=.*[A-Za-z])(?=.*\d)/.test(forgotNewPass) ? 'valid' : ''
+                        }`}
+                      >
+                        <CheckCircle size={12} /> Contains at least 1 letter and 1 number
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="auth-form-group" style={{ marginTop: '14px' }}>
+                    <label className="auth-label">Confirm password</label>
+                    <input
+                      type="password"
+                      className="auth-input"
+                      placeholder="Re-enter new password"
+                      value={forgotConfirmPass}
+                      onChange={(e) => setForgotConfirmPass(e.target.value)}
+                      required
+                    />
+                    {forgotConfirmPass && forgotNewPass !== forgotConfirmPass && (
+                      <span className="auth-error-text">
+                        <AlertCircle size={12} /> Passwords do not match.
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="btn-primary-auth customer"
+                    style={{ marginTop: '20px' }}
+                    disabled={forgotLoading}
+                  >
+                    {forgotLoading ? 'Updating password...' : 'Update password'}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {forgotStep === 4 && (
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <CheckCircle size={44} color="#16a34a" style={{ margin: '0 auto 16px' }} />
+                <h3 className="auth-card-title">Password updated</h3>
+                <p className="auth-card-subtitle" style={{ marginBottom: '24px' }}>
+                  Your password has been changed successfully. You can now sign in with your new password.
+                </p>
+                <button
+                  type="button"
+                  className="btn-primary-auth customer"
+                  onClick={() => setShowForgotPassword(false)}
+                >
+                  Return to sign in
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================
+          MODAL: Customer Signup (Email OTP -> Profile Form)
+          ================================================================== */}
+      {showSignupModal && (
+        <div className="auth-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="auth-modal-card">
+            <button
+              type="button"
+              className="auth-modal-close"
+              onClick={() => setShowSignupModal(false)}
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+
+            {signupStep === 1 && (
+              <div>
+                <h3 className="auth-card-title">Create customer account</h3>
+                <p className="auth-card-subtitle" style={{ marginBottom: '20px' }}>
+                  Enter your email address to receive a 6-digit verification code.
+                </p>
+
+                {signupError && (
+                  <div className="auth-alert auth-alert-danger">
+                    <AlertCircle size={16} /> <span>{signupError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleSignupSendOtp}>
+                  <div className="auth-form-group">
+                    <label className="auth-label">Email address</label>
+                    <input
+                      type="email"
+                      className="auth-input"
+                      placeholder="name@example.com"
+                      value={signupEmail}
+                      onChange={(e) => setSignupEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="btn-primary-auth customer"
+                    style={{ marginTop: '20px' }}
+                    disabled={signupLoading}
+                  >
+                    {signupLoading ? 'Sending code...' : 'Continue with email'}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {signupStep === 2 && (
+              <div>
+                <h3 className="auth-card-title">Verify your email</h3>
+                <p className="auth-card-subtitle">
+                  We sent a 6-digit code to <strong>{signupEmail}</strong>.
+                </p>
+
+                {signupError && (
+                  <div className="auth-alert auth-alert-danger">
+                    <AlertCircle size={16} /> <span>{signupError}</span>
+                  </div>
+                )}
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSignupVerifyOtp(e, signupOtpRef.current || signupOtp);
+                  }}
+                >
+                  <OtpInput
+                    value={signupOtp}
+                    onChange={(val) => {
+                      signupOtpRef.current = val;
+                      setSignupOtp(val);
+                      if (signupError) setSignupError('');
+                    }}
+                    onComplete={(fullCode) => {
+                      signupOtpRef.current = fullCode;
+                      setSignupOtp(fullCode);
+                      if (signupError) setSignupError('');
+                      handleSignupVerifyOtp(null, fullCode);
+                    }}
+                    disabled={signupLoading}
+                    autoFocus
+                  />
+
+                  <button
+                    type="submit"
+                    className="btn-primary-auth customer"
+                    style={{
+                      marginTop: '16px',
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      padding: '12px 20px',
+                      borderRadius: '10px',
+                      fontSize: '1rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                    disabled={signupLoading || (signupOtp.length < 6 && (signupOtpRef.current?.length || 0) < 6)}
+                  >
+                    {signupLoading ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: '1rem', height: '1rem' }} />
+                        <span>Verifying code...</span>
+                      </>
+                    ) : (
+                      'Verify code'
+                    )}
+                  </button>
+                </form>
+
+                <div className="otp-meta-row" style={{ marginTop: '14px' }}>
+                  <span>
+                    Expires in {Math.floor(signupTimer / 60)}:
+                    {String(signupTimer % 60).padStart(2, '0')}
+                  </span>
+                  {signupResendTimer > 0 ? (
+                    <span>Resend in {signupResendTimer}s</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-link-action"
+                      onClick={handleSignupSendOtp}
+                      disabled={signupLoading}
+                    >
+                      Resend code
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn-link-action"
+                    onClick={() => {
+                      signupOtpRef.current = '';
+                      setSignupOtp('');
+                      setSignupError('');
+                      setSignupStep(1);
+                    }}
+                  >
+                    Change email
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {signupStep === 3 && (
+              <div>
+                <h3 className="auth-card-title">Complete your profile</h3>
+                <p className="auth-card-subtitle" style={{ marginBottom: '16px' }}>
+                  Provide your contact and address details to book local services.
+                </p>
+
+                {signupError && (
+                  <div className="auth-alert auth-alert-danger">
+                    <AlertCircle size={16} /> <span>{signupError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleSignupComplete}>
+                  <div className="auth-form-group">
+                    <label className="auth-label">Full name</label>
+                    <input
+                      type="text"
+                      className="auth-input"
+                      placeholder="Your name"
+                      value={signupForm.name}
+                      onChange={(e) =>
+                        setSignupForm({ ...signupForm, name: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="auth-form-group" style={{ marginTop: '12px' }}>
+                    <label className="auth-label">Mobile number</label>
+                    <div className="auth-input-wrapper">
+                      <input
+                        type="tel"
+                        className="auth-input"
+                        placeholder="9876543210 (10 digits)"
+                        value={signupForm.phone}
+                        onChange={(e) =>
+                          setSignupForm({ ...signupForm, phone: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="auth-form-group" style={{ marginTop: '12px' }}>
+                    <label className="auth-label">Password</label>
+                    <div className="auth-input-wrapper">
+                      <input
+                        type={showSignupPass ? 'text' : 'password'}
+                        className="auth-input"
+                        placeholder="Min 8 chars, 1 letter + 1 number"
+                        value={signupForm.password}
+                        onChange={(e) =>
+                          setSignupForm({ ...signupForm, password: e.target.value })
+                        }
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="auth-eye-btn"
+                        onClick={() => setShowSignupPass(!showSignupPass)}
+                        aria-label="Toggle password visibility"
+                      >
+                        {showSignupPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="auth-form-group" style={{ marginTop: '12px' }}>
+                    <label className="auth-label">Confirm password</label>
+                    <div className="auth-input-wrapper">
+                      <input
+                        type={showSignupConfirmPass ? 'text' : 'password'}
+                        className="auth-input"
+                        placeholder="Re-type password"
+                        value={signupForm.confirmPassword}
+                        onChange={(e) =>
+                          setSignupForm({ ...signupForm, confirmPassword: e.target.value })
+                        }
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="auth-eye-btn"
+                        onClick={() => setShowSignupConfirmPass(!showSignupConfirmPass)}
+                        aria-label="Toggle confirm password visibility"
+                      >
+                        {showSignupConfirmPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="auth-form-group" style={{ marginTop: '12px' }}>
+                    <label className="auth-label">Address / Street</label>
+                    <input
+                      type="text"
+                      className="auth-input"
+                      placeholder="House number, street name"
+                      value={signupForm.address}
+                      onChange={(e) =>
+                        setSignupForm({ ...signupForm, address: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '10px',
+                      marginTop: '12px',
+                    }}
+                  >
+                    <div className="auth-form-group">
+                      <label className="auth-label">District</label>
+                      <select
+                        className="auth-input"
+                        value={signupForm.district}
+                        onChange={(e) =>
+                          setSignupForm({ ...signupForm, district: e.target.value })
+                        }
+                      >
+                        {TN_DISTRICTS.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
                           </option>
                         ))}
                       </select>
                     </div>
 
-                    <div className="form-group">
-                      <label style={{ display: 'block', marginBottom: '8px' }}>
-                        <Wrench size={14} style={{ marginRight: '6px' }} />
-                        Sub-Services Offered <span style={{ color: '#dc2626', fontSize: '0.8rem' }}>* select all you offer</span>
-                      </label>
-                      <div className="subservice-checkbox-grid">
-                        {getSubServicesForTrade(form.trade).map((sub) => (
-                          <label key={sub} className={`subservice-checkbox-item ${selectedSubServices.includes(sub) ? 'checked' : ''}`}>
-                            <input
-                              type="checkbox"
-                              checked={selectedSubServices.includes(sub)}
-                              onChange={() => handleSubServiceToggle(sub)}
-                            />
-                            <span>{sub}</span>
-                          </label>
-                        ))}
-                      </div>
-                      {selectedSubServices.length > 0 && (
-                        <p style={{ fontSize: '0.78rem', color: '#059669', marginTop: '6px', marginBottom: 0 }}>
-                          ✅ {selectedSubServices.length} sub-service{selectedSubServices.length > 1 ? 's' : ''} selected
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="form-row-2">
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ marginBottom: '8px' }}>Service Area (Tamil Nadu) <span style={{ color: '#dc2626' }}>*</span></label>
-                        <LocationSelector
-                          value={form.location}
-                          onChange={handleChange}
-                          required={true}
-                        />
-                      </div>
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <label>Hourly Rate (₹/hr)</label>
-                        <input
-                          type="number"
-                          name="ratePerHour"
-                          value={form.ratePerHour}
-                          onChange={handleChange}
-                          placeholder="350"
-                          min="100"
-                        />
-                      </div>
-                    </div>
-
-
-                  </div>
-                )}
-
-                {/* Dual Input Fields for Signup */
-                mode === 'signup' ? (
-                  <>
-                    <div className="form-group">
-                      <label><User size={15} /> Email Address <span style={{color: '#ef4444'}}>*</span></label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={form.email}
-                        onChange={handleChange}
-                        placeholder="Enter your email address"
-                        required
-                        style={{ padding: '12px', borderRadius: '8px', border: '1px solid #ccc', width: '100%' }}
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginTop: '16px' }}>
-                      <label><Phone size={15} /> Mobile Number (+91) <span style={{color: '#ef4444'}}>*</span></label>
-                      <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', fontWeight: '700', color: '#475569' }}>
-                          🇮🇳 +91
-                        </span>
-                        <input
-                          type="tel"
-                          name="phone"
-                          value={form.phone}
-                          onChange={handleChange}
-                          placeholder="Enter 10-digit mobile number"
-                          maxLength={10}
-                          required
-                          style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="form-group" style={{ marginTop: '16px' }}>
-                      <label><MapPin size={15} /> Your Home Address <span style={{color: '#ef4444'}}>*</span></label>
+                    <div className="auth-form-group">
+                      <label className="auth-label">State</label>
                       <input
                         type="text"
-                        name="location"
-                        value={form.location}
-                        onChange={handleChange}
-                        placeholder="e.g., Kalpana theater pinadi, Karaikudi"
-                        required
-                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="form-group">
-                    <label><User size={15} /> Email Address</label>
-                    <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="email"
-                        name="identifier"
-                        value={form.identifier}
-                        onChange={handleChange}
-                        placeholder="Enter your Email Address"
-                        required
-                        autoFocus
-                        style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
+                        className="auth-input"
+                        value={signupForm.state}
+                        readOnly
                       />
                     </div>
                   </div>
-                )}
 
-                {error && <div className="login-error-alert">{error}</div>}
-
-                <button type="submit" className="login-submit-btn" disabled={submitting}>
-                  {submitting ? 'Sending Verification OTP...' : 'Send 6-Digit Verification OTP 📲'}
-                </button>
-              </form>
-            ) : otpStep === 2 ? (
-              <form onSubmit={handleVerifyOtp} className="login-form">
-                {successInfo && (
-                  <div className="otp-demo-alert">
-                    <CheckCircle2 size={18} color="#059669" />
-                    <div>
-                      <strong>Email OTP Sent Successfully!</strong>
-                      <p>{successInfo}</p>
-                    </div>
-                  </div>
-                )}
-
-                {mode === 'signup' ? (
-                  <>
-                    <div className="form-group">
-                      <label><KeyRound size={15} /> Enter Email OTP</label>
-                      <OtpInput value={emailOtpCode} onChange={setEmailOtpCode} error={!!error} />
-                    </div>
-                  </>
-                ) : (
-                  <div className="form-group">
-                    <label><KeyRound size={15} /> Enter 6-Digit OTP Code</label>
-                    <OtpInput value={otpCode} onChange={setOtpCode} error={!!error} />
-                  </div>
-                )}
-
-                <div className="otp-timer-bar">
-                  {timerActive ? (
-                    <span>Resend OTP in <strong>{timer}s</strong></span>
-                  ) : (
-                    <button type="button" className="resend-otp-btn" onClick={handleSendOtp}>
-                      <RotateCcw size={13} /> Resend OTP Code
-                    </button>
-                  )}
-                  <button type="button" className="change-phone-btn" onClick={() => setOtpStep(1)}>
-                    Edit Phone Number
+                  <button
+                    type="submit"
+                    className="btn-primary-auth customer"
+                    style={{ marginTop: '20px' }}
+                    disabled={signupLoading}
+                  >
+                    {signupLoading ? 'Creating account...' : 'Create account'}
                   </button>
-                </div>
-
-                {error && <div className="login-error-alert">{error}</div>}
-
-                <button type="submit" className="login-submit-btn" disabled={submitting}>
-                  {submitting ? 'Verifying Code...' : (mode === 'signup' ? 'Verify OTP & Set Password 🚀' : 'Verify OTP & Log In 🚀')}
-                </button>
-              </form>
-            ) : (
-              /* Signup Step 3: Password Creation Form */
-              <form onSubmit={handleCompleteSignupWithPassword} className="login-form">
-                {successInfo && (
-                  <div className="otp-demo-alert" style={{ background: '#ecfdf5', borderColor: '#6ee7b7', color: '#065f46' }}>
-                    <CheckCircle2 size={18} color="#059669" />
-                    <div>
-                      <strong>Verified Successfully!</strong>
-                      <p>{successInfo}</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label><Lock size={15} /> Create Password (min 6 chars)</label>
-                  <input
-                    type="password"
-                    name="password"
-                    value={form.password}
-                    onChange={handleChange}
-                    placeholder="••••••••"
-                    required
-                    minLength={6}
-                    autoFocus
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label><Lock size={15} /> Confirm Password</label>
-                  <input
-                    type="password"
-                    name="confirmPassword"
-                    value={form.confirmPassword}
-                    onChange={handleChange}
-                    placeholder="••••••••"
-                    required
-                    minLength={6}
-                  />
-                </div>
-
-                {error && <div className="login-error-alert">{error}</div>}
-
-                <button type="submit" className="login-submit-btn" disabled={submitting}>
-                  {submitting ? 'Creating Account...' : 'Complete Account Registration 🎉'}
-                </button>
-              </form>
+                </form>
+              </div>
             )}
           </div>
-        ) : (
-          /* Password Authentication Form */
-          <form onSubmit={handlePasswordSubmit} className="login-form">
-            {mode === 'signup' && (
-              <div className="form-group">
-                <label><User size={15} /> Full Name</label>
-                <input
-                  type="text"
-                  name="name"
-                  value={form.name}
-                  onChange={handleChange}
-                  placeholder="Enter your full name"
-                  required
-                />
+        </div>
+      )}
+
+      {/* ==================================================================
+          MODAL: Complete Profile for Google Users
+          ================================================================== */}
+      {showGoogleProfileModal && (
+        <div className="auth-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="auth-modal-card">
+            <h3 className="auth-card-title">Complete your profile</h3>
+            <p className="auth-card-subtitle" style={{ marginBottom: '16px' }}>
+              Your Google account is verified. Add your contact phone and address to start booking verified technicians.
+            </p>
+
+            {googleProfileError && (
+              <div className="auth-alert auth-alert-danger">
+                <AlertCircle size={16} /> <span>{googleProfileError}</span>
               </div>
             )}
 
-            {mode === 'signup' ? (
-              <div className="form-group">
-                <label><User size={15} /> Email or Mobile Number</label>
+            <form onSubmit={handleGoogleProfileSubmit}>
+              <div className="auth-form-group">
+                <label className="auth-label">Mobile number</label>
                 <input
-                  type="text"
-                  name="identifier"
-                  value={form.identifier}
-                  onChange={handleChange}
-                  placeholder="Enter Email or 10-digit mobile number"
+                  type="tel"
+                  className="auth-input"
+                  placeholder="9876543210 (10 digits)"
+                  value={googleProfileForm.phone}
+                  onChange={(e) =>
+                    setGoogleProfileForm({ ...googleProfileForm, phone: e.target.value })
+                  }
                   required
                 />
               </div>
-            ) : (
-              <div className="form-group">
-                <label><User size={15} /> Email Address</label>
-                <div className="phone-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="email"
-                    name="identifier"
-                    value={form.identifier}
-                    onChange={handleChange}
-                    placeholder="Enter your Email Address"
-                    required
-                    style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc' }}
-                  />
-                </div>
-              </div>
-            )}
 
-            <div className="form-group">
-              <div className="label-with-action">
-                <label><Lock size={15} /> Password</label>
-                {mode === 'login' && (
-                  <button
-                    type="button"
-                    className="forgot-password-link-btn"
-                    onClick={() => {
-                      setShowForgotPassword(true);
-                      setForgotStep(1);
-                      setForgotPhone(form.identifier);
-                      setError('');
-                    }}
+              <div className="auth-form-group" style={{ marginTop: '12px' }}>
+                <label className="auth-label">Street address</label>
+                <input
+                  type="text"
+                  className="auth-input"
+                  placeholder="House number, street name"
+                  value={googleProfileForm.address}
+                  onChange={(e) =>
+                    setGoogleProfileForm({ ...googleProfileForm, address: e.target.value })
+                  }
+                  required
+                />
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '10px',
+                  marginTop: '12px',
+                }}
+              >
+                <div className="auth-form-group">
+                  <label className="auth-label">District</label>
+                  <select
+                    className="auth-input"
+                    value={googleProfileForm.district}
+                    onChange={(e) =>
+                      setGoogleProfileForm({ ...googleProfileForm, district: e.target.value })
+                    }
                   >
-                    Forgot Password?
-                  </button>
-                )}
-              </div>
-              <input
-                type="password"
-                name="password"
-                value={form.password}
-                onChange={handleChange}
-                placeholder="Enter password (min 6 characters)"
-                required
-              />
-            </div>
-
-            {mode === 'signup' && (
-              <div className="form-group">
-                <label><Lock size={15} /> Confirm Password</label>
-                <input
-                  type="password"
-                  name="confirmPassword"
-                  value={form.confirmPassword}
-                  onChange={handleChange}
-                  placeholder="Re-enter password"
-                  required
-                />
-              </div>
-            )}
-
-            {mode === 'signup' && role === 'handyman' && (
-              <div className="handyman-fields-box">
-                <div className="form-group">
-                  <label><Wrench size={15} /> Select Primary Trade</label>
-                  <select name="trade" value={form.trade} onChange={handleTradeChange}>
-                    {HOME_SERVICES.map((cat) => (
-                      <option key={cat.id} value={cat.name}>
-                        {cat.icon} {cat.name}
+                    {TN_DISTRICTS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                <div className="form-group">
-                  <label style={{ display: 'block', marginBottom: '8px' }}>
-                    <Wrench size={14} style={{ marginRight: '6px' }} />
-                    Sub-Services Offered <span style={{ color: '#dc2626', fontSize: '0.8rem' }}>* select all you offer</span>
-                  </label>
-                  <div className="subservice-checkbox-grid">
-                    {getSubServicesForTrade(form.trade).map((sub) => (
-                      <label key={sub} className={`subservice-checkbox-item ${selectedSubServices.includes(sub) ? 'checked' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={selectedSubServices.includes(sub)}
-                          onChange={() => handleSubServiceToggle(sub)}
-                        />
-                        <span>{sub}</span>
-                      </label>
-                    ))}
-                  </div>
-                  {selectedSubServices.length > 0 && (
-                    <p style={{ fontSize: '0.78rem', color: '#059669', marginTop: '6px', marginBottom: 0 }}>
-                      ✅ {selectedSubServices.length} sub-service{selectedSubServices.length > 1 ? 's' : ''} selected
-                    </p>
-                  )}
-                </div>
-
-                <div className="form-row-2">
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ marginBottom: '8px' }}>Service Area (Tamil Nadu) <span style={{ color: '#dc2626' }}>*</span></label>
-                    <LocationSelector
-                      value={form.location}
-                      onChange={handleChange}
-                      required={true}
-                    />
-                  </div>
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label>Hourly Rate (₹/hr)</label>
-                    <input
-                      type="number"
-                      name="ratePerHour"
-                      value={form.ratePerHour}
-                      onChange={handleChange}
-                      placeholder="350"
-                      min="100"
-                    />
-                  </div>
-                </div>
-
-
-              </div>
-            )}
-
-            {error && <div className="login-error-alert">{error}</div>}
-
-            <button type="submit" className="login-submit-btn" disabled={submitting}>
-              {submitting
-                ? 'Authenticating...'
-                : mode === 'login'
-                ? `Login as ${role === 'handyman' ? 'Handyman' : 'Customer'}`
-                : `Create ${role === 'handyman' ? 'Handyman' : 'Customer'} Account`}
-            </button>
-          </form>
-        )}
-        {/* Google SSO Divider */}
-        <div className="google-divider">
-          <span>OR</span>
-        </div>
-
-        <button 
-          type="button" 
-          className="google-login-btn"
-          onClick={handleGoogleLogin}
-          disabled={submitting}
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="google-icon" />
-          Continue with Google
-        </button>
-
-        {/* Footer Toggle Switch */}
-        <div className="auth-footer-switcher">
-          {mode === 'login' ? (
-            <p>
-              Don't have an account?{' '}
-              <button type="button" className="link-switch-btn" onClick={() => setMode('signup')}>
-                Sign up now
-              </button>
-            </p>
-          ) : (
-            <p>
-              Already have an account?{' '}
-              <button type="button" className="link-switch-btn" onClick={() => setMode('login')}>
-                Log in here
-              </button>
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Forgot Password Modal */}
-      {showForgotPassword && (
-        <div className="payment-modal-overlay" onClick={() => setShowForgotPassword(false)}>
-          <div
-            className="payment-modal-content forgot-modal-container"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '480px', width: '92%', padding: '24px' }}
-          >
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <KeyRound size={22} color="#2563eb" /> Reset Forgot Password
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowForgotPassword(false)}
-                style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {forgotStep === 1 ? (
-              <form onSubmit={handleSendForgotOtp}>
-                <p style={{ color: '#475569', fontSize: '0.9rem', marginBottom: '16px', lineHeight: '1.5' }}>
-                  Enter your registered phone number to receive a 6-digit Reset OTP.
-                </p>
-
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label><Phone size={15} /> Registered Phone Number</label>
-                  <input
-                    type="tel"
-                    value={forgotPhone}
-                    onChange={(e) => setForgotPhone(e.target.value)}
-                    placeholder="Enter 10-digit phone number"
-                    required
-                  />
-                </div>
-
-                {error && <div className="login-error-alert" style={{ marginBottom: '16px' }}>{error}</div>}
-
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowForgotPassword(false)}
-                    style={{ padding: '10px 16px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#475569', fontWeight: '600', cursor: 'pointer' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    style={{ padding: '10px 20px', borderRadius: '10px', border: 'none', background: '#2563eb', color: '#ffffff', fontWeight: '600', cursor: 'pointer' }}
-                  >
-                    {submitting ? 'Sending OTP...' : 'Send Reset OTP 📲'}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <form onSubmit={handleResetPasswordSubmit}>
-                <p style={{ color: '#475569', fontSize: '0.9rem', marginBottom: '16px', lineHeight: '1.5' }}>
-                  Enter the 6-digit OTP code sent to <strong>{forgotPhone}</strong> and set your new password.
-                </p>
-
-                <div className="form-group" style={{ marginBottom: '14px' }}>
-                  <label><KeyRound size={15} /> 6-Digit Reset OTP Code</label>
+                <div className="auth-form-group">
+                  <label className="auth-label">State</label>
                   <input
                     type="text"
-                    maxLength={6}
-                    value={forgotOtp}
-                    onChange={(e) => setForgotOtp(e.target.value)}
-                    placeholder="Enter code (e.g. 123456)"
-                    required
+                    className="auth-input"
+                    value={googleProfileForm.state}
+                    readOnly
                   />
                 </div>
+              </div>
 
-                <div className="form-group" style={{ marginBottom: '14px' }}>
-                  <label><Lock size={15} /> New Password</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new password (min 6 chars)"
-                    required
-                  />
-                </div>
+              <div className="auth-form-group" style={{ marginTop: '12px' }}>
+                <label className="auth-label">Set account password (optional)</label>
+                <input
+                  type="password"
+                  className="auth-input"
+                  placeholder="Optional password for email login"
+                  value={googleProfileForm.password}
+                  onChange={(e) =>
+                    setGoogleProfileForm({ ...googleProfileForm, password: e.target.value })
+                  }
+                />
+              </div>
 
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label><Lock size={15} /> Confirm New Password</label>
-                  <input
-                    type="password"
-                    value={confirmNewPassword}
-                    onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    placeholder="Re-enter new password"
-                    required
-                  />
-                </div>
-
-                {error && <div className="login-error-alert" style={{ marginBottom: '16px' }}>{error}</div>}
-
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={() => setForgotStep(1)}
-                    style={{ padding: '10px 16px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#475569', fontWeight: '600', cursor: 'pointer' }}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    style={{ padding: '10px 20px', borderRadius: '10px', border: 'none', background: '#059669', color: '#ffffff', fontWeight: '600', cursor: 'pointer' }}
-                  >
-                    {submitting ? 'Updating...' : 'Reset Password & Login 🚀'}
-                  </button>
-                </div>
-              </form>
-            )}
+              <button
+                type="submit"
+                className="btn-primary-auth customer"
+                style={{ marginTop: '20px' }}
+                disabled={googleProfileLoading}
+              >
+                {googleProfileLoading ? 'Saving...' : 'Save & Continue'}
+              </button>
+            </form>
           </div>
         </div>
       )}
     </div>
   );
-};
-
-export default Login;
+}

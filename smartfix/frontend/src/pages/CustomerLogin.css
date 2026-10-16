@@ -1,0 +1,156 @@
+.customer-auth-container {
+  min-height: 85vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: radial-gradient(circle at 10% 20%, rgba(37, 99, 235, 0.05) 0%, rgba(248, 250, 252, 1) 90%);
+}
+
+.customer-auth-card {
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border-radius: 1.25rem;
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.customer-auth-header {
+  padding: 2.25rem 2rem 1.5rem;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.6) 0%, rgba(255, 255, 255, 0) 100%);
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.customer-auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  text-decoration: none;
+  margin-bottom: 0.5rem;
+}
+
+.customer-auth-body {
+  padding: 2rem;
+}
+
+.customer-nav-pills {
+  background: #f1f5f9;
+  padding: 0.35rem;
+  border-radius: 0.75rem;
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.75rem;
+}
+
+.customer-nav-pills .nav-link {
+  flex: 1;
+  text-align: center;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #64748b;
+  padding: 0.6rem 0.75rem;
+  border: none;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.customer-nav-pills .nav-link.active {
+  background: #ffffff;
+  color: #2563eb;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.lockout-alert {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.input-group-modern {
+  position: relative;
+  margin-bottom: 1.25rem;
+}
+
+.input-group-modern .form-control {
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem 0.75rem 2.6rem;
+  border: 1px solid #cbd5e1;
+  font-size: 0.95rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input-group-modern .form-control:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.input-icon-left {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.btn-customer-primary {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border: none;
+  color: #ffffff;
+  font-weight: 600;
+  padding: 0.85rem 1.5rem;
+  border-radius: 0.75rem;
+  width: 100%;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  transition: all 0.2s ease;
+}
+
+.btn-customer-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+  color: #ffffff;
+}
+
+.btn-customer-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.otp-box-group {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+
+.otp-box-group input {
+  width: 3rem;
+  height: 3.5rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+  border: 2px solid #cbd5e1;
+  border-radius: 0.6rem;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.otp-box-group input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}

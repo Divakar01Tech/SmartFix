@@ -5,13 +5,15 @@ const { protect, requireAdmin } = require('../middleware/authMiddleware');
 
 const { regenerateWorkerBio } = require('../controllers/bioController');
 
-// All admin routes require valid Auth token + Strict Admin Role (phone: 7604975206)
+// All admin routes require valid Auth token + Strict Admin Role (validated against ADMIN_EMAIL)
 router.use(protect, requireAdmin);
 
 router.get('/pending-captains', adminController.getPendingCaptains);
 router.patch('/verify-captain/:id', adminController.verifyCaptain);
 router.get('/analytics', adminController.getAdminAnalytics);
 router.get('/customers', adminController.getCustomers);
+router.delete('/customers/inactive-cleanup', adminController.cleanupInactiveCustomers);
+router.delete('/customers/:id', adminController.deleteCustomer);
 router.patch('/customers/:id/toggle-block', adminController.toggleBlockCustomer);
 router.get('/bookings', adminController.getAdminBookings);
 router.get('/wallet-overview', adminController.getWalletOverview);
@@ -23,6 +25,8 @@ router.patch('/withdrawals/:walletId/:transactionId/process', adminController.pr
 router.patch('/workers/:id/toggle-block', adminController.toggleBlockWorker);
 router.post('/workers/:id/regenerate-bio', regenerateWorkerBio);
 router.get('/workers/:id/review-insights', adminController.getWorkerReviewInsights);
+router.post('/workers/:id/feedback', adminController.sendWorkerFeedback);
+router.get('/workers/:id/feedback', adminController.getWorkerFeedback);
 router.get('/dispatch-stats', adminController.getDispatchStats);
 
 // Worker KYC & AI Recommendation Review Endpoints
@@ -49,6 +53,10 @@ router.patch('/locations/districts/:id/toggle-active', adminLocationController.a
 router.patch('/locations/taluks/:id', adminLocationController.adminUpdateTaluk);
 router.post('/locations/villages', adminLocationController.adminAddVillage);
 router.patch('/locations/villages/:id', adminLocationController.adminUpdateVillage);
+
+// Payments & Financial Overview
+const { getAdminPayments } = require('../controllers/paymentController');
+router.get('/payments', getAdminPayments);
 
 module.exports = router;
 

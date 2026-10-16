@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCall } from '../context/CallContext';
 import { apiService } from '../services/api';
 import socket from '../services/socket';
-import LocationPicker from '../components/LocationPicker';
+import LocationPickerMap from '../components/LocationPickerMap';
 import PaymentModal from '../components/PaymentModal';
 import LiveTrackerMap from '../components/LiveTrackerMap';
 import { getUserCurrentLocation } from '../utils/geolocation';
@@ -496,8 +496,58 @@ const Booking = () => {
 
           <form className="booking-form" onSubmit={handleConfirmBooking}>
 
-            {/* Location Picker Module */}
-            <LocationPicker mode="booking" onConfirm={handleLocationConfirm} />
+            {/* Live Doorstep Spot & Location Pin Map (Replaces District/Taluk/City) */}
+            <div className="location-picker-card" style={{ background: '#ffffff', borderRadius: '16px', padding: '20px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+              <div className="d-flex align-items-center justify-content-between mb-2">
+                <label style={{ fontWeight: '700', fontSize: '1rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <MapPin size={18} color="#2563eb" />
+                  Live Doorstep Spot & Location Map
+                </label>
+                <span className="badge bg-success-subtle text-success" style={{ fontSize: '0.78rem' }}>
+                  GPS Live Navigation
+                </span>
+              </div>
+              <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '12px' }}>
+                Tap the GPS button or click anywhere on the map to pin your exact doorstep. The worker will use this live spot to navigate directly to you.
+              </p>
+
+              <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #cbd5e1', marginBottom: '12px' }}>
+                <LocationPickerMap
+                  onLocationSelect={(coords) => {
+                    if (coords?.lat && coords?.lng) {
+                      setUserLat(coords.lat);
+                      setUserLng(coords.lng);
+                      setGpsActive(true);
+                      if (worker?.lat && worker?.lng) {
+                        const dist = haversineKm(coords.lat, coords.lng, worker.lat, worker.lng);
+                        setWorkerDistance(dist);
+                      }
+                    }
+                  }}
+                  onAddressSelect={(addr) => {
+                    if (addr) setAddress(addr);
+                  }}
+                  initialAddress={address}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569' }}>
+                  Door No. / Building / Landmark Details
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="E.g. Flat 302, Green Towers, Opp. Temple"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  required
+                />
+                <small style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                  📍 Pinned spot coordinates: <strong>{Number(userLat).toFixed(4)}, {Number(userLng).toFixed(4)}</strong>
+                </small>
+              </div>
+            </div>
 
             <DiagnosisBox onApplySuggestion={handleAiSuggestion} zone={addressZone} />
 
@@ -596,13 +646,20 @@ const Booking = () => {
         <div className="booking-summary-col">
           <div className="summary-sticky-card">
             <div className="worker-summary-header">
-              <span className="summary-avatar">{worker.avatar || '👨‍🔧'}</span>
+              <span className="summary-avatar">👨‍🔧</span>
               <div>
-                <h3>{worker.name}</h3>
-                <p className="summary-trade"><Wrench size={14} /> {worker.trade}</p>
-                <p className="summary-location"><MapPin size={14} /> {worker.location || 'Tamil Nadu'}</p>
-                <p className="summary-phone"><Phone size={13} /> {phoneNum}</p>
+                <h3>Verified Service Specialist</h3>
+                <p className="summary-trade"><Wrench size={14} /> {worker.trade || selectedCategory} Expert</p>
+                <p className="summary-location"><MapPin size={14} /> Doorstep Service (Tamil Nadu)</p>
+                <p className="summary-phone" style={{ color: '#059669', fontSize: '0.8rem', fontWeight: '600' }}>
+                  🔒 Identity revealed after acceptance
+                </p>
               </div>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px', margin: '10px 0', fontSize: '0.78rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldCheck size={18} color="#059669" className="flex-shrink-0" />
+              <span>Technician details & ratings are revealed once the specialist accepts your request to prevent fake reviews and bias.</span>
             </div>
 
             {/* Quick Contact Buttons Removed: Now revealed only after Worker accepts booking on Dashboard */}

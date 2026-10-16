@@ -23,8 +23,10 @@ function initLocationSocket(io) {
       return next(new Error('Authentication error: Token missing'));
     }
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.user = { userId: decoded.id, role: decoded.role };
+      const JWT_SECRET = process.env.JWT_SECRET || 'smartfix_secret_key_2026';
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const role = (decoded.role === 'handyman' ? 'worker' : (decoded.role || 'customer')).toLowerCase();
+      socket.user = { userId: decoded.id || decoded.userId, role };
       next();
     } catch (err) {
       return next(new Error('Authentication error: Invalid token'));
@@ -35,7 +37,7 @@ function initLocationSocket(io) {
   const locationThrottler = new Map();
 
   io.on('connection', (socket) => {
-    console.log(`⚡ Authenticated Socket connected: ${socket.id} (User: ${socket.user.userId})`);
+    console.log(`⚡ Authenticated Socket connected: ${socket.id} (User: ${socket.user.userId}, Role: ${socket.user.role})`);
 
     // Join user-specific room
     socket.on('join-user', () => {
@@ -45,7 +47,7 @@ function initLocationSocket(io) {
 
     // Join admin room
     socket.on('join-admin-room', () => {
-      if (socket.user.role === 'Admin') {
+      if (socket.user.role === 'admin') {
         socket.join('admin-room');
       }
     });
@@ -81,15 +83,25 @@ function initLocationSocket(io) {
         }
 
         // Verify status is Accepted, Confirmed, En Route, or Arrived
-        const allowedStatuses = ['Accepted', 'Confirmed', 'EnRoute', 'Arrived'];
+        const allowedStatuses = [
+          'accepted',
+          'en_route',
+          'arrived',
+          'Accepted',
+          'Confirmed',
+          'EnRoute',
+          'Arrived',
+        ];
         if (!allowedStatuses.includes(booking.status)) {
           socket.emit('error', 'Tracking not allowed for this booking status');
           return;
         }
 
-        const room = `booking:${bookingId}`;
-        socket.join(room);
-        console.log(`📌 User ${socket.user.userId} joined room ${room}`);
+        const room1 = `booking:${bookingId}`;
+        const room2 = `booking-${bookingId}`;
+        socket.join(room1);
+        socket.join(room2);
+        console.log(`📌 User ${socket.user.userId} joined room ${room1}`);
         
         // Disconnect/Reconnect handling: Send last known location immediately
         if (booking.tracking?.lastLat && booking.tracking?.lastLng) {

@@ -28,6 +28,8 @@ const transactionSchema = new mongoose.Schema({
   },
 });
 
+const WalletTransaction = mongoose.models.WalletTransaction || mongoose.model('WalletTransaction', transactionSchema);
+
 const walletSchema = new mongoose.Schema(
   {
     user: {
@@ -35,10 +37,11 @@ const walletSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
       unique: true,
+      index: true,
     },
     role: {
       type: String,
-      enum: ['customer', 'handyman'],
+      enum: ['customer', 'handyman', 'worker'],
       required: true,
     },
     balance: {
@@ -58,32 +61,52 @@ const walletSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Method to credit wallet
-walletSchema.methods.credit = function (amount, description, bookingRef, paymentRef) {
-  this.balance += amount;
-  this.totalEarned += amount;
+// Method to credit wallet (supports optional mongoose session for transactions)
+walletSchema.methods.credit = function (amount, description, bookingRef, paymentRef, session = null) {
+  const num = Math.round(Number(amount) || 0);
+  if (num <= 0) return Promise.resolve(this);
+
+  this.balance += num;
+  this.totalEarned += num;
   this.transactions.unshift({
     type: 'credit',
-    amount,
+    amount: num,
     description,
     bookingRef,
     paymentRef,
+    createdAt: new Date(),
   });
-  return this.save();
+
+  const opts = session ? { session } : {};
+  return this.save(opts);
 };
 
-// Method to debit wallet
-walletSchema.methods.debit = function (amount, description, bookingRef) {
-  if (this.balance < amount) throw new Error('Insufficient wallet balance');
-  this.balance -= amount;
-  this.totalWithdrawn += amount;
+// Method to debit wallet (supports optional mongoose session for transactions)
+walletSchema.methods.debit = function (amount, description, bookingRef, paymentRef = null, session = null) {
+  const num = Math.round(Number(amount) || 0);
+  if (num <= 0) return Promise.resolve(this);
+
+  if (this.balance < num) {
+    throw new Error(`Insufficient wallet balance. Available: ₹${this.balance}, Required: ₹${num}`);
+  }
+
+  this.balance -= num;
+  this.totalWithdrawn += num;
   this.transactions.unshift({
     type: 'debit',
-    amount,
+    amount: num,
     description,
     bookingRef,
+    paymentRef,
+    createdAt: new Date(),
   });
-  return this.save();
+
+  const opts = session ? { session } : {};
+  return this.save(opts);
 };
 
-module.exports = mongoose.model('Wallet', walletSchema);
+const Wallet = mongoose.models.Wallet || mongoose.model('Wallet', walletSchema);
+
+Wallet.WalletTransaction = WalletTransaction;
+
+module.exports = Wallet;

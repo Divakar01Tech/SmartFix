@@ -95,8 +95,8 @@ const Home = () => {
               {t('radial_dispatch_badge')}
             </Link>
             <Link
-              to="/login?role=handyman"
-              className="btn btn-sm btn-outline-light fw-bold rounded-pill px-3"
+              to="/worker/login"
+              className="btn btn-sm btn-outline-light fw-bold rounded-pill px-3 d-inline-flex align-items-center gap-1"
             >
               {t('worker_join_badge')}
             </Link>

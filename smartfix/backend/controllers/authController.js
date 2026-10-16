@@ -7,12 +7,13 @@ const mongoose = require('mongoose');
 const { validateHandymanTaluk } = require('../services/geocodingService');
 const { validateSubServicesForTrade } = require('../config/serviceCategories');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'smartfix_secret_key';
+const JWT_SECRET = process.env.JWT_SECRET || 'smartfix_secret_key_2026';
 const ADMIN_PHONE = '+917604975206';
 const ADMIN_EMAIL = 'muthudivakar01022006@gmail.com';
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, JWT_SECRET, { expiresIn: '7d' });
+const generateToken = (user) => {
+  const role = user.role === 'handyman' ? 'worker' : (user.role || 'customer');
+  return jwt.sign({ id: user._id || user.id, role }, JWT_SECRET, { expiresIn: '7d' });
 };
 
 const formatPhone = (phone) => {
@@ -143,7 +144,7 @@ exports.register = async (req, res) => {
 
     await otpService.consumeVerifiedOtp(formattedPhone, 'register', normalizedEmail);
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
 
     res.status(201).json({
       token,
@@ -170,81 +171,135 @@ exports.register = async (req, res) => {
 };
 
 // @route  POST /api/auth/login
-// @desc   Login with phone number + password
+// @desc   Email + Password authentication with lockout security and role enforcement
 exports.login = async (req, res) => {
   try {
-    const { phone, email, password, role } = req.body;
+    const { email, identifier, phone, password, role } = req.body || {};
+    const rawId = (email || identifier || phone || '').trim();
 
-    if ((!phone && !email) || !password) {
-      return res.status(400).json({ message: 'Phone/Email and password are required' });
+    if (!rawId || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password are required.' });
     }
 
-    const formattedPhone = phone ? formatPhone(phone) : null;
-    const normalizedEmail = email ? email.toLowerCase().trim() : null;
+    const normalizedId = rawId.toLowerCase();
+    const digits = rawId.replace(/\D/g, '');
+    const last10 = digits.slice(-10);
 
-    // Security Rule: Admin login restriction
-    if (role === 'admin' && formattedPhone !== ADMIN_PHONE && normalizedEmail !== ADMIN_EMAIL) {
-      return res.status(403).json({ message: 'Access denied. Only authorized admin credentials can log in as Admin.' });
+    const orConditions = [{ email: normalizedId }];
+    if (last10.length === 10) {
+      orConditions.push({ phone: rawId });
+      orConditions.push({ phone: last10 });
+      orConditions.push({ phone: `+91${last10}` });
+    }
+
+    // Security Gate: Admin MUST NOT log in via customer/worker portal
+    if (role === 'admin') {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({
-        message: 'Database connection offline.',
+        success: false,
+        message: 'Database connection offline. Please try again in a moment.',
       });
     }
 
-    const queryCond = [];
-    if (formattedPhone) queryCond.push({ phone: formattedPhone });
-    if (normalizedEmail) queryCond.push({ email: normalizedEmail });
-    
-    const user = await User.findOne({ $or: queryCond }).select('+password');
+    const user = await User.findOne({ $or: orConditions }).select('+password');
 
+    // Generic error for unknown user to prevent user enumeration
     if (!user) {
-      return res.status(401).json({ message: 'No account found with this phone number or email' });
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    if (role && user.role !== role) {
-      return res.status(401).json({ message: `This number is registered as ${user.role}, not ${role}` });
+    // Admin accounts cannot sign in through public customer/worker portal
+    if (user.role === 'admin') {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    // Double check admin role phone/email match
-    if (user.role === 'admin' && formattedPhone !== ADMIN_PHONE && normalizedEmail !== ADMIN_EMAIL) {
-      return res.status(403).json({ message: 'Access denied for this credentials.' });
+    // Check 15-minute lockout
+    if (user.lockUntil && user.lockUntil > new Date()) {
+      const remainingMs = user.lockUntil.getTime() - Date.now();
+      const remainingMinutes = Math.max(1, Math.ceil(remainingMs / (60 * 1000)));
+      return res.status(423).json({
+        success: false,
+        locked: true,
+        remainingMinutes,
+        message: `Account temporarily locked for 15 minutes due to 5 consecutive failed login attempts. Try again in ${remainingMinutes} minute(s) or reset your password.`,
+      });
     }
 
-    if (user.isBlocked) {
-      return res.status(403).json({ message: '🚫 Your account has been suspended by Admin. Please contact support.' });
+    // If user account has no password set (e.g. Google-only sign up)
+    if (!user.password) {
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      await user.save();
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials. If you created this account with Google, please use Continue with Google.',
+      });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Incorrect password' });
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      if (user.failedLoginAttempts >= 5) {
+        user.lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 min lock
+        user.failedLoginAttempts = 0;
+        await user.save();
+        return res.status(423).json({
+          success: false,
+          locked: true,
+          remainingMinutes: 15,
+          message: 'Account locked for 15 minutes due to 5 consecutive failed login attempts.',
+        });
+      }
+      await user.save();
+      const remaining = 5 - user.failedLoginAttempts;
+      return res.status(401).json({
+        success: false,
+        message: `Invalid credentials. ${remaining} attempt(s) remaining before temporary lockout.`,
+      });
     }
 
-    const token = generateToken(user._id);
+    // Password valid: reset failed attempts
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
+    await user.save();
 
-    res.status(200).json({
+    // Role Enforcement: A user with role X cannot log in through the other portal's role selector
+    const targetRole = (role === 'handyman' || role === 'worker') ? 'worker' : 'customer';
+    const userRole = (user.role === 'handyman' || user.role === 'worker') ? 'worker' : user.role;
+    if (userRole !== targetRole) {
+      if (targetRole === 'customer') {
+        return res.status(401).json({
+          success: false,
+          roleMismatch: true,
+          message: 'This account is registered as a Service Provider. Please use the Worker login.',
+        });
+      }
+      return res.status(401).json({
+        success: false,
+        roleMismatch: true,
+        message: 'This account is registered as a Customer. Please use the Customer login.',
+      });
+    }
+
+    if (user.isBlocked || user.isSuspended || user.verificationStatus === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been suspended by Administration. Please contact customer support.',
+      });
+    }
+
+    const token = generateToken(user);
+
+    return res.status(200).json({
+      success: true,
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        phone: user.phone,
-        role: user.role,
-        trade: user.trade,
-        subServices: user.subServices,
-        location: user.location,
-        lat: user.liveLocation?.coordinates?.[1] || null,
-        lng: user.liveLocation?.coordinates?.[0] || null,
-        ratePerHour: user.ratePerHour,
-        workerId: user.workerId,
-        verificationStatus: user.verificationStatus,
-        rejectionReason: user.rejectionReason,
-        preferredLanguage: user.preferredLanguage || 'en',
-        theme: user.theme || 'light',
-      },
+      user: targetRole === 'worker' ? user.toSafeWorker() : user.toSafeUser(),
+      worker: targetRole === 'worker' ? user.toSafeWorker() : undefined,
     });
   } catch (err) {
-    res.status(400).json({ message: err.message || 'Login failed' });
+    return res.status(400).json({ success: false, message: err.message || 'Login failed' });
   }
 };
 
@@ -268,10 +323,20 @@ exports.verifyOtp = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    res.status(200).json({ user });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    const userRole = user.role === 'handyman' ? 'worker' : user.role;
+    const safeObj = user.toSafeUser ? user.toSafeUser() : { id: user._id, name: user.name, email: user.email, role: userRole };
+    res.status(200).json({
+      success: true,
+      user: {
+        ...safeObj,
+        id: user._id,
+        role: userRole,
+      },
+      role: userRole,
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch user', error: err.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch user', error: err.message });
   }
 };
 
@@ -317,7 +382,7 @@ exports.resetPassword = async (req, res) => {
 
     await otpService.consumeVerifiedOtp(formattedPhone, 'reset_password', normalizedEmail);
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
 
     res.status(200).json({
       message: 'Password reset successfully!',
@@ -351,7 +416,12 @@ exports.updateProfile = async (req, res) => {
     }
 
     if (name) user.name = name;
-    if (phone) user.phone = formatPhone(phone);
+    if (phone) {
+      user.phone = formatPhone(phone);
+      if (user.phone && !user.phone.startsWith('google_')) {
+        user.profileCompleted = true;
+      }
+    }
     if (location !== undefined) user.location = location;
     if (preferredLanguage) user.preferredLanguage = preferredLanguage;
     if (theme) user.theme = theme;

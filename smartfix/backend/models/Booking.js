@@ -43,9 +43,27 @@ const bookingSchema = new mongoose.Schema(
       type: Number, // stored in INR
       required: true,
     },
+    district: {
+      type: String,
+      trim: true,
+    },
+    state: {
+      type: String,
+      default: 'Tamil Nadu',
+    },
     status: {
       type: String,
       enum: [
+        'pending',
+        'accepted',
+        'en_route',
+        'arrived',
+        'completed',
+        'paid',
+        'reviewed',
+        'cancelled',
+        'sla_breached',
+        // Legacy TitleCase aliases
         'PendingDispatch',
         'Pending',
         'Accepted',
@@ -59,12 +77,20 @@ const bookingSchema = new mongoose.Schema(
         'Cancelled',
         'Declined',
         'SLABreached',
-        // legacy aliases
         'CaptainArrived',
         'InProgress',
       ],
-      default: 'Pending',
+      default: 'pending',
     },
+    statusHistory: [
+      {
+        status: { type: String, required: true },
+        changedAt: { type: Date, default: Date.now },
+        changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        actorRole: { type: String, enum: ['customer', 'worker', 'admin', 'system'] },
+        reason: { type: String, default: '' },
+      },
+    ],
     serviceTier: {
       type: String,
       enum: ['BikePro', 'AutoHandyman', 'MasterTech'],
@@ -78,11 +104,22 @@ const bookingSchema = new mongoose.Schema(
     },
     pickupLat: {
       type: Number,
-      default: 9.9252,
+      default: 9.8433,
     },
     pickupLng: {
       type: Number,
-      default: 78.1198,
+      default: 78.4809,
+    },
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number], // [lng, lat]
+        default: [78.4809, 9.8433],
+      },
     },
     distanceKm: {
       type: Number,
@@ -99,7 +136,7 @@ const bookingSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ['UPI', 'Card', 'NetBanking', 'COD', 'None'],
+      enum: ['UPI', 'Card', 'NetBanking', 'COD', 'Wallet', 'Razorpay', 'Online', 'None'],
       default: 'None',
     },
     transactionId: {

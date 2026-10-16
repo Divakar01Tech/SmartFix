@@ -37,7 +37,7 @@ exports.getPendingCaptains = async (req, res) => {
     }
 
     const captains = await User.find(filter)
-      .select('name fullName email phone role trade categories location district state ratePerHour verificationStatus aadhaarNumber aadhaarDocUrl idProofType idProofNumber idProofDocUrl rejectionReason rating ratingCount createdAt interview')
+      .select('name fullName email phone role trade categories location district state ratePerHour verificationStatus aadhaarNumber aadhaarDocUrl idProofType idProofNumber idProofDocUrl rejectionReason rating ratingCount createdAt interview interviewSessionId kyc')
       .sort({ createdAt: -1 });
 
     res.status(200).json({ captains });
@@ -82,6 +82,7 @@ exports.verifyCaptain = async (req, res) => {
         if (verificationStatus === 'Verified' || verificationStatus === 'approved') {
           user.verificationStatus = user.role === 'worker' ? 'approved' : 'Verified';
           user.overallStatus = 'approved';
+          user.isApproved = true;
           user.identity.status = 'verified';
           user.skill.status = 'verified';
           user.rejectionReason = '';
@@ -90,6 +91,7 @@ exports.verifyCaptain = async (req, res) => {
         } else if (verificationStatus === 'Rejected' || verificationStatus === 'rejected') {
           user.verificationStatus = user.role === 'worker' ? 'rejected' : 'Rejected';
           user.overallStatus = 'rejected';
+          user.isApproved = false;
           user.rejectionReason = rejectionReason || 'Documents or skill verification requirements were not met.';
           user.isAvailable = false;
           user.isOnline = false;
@@ -103,19 +105,21 @@ exports.verifyCaptain = async (req, res) => {
     if (user.identity.status === 'verified' && user.skill.status === 'verified') {
       user.verificationStatus = user.role === 'worker' ? 'approved' : 'Verified';
       user.overallStatus = 'approved';
+      user.isApproved = true;
       user.rejectionReason = '';
       user.isAvailable = true;
       user.isOnline = true;
     } else if (user.identity.status === 'rejected' || user.skill.status === 'rejected' || user.verificationStatus === 'Rejected' || user.verificationStatus === 'rejected') {
       user.verificationStatus = user.role === 'worker' ? 'rejected' : 'Rejected';
       user.overallStatus = 'rejected';
+      user.isApproved = false;
       user.rejectionReason = rejectionReason || 'Documents or skill verification requirements were not met.';
       user.isAvailable = false;
       user.isOnline = false;
     }
 
-    // Generate unique Worker ID based on trade if Verified
-    if (user.verificationStatus === 'Verified' && !user.workerId) {
+    // Generate unique Worker ID based on trade if Verified / approved
+    if (['Verified', 'approved'].includes(user.verificationStatus) && !user.workerId) {
       const tradePrefixes = {
         'Plumbing': 'PL',
         'Electrical Repairs': 'EL',
@@ -270,27 +274,137 @@ exports.getAdminAnalytics = async (req, res) => {
 };
 
 // @route GET /api/admin/customers
-// @desc Get list of all registered customers with booking stats
+// @desc Get list of all registered customers with booking stats and 1-month inactivity check
 exports.getCustomers = async (req, res) => {
   try {
     const customers = await User.find({ role: 'customer' })
-      .select('name phone location isBlocked createdAt preferredLanguage theme')
+      .select('name fullName email phone location isBlocked createdAt preferredLanguage theme customerId')
       .sort({ createdAt: -1 });
 
-    // Attach total bookings count for each customer
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+
+    let inactiveOneMonthCount = 0;
+
+    // Attach total bookings count, last booking date, and inactivity flags
     const customerListWithStats = await Promise.all(
       customers.map(async (c) => {
         const bookingCount = await Booking.countDocuments({ customer: c._id });
+        const lastBooking = await Booking.findOne({ customer: c._id }).sort({ createdAt: -1 });
+
+        const isOlderThanMonth = new Date(c.createdAt) < oneMonthAgo;
+        const hasRecentBooking = lastBooking && new Date(lastBooking.createdAt) >= oneMonthAgo;
+        const isInactiveOneMonth = isOlderThanMonth && !hasRecentBooking;
+
+        if (isInactiveOneMonth) inactiveOneMonthCount++;
+
+        const lastActiveDate = lastBooking ? lastBooking.createdAt : c.createdAt;
+        const daysInactive = Math.max(0, Math.floor((Date.now() - new Date(lastActiveDate).getTime()) / (1000 * 60 * 60 * 24)));
+
         return {
           ...c.toObject(),
           totalBookingsCount: bookingCount,
+          lastBookingDate: lastBooking ? lastBooking.createdAt : null,
+          lastActiveDate,
+          daysInactive,
+          isInactiveOneMonth,
         };
       })
     );
 
-    res.status(200).json({ customers: customerListWithStats });
+    res.status(200).json({
+      totalCount: customers.length,
+      inactiveOneMonthCount,
+      customers: customerListWithStats,
+    });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch customer list', error: err.message });
+  }
+};
+
+// @route DELETE /api/admin/customers/inactive-cleanup
+// @desc Delete all customer accounts without any usage for over 1 month (30 days)
+exports.cleanupInactiveCustomers = async (req, res) => {
+  try {
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+
+    const candidates = await User.find({
+      role: 'customer',
+      createdAt: { $lt: oneMonthAgo },
+    });
+
+    const toDeleteIds = [];
+    const deletedAccounts = [];
+
+    for (const c of candidates) {
+      const recentBooking = await Booking.findOne({
+        customer: c._id,
+        createdAt: { $gte: oneMonthAgo },
+      });
+
+      if (!recentBooking) {
+        toDeleteIds.push(c._id);
+        deletedAccounts.push({ id: c._id, name: c.name, email: c.email });
+      }
+    }
+
+    if (toDeleteIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        message: 'No customer accounts with over 1 month of inactivity found.',
+      });
+    }
+
+    const deleteResult = await User.deleteMany({ _id: { $in: toDeleteIds } });
+
+    const AuditLog = require('../models/AuditLog');
+    await AuditLog.create({
+      adminId: req.user?.id,
+      action: 'admin_bulk_cleanup_inactive_customers',
+      details: { count: deleteResult.deletedCount, deletedAccounts },
+    }).catch(() => null);
+
+    return res.status(200).json({
+      success: true,
+      count: deleteResult.deletedCount,
+      message: `Successfully deleted ${deleteResult.deletedCount} customer account(s) without usage for over 1 month.`,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to clean up inactive customers: ' + err.message });
+  }
+};
+
+// @route DELETE /api/admin/customers/:id
+// @desc Delete a specific customer account
+exports.deleteCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customer = await User.findById(id);
+
+    if (!customer || customer.role !== 'customer') {
+      return res.status(404).json({ success: false, message: 'Customer account not found.' });
+    }
+
+    const customerName = customer.name;
+    const customerEmail = customer.email;
+
+    await User.deleteOne({ _id: customer._id });
+
+    const AuditLog = require('../models/AuditLog');
+    await AuditLog.create({
+      adminId: req.user?.id,
+      action: 'admin_delete_customer',
+      details: { customerId: id, name: customerName, email: customerEmail },
+    }).catch(() => null);
+
+    res.status(200).json({
+      success: true,
+      message: `Customer account "${customerName}" deleted successfully.`,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to delete customer: ' + err.message });
   }
 };
 
@@ -571,8 +685,8 @@ exports.toggleBlockWorker = async (req, res) => {
     const { id } = req.params;
     const user = await User.findById(id);
 
-    if (!user || user.role !== 'handyman') {
-      return res.status(404).json({ message: 'Handyman worker account not found' });
+    if (!user || !['handyman', 'worker'].includes(user.role)) {
+      return res.status(404).json({ message: 'Worker account not found' });
     }
 
     user.isBlocked = !user.isBlocked;
@@ -863,9 +977,13 @@ exports.serveKycDocument = async (req, res) => {
     }
 
     let filePath = null;
-    if (docKey === 'aadhaarFront') filePath = worker.kyc?.aadhaarFrontPath;
+    if (docKey === 'aadhaarFront') filePath = worker.kyc?.aadhaarFrontPath || worker.aadhaarDocUrl;
     else if (docKey === 'aadhaarBack') filePath = worker.kyc?.aadhaarBackPath;
-    else if (docKey === 'secondId') filePath = worker.kyc?.secondIdPath;
+    else if (docKey === 'secondId') filePath = worker.kyc?.secondIdPath || worker.idProofDocUrl;
+
+    if (filePath && !path.isAbsolute(filePath)) {
+      filePath = path.join(__dirname, '..', filePath.replace(/^\/+/, ''));
+    }
 
     if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({ success: false, message: 'KYC document file not found on server.' });
@@ -1016,6 +1134,153 @@ exports.reviewWorkerApplication = async (req, res) => {
   } catch (err) {
     console.error('Review Worker Application Error:', err);
     res.status(500).json({ success: false, message: 'Server error: ' + err.message });
+  }
+};
+
+// @route POST /api/admin/workers/:id/feedback
+// @desc Send feedback, warnings, instructions, or disciplinary actions to a worker and update their status
+exports.sendWorkerFeedback = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message, feedbackType = 'instruction', action = 'none' } = req.body;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Feedback message cannot be empty.',
+      });
+    }
+
+    const worker = await User.findById(id);
+    if (!worker || !['worker', 'handyman'].includes(worker.role)) {
+      return res.status(404).json({ success: false, message: 'Worker profile not found.' });
+    }
+
+    const validTypes = ['instruction', 'warning', 'praise', 'disciplinary', 'correction'];
+    const chosenType = validTypes.includes(feedbackType) ? feedbackType : 'instruction';
+
+    const validActions = ['none', 'warning_issued', 'suspended', 'reinstated', 'blocked'];
+    const chosenAction = validActions.includes(action) ? action : 'none';
+
+    const feedbackEntry = {
+      feedbackId: new mongoose.Types.ObjectId().toString(),
+      message: message.trim(),
+      feedbackType: chosenType,
+      adminEmail: req.user?.email || 'admin@smartfix.com',
+      actionTaken: chosenAction,
+      createdAt: new Date(),
+    };
+
+    if (!Array.isArray(worker.adminFeedbacks)) {
+      worker.adminFeedbacks = [];
+    }
+    worker.adminFeedbacks.unshift(feedbackEntry);
+
+    // Apply administrative action to worker account
+    if (chosenAction === 'suspended') {
+      worker.verificationStatus = 'suspended';
+      worker.availability = 'offline';
+      worker.isAvailable = false;
+      worker.isOnline = false;
+      worker.isSuspended = true;
+    } else if (chosenAction === 'reinstated') {
+      worker.verificationStatus = worker.role === 'worker' ? 'approved' : 'Verified';
+      worker.isSuspended = false;
+      worker.isBlocked = false;
+      worker.availability = 'available';
+      worker.isAvailable = true;
+      worker.isOnline = true;
+    } else if (chosenAction === 'blocked') {
+      worker.isBlocked = true;
+      worker.availability = 'offline';
+      worker.isAvailable = false;
+      worker.isOnline = false;
+    }
+
+    await worker.save();
+
+    // Log to AuditLog
+    const AuditLog = require('../models/AuditLog');
+    await AuditLog.create({
+      adminId: req.user?.id,
+      workerId: worker._id,
+      action: 'admin_worker_feedback',
+      feedbackType: chosenType,
+      actionTaken: chosenAction,
+      details: {
+        workerEmail: worker.email,
+        workerName: worker.fullName || worker.name,
+        message: message.trim(),
+      },
+      timestamp: new Date(),
+    }).catch(() => null);
+
+    // Dispatch notification email
+    const { sendWorkerFeedbackEmail } = require('../utils/mailer');
+    if (worker.email) {
+      sendWorkerFeedbackEmail(
+        worker.email,
+        worker.fullName || worker.name,
+        chosenType,
+        message.trim(),
+        chosenAction
+      ).catch((e) => console.warn('Worker feedback email delivery notice:', e.message));
+    }
+
+    // Emit live Socket.io event to worker
+    const io = req.app?.get('io');
+    if (io) {
+      io.to(`user-${worker._id}`).emit('worker:admin-feedback', {
+        feedback: feedbackEntry,
+        accountStatus: {
+          verificationStatus: worker.verificationStatus,
+          isBlocked: worker.isBlocked,
+          isSuspended: worker.isSuspended,
+          isAvailable: worker.isAvailable,
+        },
+      });
+    }
+
+    const { toSafeWorker } = require('../utils/serializers');
+    return res.status(200).json({
+      success: true,
+      message: `Feedback (${chosenType}) and action (${chosenAction}) recorded for worker ${worker.name}.`,
+      worker: toSafeWorker(worker),
+      feedbacks: worker.adminFeedbacks,
+    });
+  } catch (err) {
+    console.error('Send Worker Feedback Error:', err);
+    res.status(500).json({ success: false, message: 'Server error: ' + err.message });
+  }
+};
+
+// @route GET /api/admin/workers/:id/feedback
+// @desc Get all logged feedback and administrative actions for a worker
+exports.getWorkerFeedback = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const worker = await User.findById(id).select('name fullName email phone role trade categories verificationStatus isBlocked isSuspended adminFeedbacks');
+
+    if (!worker || !['worker', 'handyman'].includes(worker.role)) {
+      return res.status(404).json({ success: false, message: 'Worker profile not found.' });
+    }
+
+    res.status(200).json({
+      success: true,
+      worker: {
+        id: worker._id,
+        name: worker.fullName || worker.name,
+        email: worker.email,
+        phone: worker.phone,
+        verificationStatus: worker.verificationStatus,
+        isBlocked: worker.isBlocked,
+        isSuspended: worker.isSuspended,
+      },
+      count: worker.adminFeedbacks ? worker.adminFeedbacks.length : 0,
+      feedbacks: worker.adminFeedbacks || [],
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to fetch worker feedback: ' + err.message });
   }
 };
 

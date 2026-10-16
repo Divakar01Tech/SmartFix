@@ -1,17 +1,43 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { apiService, getApiBase } from '../services/api';
 import AddWorkerModal from '../components/AddWorkerModal';
 import AdminLocations from '../components/AdminLocations';
 
 import { useLanguage } from '../context/LanguageContext';
 import socket from '../services/socket';
-import { ShieldCheck, CheckCircle2, XCircle, TrendingUp, Users, DollarSign, Activity, Wrench, RefreshCw, Plus, Trash2, MapPin, Phone, UserX, UserCheck, Search, Award, FileText, BookOpen, Wallet, Percent, ChevronDown, AlertTriangle, Bot, Sparkles, MessageSquare } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, XCircle, TrendingUp, Users, DollarSign, Activity, Wrench, RefreshCw, Plus, Trash2, MapPin, Phone, UserX, UserCheck, Search, Award, FileText, BookOpen, Wallet, Percent, ChevronDown, AlertTriangle, Bot, Sparkles, MessageSquare, Camera, Eye, ExternalLink, CreditCard, Download } from 'lucide-react';
 import './AdminPanel.css';
 
-const AdminPanel = () => {
+const AdminPanel = ({ initialTab }) => {
+  const location = useLocation();
   const { t, tTrade } = useLanguage();
-  const [activeTab, setActiveTab] = useState('workers'); // 'workers' | 'customers' | 'pending_kyc' | 'review_flags'
+
+  const getTabFromPath = () => {
+    if (initialTab) return initialTab;
+    const p = location.pathname;
+    if (p.includes('/kyc')) return 'pending_kyc';
+    if (p.includes('/bookings')) return 'bookings';
+    if (p.includes('/settings')) return 'commission';
+    if (p.includes('/wallet')) return 'wallet';
+    if (p.includes('/payments')) return 'payments';
+    return 'workers';
+  };
+
+  const [activeTab, setActiveTab] = useState(getTabFromPath);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    } else {
+      const p = location.pathname;
+      if (p.includes('/kyc')) setActiveTab('pending_kyc');
+      else if (p.includes('/bookings')) setActiveTab('bookings');
+      else if (p.includes('/settings')) setActiveTab('commission');
+      else if (p.includes('/wallet')) setActiveTab('wallet');
+      else if (p.includes('/payments')) setActiveTab('payments');
+    }
+  }, [initialTab, location.pathname]);
   const [metrics, setMetrics] = useState({
     totalCaptains: 0,
     activeCaptains: 0,
@@ -32,11 +58,44 @@ const AdminPanel = () => {
   const [commissionConfig, setCommissionConfig] = useState(null);
   const [commissionEdit, setCommissionEdit] = useState({ commissionPercent: 10, cashbackPercent: 0 });
   const [walletOverview, setWalletOverview] = useState({ totalLiability: 0, wallets: [] });
+  const [adminPayments, setAdminPayments] = useState([]);
+  const [paymentStats, setPaymentStats] = useState({
+    totalVolume: 0,
+    totalCommission: 0,
+    totalProviderPayout: 0,
+    totalBonusCredited: 0,
+    totalWalletLiability: 0,
+    count: 0,
+    paidCount: 0,
+  });
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
+  const [paymentSearchQuery, setPaymentSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [actionToast, setActionToast] = useState('');
   const [slaAlerts, setSlaAlerts] = useState([]);
   const [slaRisks, setSlaRisks] = useState([]);
   const [showAddWorkerModal, setShowAddWorkerModal] = useState(false);
+
+  // Customer Inactivity and Deletion state
+  const [inactiveCustomerCount, setInactiveCustomerCount] = useState(0);
+  const [customerFilter, setCustomerFilter] = useState('all'); // 'all' | 'inactive'
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [isCleaningInactive, setIsCleaningInactive] = useState(false);
+  const [deletingCustomerId, setDeletingCustomerId] = useState(null);
+
+  // Worker Rejection with Reason Modal state
+  const [rejectionModalWorker, setRejectionModalWorker] = useState(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState('');
+  const [rejectionSubmitting, setRejectionSubmitting] = useState(false);
+
+  // Worker Control & Feedback Directives Modal state
+  const [workerControlModal, setWorkerControlModal] = useState(null);
+  const [workerFeedbackMessage, setWorkerFeedbackMessage] = useState('');
+  const [workerFeedbackType, setWorkerFeedbackType] = useState('instruction');
+  const [workerControlAction, setWorkerControlAction] = useState('none');
+  const [workerFeedbacksList, setWorkerFeedbacksList] = useState([]);
+  const [workerFeedbackLoading, setWorkerFeedbackLoading] = useState(false);
+  const [workerFeedbackSubmitting, setWorkerFeedbackSubmitting] = useState(false);
 
   // AI Skill Verification Inspection Modal state
   const [aiModalWorker, setAiModalWorker] = useState(null);
@@ -51,6 +110,9 @@ const AdminPanel = () => {
   const [sosAlerts, setSosAlerts] = useState([]);
   const [highRiskBookings, setHighRiskBookings] = useState([]);
   const [reviewFlags, setReviewFlags] = useState([]);
+  const [kycDocModal, setKycDocModal] = useState(null);
+  const [aiVisionWorkerId, setAiVisionWorkerId] = useState(null);
+  const [aiVisionResultModal, setAiVisionResultModal] = useState(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -62,7 +124,7 @@ const AdminPanel = () => {
       const [
         workerList,
         pendingList,
-        customerList,
+        customerRes,
         data,
         bkgs,
         cfg,
@@ -71,11 +133,12 @@ const AdminPanel = () => {
         disputesRes,
         highRiskRes,
         dispatchRes,
-        reviewFlagsRes
+        reviewFlagsRes,
+        paymentsRes
       ] = await Promise.all([
         apiService.getWorkers().catch(() => []),
         apiService.getPendingCaptains('Pending').catch(() => []),
-        apiService.getAdminCustomers().catch(() => []),
+        apiService.getAdminCustomersData().catch(() => ({ customers: [], inactiveOneMonthCount: 0 })),
         apiService.getAdminAnalytics().catch(() => null),
         apiService.getAdminBookings().catch(() => []),
         apiService.getCommissionConfig().catch(() => null),
@@ -85,11 +148,19 @@ const AdminPanel = () => {
         fetch(`${apiBase}/admin/bookings/high-risk`, { headers }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
         fetch(`${apiBase}/admin/dispatch-stats`, { headers }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
         fetch(`${apiBase}/admin/review-flags?status=Open`, { headers }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        apiService.getAdminPayments().catch(() => null),
       ]);
 
       if (workerList && Array.isArray(workerList)) setWorkers(workerList);
       if (pendingList && Array.isArray(pendingList)) setPendingCaptains(pendingList);
-      if (customerList && Array.isArray(customerList)) setCustomers(customerList);
+      if (customerRes) {
+        if (Array.isArray(customerRes)) {
+          setCustomers(customerRes);
+        } else if (customerRes.customers) {
+          setCustomers(customerRes.customers);
+          setInactiveCustomerCount(customerRes.inactiveOneMonthCount || 0);
+        }
+      }
       if (data && data.analytics) setMetrics(data.analytics);
       if (bkgs) setAdminBookings(bkgs);
       if (disputesRes && disputesRes.disputes) setDisputes(disputesRes.disputes);
@@ -102,6 +173,10 @@ const AdminPanel = () => {
       if (sosRes && sosRes.alerts) setSosAlerts(sosRes.alerts);
       if (dispatchRes) setDispatchStats(dispatchRes);
       if (reviewFlagsRes && reviewFlagsRes.flags) setReviewFlags(reviewFlagsRes.flags);
+      if (paymentsRes && paymentsRes.payments) {
+        setAdminPayments(paymentsRes.payments);
+        if (paymentsRes.stats) setPaymentStats(paymentsRes.stats);
+      }
 
     } catch (e) {
       console.warn('Admin load data notice:', e.message);
@@ -231,18 +306,131 @@ const AdminPanel = () => {
     setTimeout(() => setActionToast(''), 4000);
   };
 
-  const handleVerifyCaptain = async (cId, name, status) => {
+  const handleApproveWorker = async (cId, name) => {
     try {
       const aiVerdict = aiModalSession?.aiRecommendation?.verdict || 'none';
-      await apiService.verifyCaptain(cId, status, '');
-      await apiService.logAdminAuditDecision(cId, status === 'Verified' ? 'approved' : 'rejected', aiVerdict);
+      await apiService.verifyCaptain(cId, 'Verified', '');
+      await apiService.logAdminAuditDecision(cId, 'approved', aiVerdict).catch(() => null);
 
-      setActionToast(`Partner ${name} status updated to '${status}' successfully!`);
-      setTimeout(() => setActionToast(''), 4000);
+      setActionToast(`🎉 Partner ${name} approved! Assigned unique Worker ID & email notification sent.`);
+      setTimeout(() => setActionToast(''), 4500);
       setAiModalWorker(null);
       loadData();
     } catch (err) {
-      alert(`Error updating verification status: ${err.message}`);
+      alert(`Error approving partner: ${err.message}`);
+    }
+  };
+
+  const handleOpenRejectModal = (worker) => {
+    setRejectionModalWorker(worker);
+    setRejectionReasonInput('');
+  };
+
+  const handleSubmitRejection = async () => {
+    if (!rejectionReasonInput.trim()) {
+      alert('Please provide a mandatory reason for rejecting this application (e.g. document unreadable, certification criteria unmet).');
+      return;
+    }
+    setRejectionSubmitting(true);
+    try {
+      const cId = rejectionModalWorker._id || rejectionModalWorker.id;
+      const name = rejectionModalWorker.name;
+      const aiVerdict = aiModalSession?.aiRecommendation?.verdict || 'none';
+      await apiService.verifyCaptain(cId, 'Rejected', rejectionReasonInput.trim());
+      await apiService.logAdminAuditDecision(cId, 'rejected', aiVerdict).catch(() => null);
+
+      setActionToast(`Partner application for ${name} rejected with reason sent to email.`);
+      setTimeout(() => setActionToast(''), 4500);
+      setRejectionModalWorker(null);
+      setAiModalWorker(null);
+      loadData();
+    } catch (err) {
+      alert(`Error rejecting partner: ${err.message}`);
+    } finally {
+      setRejectionSubmitting(false);
+    }
+  };
+
+  const handleVerifyCaptain = async (cId, name, status) => {
+    if (status === 'Rejected') {
+      const workerObj = pendingCaptains.find(p => (p._id || p.id) === cId) || { _id: cId, name };
+      handleOpenRejectModal(workerObj);
+      return;
+    }
+    await handleApproveWorker(cId, name);
+  };
+
+  const handleCleanupInactiveCustomers = async () => {
+    if (!window.confirm(`⚠️ CONFIRM CUSTOMER PURGE:\n\nAre you sure you want to permanently delete all ${inactiveCustomerCount} customer accounts that have had NO usage or bookings for over 1 month (30 days)?\n\nThis will remove dormant accounts and free platform resources. This action cannot be undone.`)) {
+      return;
+    }
+    setIsCleaningInactive(true);
+    try {
+      const res = await apiService.cleanupInactiveCustomers();
+      setActionToast(`🧹 Cleaned up ${res.count || 0} customer accounts inactive for > 1 month.`);
+      setTimeout(() => setActionToast(''), 4500);
+      loadData();
+    } catch (err) {
+      alert(`Cleanup failed: ${err.message}`);
+    } finally {
+      setIsCleaningInactive(false);
+    }
+  };
+
+  const handleDeleteCustomer = async (cId, name) => {
+    if (!window.confirm(`Permanently delete customer account for "${name}"?\n\nThis customer account will be completely removed. This cannot be undone.`)) {
+      return;
+    }
+    setDeletingCustomerId(cId);
+    try {
+      await apiService.deleteCustomer(cId);
+      setActionToast(`Customer account "${name}" permanently deleted.`);
+      setTimeout(() => setActionToast(''), 4000);
+      loadData();
+    } catch (err) {
+      alert(`Failed to delete customer: ${err.message}`);
+    } finally {
+      setDeletingCustomerId(null);
+    }
+  };
+
+  const handleOpenWorkerControl = async (worker) => {
+    setWorkerControlModal(worker);
+    setWorkerFeedbackMessage('');
+    setWorkerFeedbackType('instruction');
+    setWorkerControlAction('none');
+    setWorkerFeedbackLoading(true);
+    try {
+      const res = await apiService.getWorkerFeedback(worker._id || worker.id);
+      setWorkerFeedbacksList(res.feedbacks || []);
+    } catch (err) {
+      setWorkerFeedbacksList(worker.adminFeedbacks || []);
+    } finally {
+      setWorkerFeedbackLoading(false);
+    }
+  };
+
+  const handleSubmitWorkerFeedback = async () => {
+    if (!workerFeedbackMessage.trim()) {
+      alert('Please enter a feedback message or directive for the worker.');
+      return;
+    }
+    setWorkerFeedbackSubmitting(true);
+    try {
+      const wId = workerControlModal._id || workerControlModal.id;
+      await apiService.sendWorkerFeedback(wId, {
+        message: workerFeedbackMessage.trim(),
+        feedbackType: workerFeedbackType,
+        action: workerControlAction,
+      });
+      setActionToast(`Directive & action sent to ${workerControlModal.name}. Email delivered!`);
+      setTimeout(() => setActionToast(''), 4500);
+      setWorkerControlModal(null);
+      loadData();
+    } catch (err) {
+      alert(`Error submitting feedback: ${err.message}`);
+    } finally {
+      setWorkerFeedbackSubmitting(false);
     }
   };
 
@@ -291,7 +479,7 @@ const AdminPanel = () => {
   const handleReviewFlagAction = async (flagId, action) => {
     if (!window.confirm(`Are you sure you want to ${action} this flagged review?`)) return;
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const apiBase = getApiBase();
       const res = await fetch(`${apiBase}/admin/review-flags/${flagId}`, {
         method: 'PATCH',
@@ -507,19 +695,31 @@ const AdminPanel = () => {
 
       {/* Analytics Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <div style={{ background: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div 
+          onClick={() => setActiveTab('workers')}
+          style={{ background: '#ffffff', padding: '20px', borderRadius: '16px', border: activeTab === 'workers' ? '2px solid #0f172a' : '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', cursor: 'pointer', transition: 'all 0.2s ease' }}
+          title="Click to view Verified Workers Directory"
+        >
           <div style={{ color: '#64748b', fontSize: '0.82rem', fontWeight: '700', textTransform: 'uppercase' }}>Verified Active Handymen</div>
           <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#0f172a', marginTop: '6px' }}>{workers.length} Workers</div>
           <div style={{ fontSize: '0.8rem', color: '#059669', marginTop: '4px', fontWeight: '700' }}>🟢 All Regions</div>
         </div>
 
-        <div style={{ background: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div 
+          onClick={() => setActiveTab('pending_kyc')}
+          style={{ background: activeTab === 'pending_kyc' ? '#fffbeb' : '#ffffff', padding: '20px', borderRadius: '16px', border: activeTab === 'pending_kyc' ? '2px solid #d97706' : '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', cursor: 'pointer', transition: 'all 0.2s ease' }}
+          title="Click to view Pending KYC Verification Queue"
+        >
           <div style={{ color: '#64748b', fontSize: '0.82rem', fontWeight: '700', textTransform: 'uppercase' }}>Pending KYC Approval</div>
           <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#d97706', marginTop: '6px' }}>{pendingCaptains.length} Pending</div>
           <div style={{ fontSize: '0.8rem', color: '#d97706', marginTop: '4px', fontWeight: '700' }}>⏳ Awaiting Document Review</div>
         </div>
 
-        <div style={{ background: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div 
+          onClick={() => setActiveTab('customers')}
+          style={{ background: activeTab === 'customers' ? '#eff6ff' : '#ffffff', padding: '20px', borderRadius: '16px', border: activeTab === 'customers' ? '2px solid #2563eb' : '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', cursor: 'pointer', transition: 'all 0.2s ease' }}
+          title="Click to view Customer Accounts"
+        >
           <div style={{ color: '#64748b', fontSize: '0.82rem', fontWeight: '700', textTransform: 'uppercase' }}>Registered Customers</div>
           <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#2563eb', marginTop: '6px' }}>{customers.length} Customers</div>
           <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>Active User Accounts</div>
@@ -708,6 +908,24 @@ const AdminPanel = () => {
         >
           <Wallet size={18} /> Wallet Overview
         </button>
+
+        <button
+          onClick={() => setActiveTab('payments')}
+          style={{
+            background: activeTab === 'payments' ? '#2563eb' : '#ffffff',
+            color: activeTab === 'payments' ? '#ffffff' : '#475569',
+            border: '1px solid #cbd5e1',
+            padding: '10px 20px',
+            borderRadius: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <CreditCard size={18} /> Payments & Revenue ({adminPayments.length})
+        </button>
         <button
           onClick={() => setActiveTab('locations')}
           style={{
@@ -764,8 +982,14 @@ const AdminPanel = () => {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '1.4rem' }}>{w.avatar || '👨‍🔧'}</span>
                             <div>
-                              <div>{w.name}</div>
-                              <small style={{ color: '#059669', fontWeight: 'bold' }}>🟢 Verified</small>
+                              <div>{w.name} {w.workerId && <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>{w.workerId}</span>}</div>
+                              {w.isBlocked ? (
+                                <small style={{ color: '#dc2626', fontWeight: 'bold' }}>🛑 Blocked</small>
+                              ) : (w.isSuspended || w.verificationStatus === 'suspended') ? (
+                                <small style={{ color: '#d97706', fontWeight: 'bold' }}>⏸️ Suspended</small>
+                              ) : (
+                                <small style={{ color: '#059669', fontWeight: 'bold' }}>🟢 Verified</small>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -782,6 +1006,13 @@ const AdminPanel = () => {
                           ₹{w.ratePerHour}/hr
                         </td>
                         <td style={{ padding: '14px 12px', textAlign: 'right' }}>
+                          <button
+                            onClick={() => handleOpenWorkerControl(w)}
+                            style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', padding: '6px 12px', borderRadius: '8px', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '8px' }}
+                            title="Direct feedback, warnings, praise & admin control"
+                          >
+                            <MessageSquare size={14} /> Control & Feedback
+                          </button>
                           <button
                             onClick={() => handleViewAiInsights(w)}
                             style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '6px 12px', borderRadius: '8px', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '8px' }}
@@ -808,81 +1039,163 @@ const AdminPanel = () => {
       {/* TAB 2: PENDING KYC WORKER QUEUE */}
       {activeTab === 'pending_kyc' && (
         <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
-          <h2 style={{ fontSize: '1.25rem', color: '#0f172a', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ShieldCheck size={22} color="#d97706" /> {t('pending_verification_queue')}
-          </h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.25rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldCheck size={22} color="#d97706" /> {t('pending_verification_queue')}
+            </h2>
+            <span style={{ fontSize: '0.85rem', background: '#fef3c7', color: '#92400e', padding: '6px 14px', borderRadius: '20px', fontWeight: '700', border: '1px solid #fde68a' }}>
+              ⏳ {pendingCaptains.length} Workers Awaiting Verification
+            </span>
+          </div>
 
           {pendingCaptains.length === 0 ? (
             <div style={{ padding: '40px 20px', textAlign: 'center', background: '#f0fdf4', borderRadius: '16px', border: '1px solid #bbf7d0' }}>
               <CheckCircle2 size={48} color="#166534" style={{ margin: '0 auto 12px auto', display: 'block' }} />
               <h3 style={{ fontSize: '1.1rem', color: '#166534', fontWeight: '800', marginBottom: '6px' }}>No Pending Verification Requests</h3>
-              <p style={{ color: '#15803d', fontSize: '0.9rem' }}>All registered handymen are currently verified!</p>
+              <p style={{ color: '#15803d', fontSize: '0.9rem' }}>All registered handymen and workers are currently verified!</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
               {pendingCaptains.map((c) => {
                 const cId = c._id || c.id;
+                const token = localStorage.getItem('smartfix_token') || '';
+                const apiBase = getApiBase();
+                const aadhaarDisplay = c.kyc?.aadhaarLast4 ? `XXXX-XXXX-${c.kyc.aadhaarLast4}` : (c.aadhaarNumber || 'Not specified');
+                const secondIdTypeDisplay = c.kyc?.secondIdType || c.idProofType || 'Second ID / DL';
+                const secondIdLast4Display = c.kyc?.secondIdLast4 ? `XXXX-${c.kyc.secondIdLast4}` : (c.idProofNumber || '');
+                const hasAadhaarFront = !!(c.kyc?.aadhaarFrontPath || c.aadhaarDocUrl);
+                const hasAadhaarBack = !!(c.kyc?.aadhaarBackPath);
+                const hasSecondId = !!(c.kyc?.secondIdPath || c.idProofDocUrl);
+
                 return (
-                  <div key={cId} style={{ border: '1px solid #fed7aa', background: '#fff7ed', borderRadius: '16px', padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyBetween: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                      <h4 style={{ margin: 0, fontWeight: '800', color: '#9a3412', fontSize: '1.1rem' }}>{c.name}</h4>
-                      <span style={{ background: '#ffedd5', color: '#9a3412', fontSize: '0.75rem', fontWeight: '800', padding: '4px 10px', borderRadius: '20px', border: '1px solid #fdba74' }}>
-                        ⏳ Pending KYC
-                      </span>
-                    </div>
+                  <div key={cId} style={{ border: '1px solid #fed7aa', background: '#fff7ed', borderRadius: '16px', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 4px 14px rgba(217, 119, 6, 0.08)' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <h4 style={{ margin: 0, fontWeight: '800', color: '#9a3412', fontSize: '1.2rem' }}>{c.name}</h4>
+                        <span style={{ background: '#ffedd5', color: '#9a3412', fontSize: '0.78rem', fontWeight: '800', padding: '4px 12px', borderRadius: '20px', border: '1px solid #fdba74' }}>
+                          ⏳ Pending KYC
+                        </span>
+                      </div>
 
-                    <div style={{ fontSize: '0.88rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
-                      <div><strong>Trade:</strong> {tTrade(c.trade)}</div>
-                      <div><strong>Location:</strong> 📍 {c.location}</div>
-                      <div><strong>Phone:</strong> 📞 {c.phone}</div>
+                      <div style={{ fontSize: '0.88rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                        <div><strong>Trade:</strong> {tTrade(c.trade || (c.categories && c.categories[0]) || 'General Maintenance')}</div>
+                        <div><strong>Location:</strong> 📍 {c.location || (c.district ? `${c.district}, ${c.state || 'Tamil Nadu'}` : 'Not Specified')}</div>
+                        <div><strong>Phone:</strong> 📞 {c.phone}</div>
+                        {c.email && <div><strong>Email:</strong> ✉️ {c.email}</div>}
+                      </div>
 
-                    </div>
+                      {/* Submitted Documents Box */}
+                      <div style={{ background: '#ffffff', borderRadius: '12px', padding: '14px', border: '1px solid #fed7aa', marginBottom: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: '800', color: '#9a3412', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          🪪 Submitted Identity &amp; Documents
+                        </div>
+                        <div style={{ fontSize: '0.83rem', color: '#334155', marginBottom: '6px' }}>
+                          <strong>Aadhaar Number:</strong> {aadhaarDisplay}
+                        </div>
+                        <div style={{ fontSize: '0.83rem', color: '#334155', marginBottom: '10px' }}>
+                          <strong>{secondIdTypeDisplay}:</strong> {secondIdLast4Display || 'Submitted'}
+                        </div>
 
-                    <button
-                      onClick={() => handleInspectAiInterview(c)}
-                      style={{ width: '100%', marginBottom: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '8px 12px', borderRadius: '10px', fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                    >
-                      <Bot size={16} /> Inspect AI Skill Interview 🤖
-                    </button>
+                        {/* Document View Buttons */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {hasAadhaarFront && (
+                            <button
+                              type="button"
+                              onClick={() => setKycDocModal({
+                                workerName: c.name,
+                                docTitle: 'Aadhaar Card (Front)',
+                                docUrl: `${apiBase}/admin/workers/${cId}/kyc/aadhaarFront?token=${token}`
+                              })}
+                              style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '6px 12px', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                            >
+                              <Eye size={14} /> Aadhaar Front
+                            </button>
+                          )}
+                          {hasAadhaarBack && (
+                            <button
+                              type="button"
+                              onClick={() => setKycDocModal({
+                                workerName: c.name,
+                                docTitle: 'Aadhaar Card (Back)',
+                                docUrl: `${apiBase}/admin/workers/${cId}/kyc/aadhaarBack?token=${token}`
+                              })}
+                              style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '6px 12px', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                            >
+                              <Eye size={14} /> Aadhaar Back
+                            </button>
+                          )}
+                          {hasSecondId && (
+                            <button
+                              type="button"
+                              onClick={() => setKycDocModal({
+                                workerName: c.name,
+                                docTitle: secondIdTypeDisplay,
+                                docUrl: `${apiBase}/admin/workers/${cId}/kyc/secondId?token=${token}`
+                              })}
+                              style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '6px 12px', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                            >
+                              <Eye size={14} /> {secondIdTypeDisplay}
+                            </button>
+                          )}
+                          {!hasAadhaarFront && !hasAadhaarBack && !hasSecondId && (
+                            <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                              ⚠️ No uploaded file attachments found
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                      {/* AI Skill Assessment Review */}
                       <button
-                        onClick={() => {
-                           // AI KYC Logic trigger
-                           setAiModalWorker(c);
-                           setAiModalLoading(true);
-                           // Since we don't have real images in DB, we'll simulate the AI Vision call with a prompt for demo
-                           fetch(`${getApiBase()}/ai/verify-kyc`, {
-                             method: 'POST',
-                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('smartfix_token')}` },
-                             body: JSON.stringify({ image: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/' }) // Fake base64 for demo if no real doc
-                           }).then(res => res.json()).then(data => {
-                             alert(`🤖 AI Vision Analysis Complete:\nDocument: ${data.analysis.documentType}\nClear & Readable: ${data.analysis.isClearAndReadable}\nVerdict: ${data.analysis.looksSuspicious ? 'Suspicious ⚠️' : 'Looks Valid ✅'}\nReason: ${data.analysis.suspicionReason || 'N/A'}`);
-                             setAiModalLoading(false);
-                           }).catch(err => {
-                             alert('AI Check Failed: ' + err.message);
-                             setAiModalLoading(false);
-                           });
-                        }}
-                        style={{ width: '100%', marginBottom: '12px', background: '#f59e0b', border: '1px solid #d97706', color: '#ffffff', padding: '8px 12px', borderRadius: '10px', fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                        onClick={() => handleInspectAiInterview(c)}
+                        style={{ width: '100%', marginBottom: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '9px 12px', borderRadius: '10px', fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                       >
-                        {aiModalLoading && aiModalWorker?._id === cId ? <RefreshCw size={16} className="spin" /> : <Camera size={16} />}
-                        AI Vision Check 👁️
+                        <Bot size={16} /> Inspect AI Skill Interview 🤖
+                      </button>
+
+                      {/* AI Vision Verification */}
+                      <button
+                        onClick={async () => {
+                          setAiVisionWorkerId(cId);
+                          try {
+                            const res = await fetch(`${apiBase}/ai/verify-kyc`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                              body: JSON.stringify({ workerId: cId, docKey: 'aadhaarFront' })
+                            });
+                            const data = await res.json();
+                            if (data.analysis) {
+                              setAiVisionResultModal({ worker: c, analysis: data.analysis });
+                            } else {
+                              alert(data.message || 'AI KYC verification completed with no structured response.');
+                            }
+                          } catch (err) {
+                            alert('AI Check Failed: ' + err.message);
+                          } finally {
+                            setAiVisionWorkerId(null);
+                          }
+                        }}
+                        disabled={aiVisionWorkerId === cId}
+                        style={{ width: '100%', marginBottom: '16px', background: '#f59e0b', border: '1px solid #d97706', color: '#ffffff', padding: '9px 12px', borderRadius: '10px', fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                      >
+                        {aiVisionWorkerId === cId ? <RefreshCw size={16} className="spin" /> : <Camera size={16} />}
+                        AI Document Vision Check 👁️
                       </button>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                    {/* Action Buttons: Approve / Reject */}
+                    <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
                       <button
                         onClick={() => handleVerifyCaptain(cId, c.name, 'Verified')}
-                        style={{ flex: 1, background: '#059669', color: '#ffffff', border: 'none', padding: '10px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                        style={{ flex: 1, background: '#059669', color: '#ffffff', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.92rem', boxShadow: '0 2px 8px rgba(5, 150, 105, 0.2)' }}
                       >
-                        <CheckCircle2 size={16} /> {t('approve_btn')}
+                        <CheckCircle2 size={18} /> {t('approve_btn')}
                       </button>
                       <button
                         onClick={() => handleVerifyCaptain(cId, c.name, 'Rejected')}
-                        style={{ flex: 1, background: '#dc2626', color: '#ffffff', border: 'none', padding: '10px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                        style={{ flex: 1, background: '#dc2626', color: '#ffffff', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.92rem', boxShadow: '0 2px 8px rgba(220, 38, 38, 0.2)' }}
                       >
-                        <XCircle size={16} /> {t('reject_btn')}
+                        <XCircle size={18} /> {t('reject_btn')}
                       </button>
                     </div>
                   </div>
@@ -896,9 +1209,114 @@ const AdminPanel = () => {
       {/* TAB 3: REGISTERED CUSTOMERS MANAGEMENT */}
       {activeTab === 'customers' && (
         <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
-          <h2 style={{ fontSize: '1.25rem', color: '#0f172a', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Users size={22} color="#2563eb" /> {t('customer_management')}
-          </h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.25rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Users size={22} color="#2563eb" /> {t('customer_management')} & Inactivity Lifecycle
+            </h2>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.82rem', background: '#f1f5f9', color: '#475569', padding: '6px 12px', borderRadius: '20px', fontWeight: '700' }}>
+                Total: {customers.length}
+              </span>
+              <span style={{ fontSize: '0.82rem', background: '#dcfce7', color: '#166534', padding: '6px 12px', borderRadius: '20px', fontWeight: '700' }}>
+                Active: {Math.max(0, customers.length - inactiveCustomerCount)}
+              </span>
+              <span style={{ fontSize: '0.82rem', background: inactiveCustomerCount > 0 ? '#fee2e2' : '#f1f5f9', color: inactiveCustomerCount > 0 ? '#991b1b' : '#64748b', padding: '6px 12px', borderRadius: '20px', fontWeight: '700' }}>
+                Inactive (&gt; 1 Month): {inactiveCustomerCount}
+              </span>
+            </div>
+          </div>
+
+          {/* Inactive Accounts Notice & Purge Banner */}
+          {inactiveCustomerCount > 0 && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px', padding: '18px 20px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 300px' }}>
+                <AlertTriangle size={26} color="#d97706" style={{ flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: '800', color: '#92400e', fontSize: '0.98rem' }}>
+                    {inactiveCustomerCount} Dormant Customer Accounts Without Usage for &gt; 1 Month
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#b45309', marginTop: '2px' }}>
+                    These accounts have been registered for at least 30 days and have zero bookings or service usage in the last month.
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleCleanupInactiveCustomers}
+                disabled={isCleaningInactive}
+                style={{
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '12px',
+                  fontWeight: '800',
+                  fontSize: '0.86rem',
+                  cursor: isCleaningInactive ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 12px rgba(220,38,38,0.25)',
+                }}
+              >
+                <Trash2 size={16} />
+                {isCleaningInactive ? 'Cleaning Up Accounts...' : `Clean Up Inactive Accounts (${inactiveCustomerCount})`}
+              </button>
+            </div>
+          )}
+
+          {/* Search & Filter Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setCustomerFilter('all')}
+                style={{
+                  background: customerFilter === 'all' ? '#0f172a' : '#f8fafc',
+                  color: customerFilter === 'all' ? '#ffffff' : '#475569',
+                  border: '1px solid #cbd5e1',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  fontWeight: '700',
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                }}
+              >
+                All Accounts ({customers.length})
+              </button>
+              <button
+                onClick={() => setCustomerFilter('inactive')}
+                style={{
+                  background: customerFilter === 'inactive' ? '#dc2626' : '#f8fafc',
+                  color: customerFilter === 'inactive' ? '#ffffff' : '#475569',
+                  border: '1px solid #cbd5e1',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  fontWeight: '700',
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                }}
+              >
+                ⚠️ Inactive (&gt; 1 Month) ({inactiveCustomerCount})
+              </button>
+            </div>
+
+            <div style={{ position: 'relative', width: '280px' }}>
+              <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                placeholder="Search by name, email, phone..."
+                value={customerSearchQuery}
+                onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px 8px 36px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          </div>
 
           {customers.length === 0 ? (
             <div style={{ padding: '40px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
@@ -910,66 +1328,120 @@ const AdminPanel = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                    <th style={{ padding: '12px' }}>Customer Name</th>
-                    <th style={{ padding: '12px' }}>Phone Number</th>
+                    <th style={{ padding: '12px' }}>Customer Profile</th>
+                    <th style={{ padding: '12px' }}>Email & Contact</th>
                     <th style={{ padding: '12px' }}>Location</th>
                     <th style={{ padding: '12px' }}>Total Bookings</th>
+                    <th style={{ padding: '12px' }}>Usage / Inactivity</th>
                     <th style={{ padding: '12px' }}>Account Status</th>
-                    <th style={{ padding: '12px', textAlign: 'right' }}>Admin Action</th>
+                    <th style={{ padding: '12px', textAlign: 'right' }}>Admin Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {customers.map((c) => {
-                    const cId = c._id || c.id;
-                    return (
-                      <tr key={cId} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '14px 12px', fontWeight: '700', color: '#0f172a' }}>
-                          👤 {c.name}
-                        </td>
-                        <td style={{ padding: '14px 12px', color: '#475569' }}>
-                          📞 {c.phone}
-                        </td>
-                        <td style={{ padding: '14px 12px', color: '#475569' }}>
-                          📍 {c.location || 'Location Not Set'}
-                        </td>
-                        <td style={{ padding: '14px 12px', fontWeight: '800', color: '#2563eb' }}>
-                          {c.totalBookingsCount || 0} Bookings
-                        </td>
-                        <td style={{ padding: '14px 12px' }}>
-                          {c.isBlocked ? (
-                            <span style={{ background: '#fef2f2', color: '#dc2626', fontWeight: '800', padding: '4px 10px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.8rem' }}>
-                              🚫 Blocked / Suspended
-                            </span>
-                          ) : (
-                            <span style={{ background: '#f0fdf4', color: '#166534', fontWeight: '800', padding: '4px 10px', borderRadius: '12px', border: '1px solid #bbf7d0', fontSize: '0.8rem' }}>
-                              🟢 Active Customer
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding: '14px 12px', textAlign: 'right' }}>
-                          <button
-                            onClick={() => handleToggleBlockCustomer(cId, c.name)}
-                            style={{
-                              background: c.isBlocked ? '#f0fdf4' : '#fef2f2',
-                              border: c.isBlocked ? '1px solid #bbf7d0' : '1px solid #fecaca',
-                              color: c.isBlocked ? '#166534' : '#dc2626',
-                              padding: '6px 14px',
-                              borderRadius: '8px',
-                              fontWeight: '700',
-                              fontSize: '0.82rem',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                            }}
-                          >
-                            {c.isBlocked ? <UserCheck size={14} /> : <UserX size={14} />}
-                            {c.isBlocked ? t('unblock_btn') : t('block_btn')}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {customers
+                    .filter((c) => {
+                      if (customerFilter === 'inactive' && !c.isInactiveOneMonth) return false;
+                      if (customerSearchQuery) {
+                        const q = customerSearchQuery.toLowerCase();
+                        const matchName = c.name?.toLowerCase().includes(q) || c.fullName?.toLowerCase().includes(q);
+                        const matchEmail = c.email?.toLowerCase().includes(q);
+                        const matchPhone = c.phone?.toLowerCase().includes(q);
+                        const matchLoc = c.location?.toLowerCase().includes(q);
+                        if (!matchName && !matchEmail && !matchPhone && !matchLoc) return false;
+                      }
+                      return true;
+                    })
+                    .map((c) => {
+                      const cId = c._id || c.id;
+                      return (
+                        <tr key={cId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 12px', fontWeight: '700', color: '#0f172a' }}>
+                            <div>👤 {c.name || c.fullName}</div>
+                            {c.customerId && (
+                              <span style={{ fontSize: '0.72rem', background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                                {c.customerId}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '14px 12px', color: '#475569' }}>
+                            <div style={{ fontSize: '0.85rem' }}>✉️ {c.email || 'No Email'}</div>
+                            <div style={{ fontSize: '0.82rem', color: '#64748b' }}>📞 {c.phone}</div>
+                          </td>
+                          <td style={{ padding: '14px 12px', color: '#475569' }}>
+                            📍 {c.location || 'Sivagangai'}
+                          </td>
+                          <td style={{ padding: '14px 12px', fontWeight: '800', color: '#2563eb' }}>
+                            {c.totalBookingsCount || 0} Bookings
+                          </td>
+                          <td style={{ padding: '14px 12px' }}>
+                            {c.isInactiveOneMonth ? (
+                              <span style={{ background: '#fef2f2', color: '#dc2626', fontWeight: '800', padding: '4px 8px', borderRadius: '8px', border: '1px solid #fecaca', fontSize: '0.78rem' }}>
+                                ⚠️ Inactive ({c.daysInactive || 30}+ days)
+                              </span>
+                            ) : (
+                              <span style={{ background: '#f0fdf4', color: '#166534', fontWeight: '800', padding: '4px 8px', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '0.78rem' }}>
+                                🟢 Active ({c.daysInactive || 0}d ago)
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '14px 12px' }}>
+                            {c.isBlocked ? (
+                              <span style={{ background: '#fef2f2', color: '#dc2626', fontWeight: '800', padding: '4px 10px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.8rem' }}>
+                                🚫 Blocked
+                              </span>
+                            ) : (
+                              <span style={{ background: '#f0fdf4', color: '#166534', fontWeight: '800', padding: '4px 10px', borderRadius: '12px', border: '1px solid #bbf7d0', fontSize: '0.8rem' }}>
+                                🟢 Active
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '14px 12px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
+                              <button
+                                onClick={() => handleToggleBlockCustomer(cId, c.name)}
+                                style={{
+                                  background: c.isBlocked ? '#f0fdf4' : '#f8fafc',
+                                  border: c.isBlocked ? '1px solid #bbf7d0' : '1px solid #cbd5e1',
+                                  color: c.isBlocked ? '#166534' : '#475569',
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  fontWeight: '700',
+                                  fontSize: '0.8rem',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                {c.isBlocked ? <UserCheck size={14} /> : <UserX size={14} />}
+                                {c.isBlocked ? t('unblock_btn') : t('block_btn')}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCustomer(cId, c.name)}
+                                disabled={deletingCustomerId === cId}
+                                title="Delete Customer Account"
+                                style={{
+                                  background: '#fef2f2',
+                                  border: '1px solid #fecaca',
+                                  color: '#dc2626',
+                                  padding: '6px 10px',
+                                  borderRadius: '8px',
+                                  fontWeight: '700',
+                                  fontSize: '0.8rem',
+                                  cursor: deletingCustomerId === cId ? 'not-allowed' : 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <Trash2 size={14} />
+                                {deletingCustomerId === cId ? 'Deleting...' : 'Delete'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -1376,12 +1848,331 @@ const AdminPanel = () => {
         </div>
       )}
 
+      {/* TAB: PAYMENTS & FINANCIAL SETTLEMENT */}
+      {activeTab === 'payments' && (
+        <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CreditCard size={22} color="#2563eb" /> Razorpay Payments, Commission & Wallet Liability
+              </h2>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.85rem' }}>
+                Real-time financial reconciliation, commission earnings, and customer cashback credits.
+              </p>
+            </div>
+            <button
+              onClick={loadData}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '0.875rem' }}
+            >
+              <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh Ledger
+            </button>
+          </div>
+
+          {/* 5 Financial Summary Metric Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+            <div style={{ background: 'linear-gradient(135deg, #1e293b, #0f172a)', padding: '18px', borderRadius: '16px', color: '#ffffff' }}>
+              <div style={{ color: '#94a3b8', fontSize: '0.78rem', fontWeight: '700', textTransform: 'uppercase' }}>Total Volume</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '800', marginTop: '6px' }}>₹{(paymentStats.totalVolume || 0).toLocaleString('en-IN')}</div>
+              <div style={{ fontSize: '0.78rem', color: '#cbd5e1', marginTop: '4px' }}>{paymentStats.paidCount || 0} Paid of {paymentStats.count || 0} Orders</div>
+            </div>
+
+            <div style={{ background: 'linear-gradient(135deg, #1e3a8a, #2563eb)', padding: '18px', borderRadius: '16px', color: '#ffffff' }}>
+              <div style={{ color: '#bfdbfe', fontSize: '0.78rem', fontWeight: '700', textTransform: 'uppercase' }}>Platform Commission</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '800', marginTop: '6px' }}>₹{(paymentStats.totalCommission || 0).toLocaleString('en-IN')}</div>
+              <div style={{ fontSize: '0.78rem', color: '#93c5fd', marginTop: '4px' }}>Net Platform Retained Cut</div>
+            </div>
+
+            <div style={{ background: 'linear-gradient(135deg, #065f46, #059669)', padding: '18px', borderRadius: '16px', color: '#ffffff' }}>
+              <div style={{ color: '#a7f3d0', fontSize: '0.78rem', fontWeight: '700', textTransform: 'uppercase' }}>Worker Payouts</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '800', marginTop: '6px' }}>₹{(paymentStats.totalProviderPayout || 0).toLocaleString('en-IN')}</div>
+              <div style={{ fontSize: '0.78rem', color: '#6ee7b7', marginTop: '4px' }}>Credited to Provider Wallets</div>
+            </div>
+
+            <div style={{ background: '#fffbeb', borderRadius: '16px', padding: '18px', border: '1px solid #fde68a' }}>
+              <div style={{ color: '#b45309', fontSize: '0.78rem', fontWeight: '700', textTransform: 'uppercase' }}>Customer Rewards</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#d97706', marginTop: '6px' }}>₹{(paymentStats.totalBonusCredited || 0).toLocaleString('en-IN')}</div>
+              <div style={{ fontSize: '0.78rem', color: '#92400e', marginTop: '4px' }}>5% Cashback Credited</div>
+            </div>
+
+            <div style={{ background: '#f0fdf4', borderRadius: '16px', padding: '18px', border: '1px solid #bbf7d0' }}>
+              <div style={{ color: '#166534', fontSize: '0.78rem', fontWeight: '700', textTransform: 'uppercase' }}>Wallet Liability</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#15803d', marginTop: '6px' }}>₹{(paymentStats.totalWalletLiability || 0).toLocaleString('en-IN')}</div>
+              <div style={{ fontSize: '0.78rem', color: '#166534', marginTop: '4px' }}>Total Active Balances</div>
+            </div>
+          </div>
+
+          {/* Filters & Search Toolbar */}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flexGrow: 1, minWidth: '240px' }}>
+              <Search size={16} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                placeholder="Search by Booking ID, Customer, Worker, Order ID..."
+                value={paymentSearchQuery}
+                onChange={(e) => setPaymentSearchQuery(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px 9px 36px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '0.88rem' }}
+              />
+            </div>
+
+            <select
+              value={paymentStatusFilter}
+              onChange={(e) => setPaymentStatusFilter(e.target.value)}
+              style={{ padding: '9px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '0.88rem', background: '#ffffff', color: '#334155', fontWeight: '600' }}
+            >
+              <option value="all">All Payment Statuses ({adminPayments.length})</option>
+              <option value="paid">Paid ({adminPayments.filter(p => p.status === 'paid').length})</option>
+              <option value="created">Created / Pending ({adminPayments.filter(p => p.status === 'created').length})</option>
+              <option value="failed">Failed ({adminPayments.filter(p => p.status === 'failed').length})</option>
+            </select>
+          </div>
+
+          {/* Payments Table */}
+          {adminPayments.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
+              <CreditCard size={48} color="#94a3b8" style={{ margin: '0 auto 12px auto', display: 'block' }} />
+              <p style={{ color: '#64748b', margin: 0 }}>No payment transactions found in system.</p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '12px' }}>Order / Txn ID</th>
+                    <th style={{ padding: '12px' }}>Booking</th>
+                    <th style={{ padding: '12px' }}>Customer</th>
+                    <th style={{ padding: '12px' }}>Worker</th>
+                    <th style={{ padding: '12px' }}>Price</th>
+                    <th style={{ padding: '12px' }}>Wallet</th>
+                    <th style={{ padding: '12px' }}>Razorpay</th>
+                    <th style={{ padding: '12px' }}>Commission</th>
+                    <th style={{ padding: '12px' }}>Worker Share</th>
+                    <th style={{ padding: '12px' }}>Status</th>
+                    <th style={{ padding: '12px' }}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminPayments
+                    .filter((p) => {
+                      if (paymentStatusFilter !== 'all' && p.status !== paymentStatusFilter) return false;
+                      if (!paymentSearchQuery.trim()) return true;
+                      const q = paymentSearchQuery.toLowerCase();
+                      const bId = String(p.booking?._id || p.booking?.id || p.booking || '').toLowerCase();
+                      const cName = String(p.customer?.name || '').toLowerCase();
+                      const wName = String(p.provider?.name || '').toLowerCase();
+                      const ordId = String(p.razorpayOrderId || '').toLowerCase();
+                      const payId = String(p.razorpayPaymentId || '').toLowerCase();
+                      return bId.includes(q) || cName.includes(q) || wName.includes(q) || ordId.includes(q) || payId.includes(q);
+                    })
+                    .map((p, idx) => {
+                      const bId = p.booking?._id || p.booking?.id || p.booking;
+                      const isPaid = p.status === 'paid';
+                      const dateStr = p.paidAt || p.createdAt ? new Date(p.paidAt || p.createdAt).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      }) : '—';
+
+                      return (
+                        <tr key={p._id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '12px' }}>
+                            <div style={{ fontFamily: 'monospace', fontWeight: '700', color: '#0f172a', fontSize: '0.8rem' }}>
+                              {p.razorpayOrderId || '—'}
+                            </div>
+                            {p.razorpayPaymentId && (
+                              <div style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#64748b' }}>
+                                {p.razorpayPaymentId}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px' }}>
+                            <strong style={{ color: '#2563eb' }}>#{String(bId).slice(-6)}</strong>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{p.booking?.trade || 'Service'}</div>
+                          </td>
+                          <td style={{ padding: '12px' }}>
+                            <div style={{ fontWeight: '600', color: '#0f172a' }}>{p.customer?.name || 'Customer'}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{p.customer?.phone || p.customer?.email}</div>
+                          </td>
+                          <td style={{ padding: '12px' }}>
+                            <div style={{ fontWeight: '600', color: '#0f172a' }}>{p.provider?.name || 'Worker'}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{p.provider?.trade}</div>
+                          </td>
+                          <td style={{ padding: '12px', fontWeight: '700', color: '#0f172a' }}>₹{p.amountTotal}</td>
+                          <td style={{ padding: '12px' }}>
+                            {p.walletUsed > 0 ? (
+                              <span style={{ color: '#16a34a', fontWeight: '700' }}>-₹{p.walletUsed}</span>
+                            ) : (
+                              <span style={{ color: '#94a3b8' }}>₹0</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px', fontWeight: '800', color: '#2563eb' }}>₹{p.amountPaid}</td>
+                          <td style={{ padding: '12px', fontWeight: '700', color: '#d97706' }}>₹{p.commission || 0}</td>
+                          <td style={{ padding: '12px', fontWeight: '700', color: '#059669' }}>₹{p.workerPayout || 0}</td>
+                          <td style={{ padding: '12px' }}>
+                            <span style={{
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.75rem',
+                              fontWeight: '800',
+                              background: isPaid ? '#dcfce7' : p.status === 'failed' ? '#fee2e2' : '#fef3c7',
+                              color: isPaid ? '#15803d' : p.status === 'failed' ? '#b91c1c' : '#b45309',
+                            }}>
+                              {isPaid ? '✓ Paid' : p.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px', color: '#64748b', fontSize: '0.8rem' }}>{dateStr}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add Worker Modal */}
       {showAddWorkerModal && (
         <AddWorkerModal
           onClose={() => setShowAddWorkerModal(false)}
           onWorkerAdded={handleWorkerAdded}
         />
+      )}
+
+      {/* KYC Document Full Preview Modal */}
+      {kycDocModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div style={{ background: '#ffffff', width: '100%', maxWidth: '750px', maxHeight: '90vh', borderRadius: '20px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+            <div style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', color: '#ffffff', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800' }}>
+                  📄 {kycDocModal.docTitle} — {kycDocModal.workerName}
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Verified Document Inspection</span>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <a
+                  href={kycDocModal.docUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ background: '#334155', color: '#f8fafc', padding: '6px 12px', borderRadius: '8px', fontSize: '0.78rem', textDecoration: 'none', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <ExternalLink size={14} /> Full View
+                </a>
+                <button
+                  onClick={() => setKycDocModal(null)}
+                  style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '1.4rem', cursor: 'pointer', fontWeight: '700' }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f8fafc' }}>
+              <img
+                src={kycDocModal.docUrl}
+                alt={kycDocModal.docTitle}
+                style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 4px 16px rgba(0,0,0,0.1)', border: '1px solid #cbd5e1' }}
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  if (e.target.nextSibling) e.target.nextSibling.style.display = 'block';
+                }}
+              />
+              <div style={{ display: 'none', padding: '30px', textAlign: 'center', color: '#64748b' }}>
+                <p style={{ margin: 0, fontWeight: '700', color: '#dc2626' }}>Could not render preview directly.</p>
+                <a href={kycDocModal.docUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontWeight: '700', marginTop: '8px', display: 'inline-block' }}>
+                  Click here to download or open document file
+                </a>
+              </div>
+            </div>
+
+            <div style={{ padding: '14px 24px', background: '#ffffff', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setKycDocModal(null)}
+                style={{ background: '#0f172a', color: '#ffffff', border: 'none', padding: '8px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                Done Inspecting
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Vision Verification Results Modal */}
+      {aiVisionResultModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div style={{ background: '#ffffff', width: '100%', maxWidth: '580px', borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: 'linear-gradient(135deg, #1e293b, #0f172a)', color: '#ffffff', padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={20} color="#f59e0b" /> AI Document Vision Inspection
+                </h3>
+                <span style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+                  Partner: <strong>{aiVisionResultModal.worker.name}</strong>
+                </span>
+              </div>
+              <button
+                onClick={() => setAiVisionResultModal(null)}
+                style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '1.4rem', cursor: 'pointer', fontWeight: '700' }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{
+                background: aiVisionResultModal.analysis?.looksSuspicious ? '#fef2f2' : '#f0fdf4',
+                border: `2px solid ${aiVisionResultModal.analysis?.looksSuspicious ? '#fca5a5' : '#86efac'}`,
+                borderRadius: '16px',
+                padding: '16px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: '800', fontSize: '1rem', color: aiVisionResultModal.analysis?.looksSuspicious ? '#991b1b' : '#166534' }}>
+                    {aiVisionResultModal.analysis?.looksSuspicious ? '⚠️ Document Flagged as Suspicious' : '✅ Document Appears Authentic & Valid'}
+                  </span>
+                  <span style={{ background: aiVisionResultModal.analysis?.looksSuspicious ? '#dc2626' : '#16a34a', color: '#ffffff', fontWeight: '800', fontSize: '0.78rem', padding: '4px 10px', borderRadius: '20px' }}>
+                    Confidence: {aiVisionResultModal.analysis?.confidenceScore || 0}%
+                  </span>
+                </div>
+                {aiVisionResultModal.analysis?.suspicionReason && (
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#991b1b' }}>
+                    <strong>Reason:</strong> {aiVisionResultModal.analysis.suspicionReason}
+                  </p>
+                )}
+              </div>
+
+              <div style={{ background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#64748b', fontWeight: '600' }}>Detected Document Type:</span>
+                  <span style={{ fontWeight: '800', color: '#0f172a' }}>{aiVisionResultModal.analysis?.documentType || 'Unknown'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#64748b', fontWeight: '600' }}>Name Extracted on ID:</span>
+                  <span style={{ fontWeight: '800', color: '#0f172a' }}>{aiVisionResultModal.analysis?.nameFound || 'Not detected'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#64748b', fontWeight: '600' }}>Text Readability:</span>
+                  <span style={{ fontWeight: '800', color: aiVisionResultModal.analysis?.isClearAndReadable ? '#166534' : '#dc2626' }}>
+                    {aiVisionResultModal.analysis?.isClearAndReadable ? 'Clear & Legible ✅' : 'Blurry / Unreadable ❌'}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ fontSize: '0.8rem', color: '#64748b', background: '#f1f5f9', padding: '10px 14px', borderRadius: '10px' }}>
+                💡 <em>Note: AI vision assessment is provided as an administrative aid. Final approval or rejection authority rests with the human administrator.</em>
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setAiVisionResultModal(null)}
+                style={{ background: '#0f172a', color: '#ffffff', border: 'none', padding: '10px 22px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* AI Skill Assessment Inspection Modal */}
@@ -1493,13 +2284,13 @@ const AdminPanel = () => {
 
             <div style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button
-                onClick={() => handleVerifyCaptain(aiModalWorker._id || aiModalWorker.id, aiModalWorker.name, 'Rejected')}
+                onClick={() => handleOpenRejectModal(aiModalWorker)}
                 style={{ background: '#dc2626', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 <XCircle size={16} /> Reject Partner
               </button>
               <button
-                onClick={() => handleVerifyCaptain(aiModalWorker._id || aiModalWorker.id, aiModalWorker.name, 'Verified')}
+                onClick={() => handleApproveWorker(aiModalWorker._id || aiModalWorker.id, aiModalWorker.name)}
                 style={{ background: '#059669', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 <CheckCircle2 size={16} /> Approve Partner
@@ -1616,6 +2407,258 @@ const AdminPanel = () => {
                 style={{ background: '#cbd5e1', color: '#334155', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}
               >
                 {t('close_btn', 'Close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mandatory Reason Worker Rejection Modal */}
+      {rejectionModalWorker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ background: '#ffffff', width: '100%', maxWidth: '520px', borderRadius: '22px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+            <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #fef2f2, #fee2e2)', borderBottom: '1px solid #fecaca', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, color: '#991b1b', fontSize: '1.2rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <XCircle size={22} color="#dc2626" /> Reject Worker Application
+              </h3>
+              <button onClick={() => setRejectionModalWorker(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <XCircle size={20} />
+              </button>
+            </div>
+            <div style={{ padding: '24px' }}>
+              <p style={{ margin: '0 0 16px 0', fontSize: '0.92rem', color: '#334155', lineHeight: 1.5 }}>
+                You are rejecting the partner application for <strong>{rejectionModalWorker.name}</strong>. Please provide a mandatory reason explaining what documents or criteria need correction.
+              </p>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '6px' }}>Quick Reason Templates:</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {[
+                    'Aadhaar / KYC photo is blurry or unreadable.',
+                    'Trade experience does not meet platform criteria.',
+                    'AI skill assessment score below required threshold.',
+                    'Name on government ID does not match registration.',
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setRejectionReasonInput(preset)}
+                      style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', color: '#334155' }}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label style={{ fontSize: '0.82rem', fontWeight: '700', color: '#0f172a', display: 'block', marginBottom: '6px' }}>
+                Feedback / Rejection Reason (Mandatory):
+              </label>
+              <textarea
+                rows={4}
+                value={rejectionReasonInput}
+                onChange={(e) => setRejectionReasonInput(e.target.value)}
+                placeholder="Specify why the application cannot be approved and what the worker must fix..."
+                style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.9rem', boxSizing: 'border-box', resize: 'vertical' }}
+              />
+
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px', marginTop: '12px', fontSize: '0.8rem', color: '#64748b' }}>
+                ℹ️ An automated email containing this feedback will be dispatched to <strong>{rejectionModalWorker.email || 'the applicant'}</strong>.
+              </div>
+            </div>
+            <div style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setRejectionModalWorker(null)}
+                style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: '#475569', padding: '9px 18px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitRejection}
+                disabled={rejectionSubmitting}
+                style={{ background: '#dc2626', border: 'none', color: '#ffffff', padding: '9px 18px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <XCircle size={16} /> {rejectionSubmitting ? 'Submitting...' : 'Confirm Rejection'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Worker Administration & Directives Control Modal */}
+      {workerControlModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ background: '#ffffff', width: '100%', maxWidth: '640px', borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', maxHeight: '92vh' }}>
+            {/* Modal Header */}
+            <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #0f172a, #1e293b)', color: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ShieldCheck size={22} color="#38bdf8" /> Worker Administration &amp; Directive Console
+                </h3>
+                <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '4px' }}>
+                  Issue direct instructions, commendations, warnings, or disciplinary actions
+                </div>
+              </div>
+              <button onClick={() => setWorkerControlModal(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#cbd5e1' }}>
+                <XCircle size={22} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Worker Profile Card */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#0f172a' }}>{workerControlModal.name}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#475569' }}>
+                    🛠️ {workerControlModal.trade || 'General'} • 📞 {workerControlModal.phone} • ✉️ {workerControlModal.email || 'N/A'}
+                  </div>
+                  {workerControlModal.workerId && (
+                    <div style={{ fontSize: '0.8rem', color: '#0284c7', fontWeight: '700', marginTop: '4px' }}>
+                      Worker ID: {workerControlModal.workerId}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  {workerControlModal.isBlocked ? (
+                    <span style={{ background: '#fef2f2', color: '#dc2626', fontWeight: '800', padding: '6px 12px', borderRadius: '8px', border: '1px solid #fecaca', fontSize: '0.82rem' }}>
+                      🛑 Blocked
+                    </span>
+                  ) : (workerControlModal.isSuspended || workerControlModal.verificationStatus === 'suspended') ? (
+                    <span style={{ background: '#fffbeb', color: '#d97706', fontWeight: '800', padding: '6px 12px', borderRadius: '8px', border: '1px solid #fde68a', fontSize: '0.82rem' }}>
+                      ⏸️ Suspended
+                    </span>
+                  ) : (
+                    <span style={{ background: '#f0fdf4', color: '#166534', fontWeight: '800', padding: '6px 12px', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '0.82rem' }}>
+                      🟢 Active &amp; Verified
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Feedback History Log */}
+              <div>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <FileText size={16} color="#475569" /> Logged Administrative Directives ({workerFeedbacksList.length})
+                </h4>
+                {workerFeedbackLoading ? (
+                  <div style={{ padding: '14px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>Loading feedback history...</div>
+                ) : workerFeedbacksList.length === 0 ? (
+                  <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '10px', padding: '14px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                    No prior administrative directives or warnings recorded for this partner.
+                  </div>
+                ) : (
+                  <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {workerFeedbacksList.map((fb, idx) => (
+                      <div key={fb.feedbackId || idx} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <span style={{
+                            fontSize: '0.75rem',
+                            fontWeight: '800',
+                            textTransform: 'uppercase',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            background: fb.feedbackType === 'praise' ? '#dcfce7' : fb.feedbackType === 'warning' ? '#fef3c7' : fb.feedbackType === 'disciplinary' ? '#fee2e2' : '#e0e7ff',
+                            color: fb.feedbackType === 'praise' ? '#166534' : fb.feedbackType === 'warning' ? '#92400e' : fb.feedbackType === 'disciplinary' ? '#991b1b' : '#3730a3',
+                          }}>
+                            {fb.feedbackType}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                            {new Date(fb.createdAt).toLocaleDateString()} {new Date(fb.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p style={{ margin: '4px 0', fontSize: '0.88rem', color: '#1e293b', whiteSpace: 'pre-wrap' }}>{fb.message}</p>
+                        {fb.actionTaken && fb.actionTaken !== 'none' && (
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>
+                            Action Applied: {fb.actionTaken}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Issue New Directive Form */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px' }}>
+                <h4 style={{ margin: '0 0 14px 0', fontSize: '0.95rem', fontWeight: '800', color: '#0f172a' }}>
+                  Issue New Directive / Administrative Feedback
+                </h4>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.82rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '6px' }}>Directive Type:</label>
+                    <select
+                      value={workerFeedbackType}
+                      onChange={(e) => setWorkerFeedbackType(e.target.value)}
+                      style={{ width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.88rem', fontWeight: '600' }}
+                    >
+                      <option value="instruction">📋 Instruction / Advisory</option>
+                      <option value="praise">🌟 Commendation / Praise</option>
+                      <option value="warning">⚠️ Official Warning</option>
+                      <option value="disciplinary">🚨 Disciplinary Notice</option>
+                      <option value="correction">🛠️ Quality Correction</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.82rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '6px' }}>Account Status Action:</label>
+                    <select
+                      value={workerControlAction}
+                      onChange={(e) => setWorkerControlAction(e.target.value)}
+                      style={{ width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.88rem', fontWeight: '600' }}
+                    >
+                      <option value="none">🔘 None (Advisory Only)</option>
+                      <option value="warning_issued">⚠️ Record Written Warning</option>
+                      <option value="suspended">⏸️ Suspend Account (Offline)</option>
+                      <option value="reinstated">🟢 Reinstate Account (Active)</option>
+                      <option value="blocked">🚫 Block Account Access</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '6px' }}>Feedback / Directive Content:</label>
+                  <textarea
+                    rows={4}
+                    value={workerFeedbackMessage}
+                    onChange={(e) => setWorkerFeedbackMessage(e.target.value)}
+                    placeholder="Type operational feedback, instructions, warning notes, or commendation..."
+                    style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.9rem', boxSizing: 'border-box', resize: 'vertical' }}
+                  />
+                </div>
+
+                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  ⚡ Live event emitted to provider app and official email directive dispatched immediately.
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setWorkerControlModal(null)}
+                style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 18px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+              <button
+                onClick={handleSubmitWorkerFeedback}
+                disabled={workerFeedbackSubmitting}
+                style={{
+                  background: workerControlAction === 'suspended' || workerControlAction === 'blocked' ? '#dc2626' : workerFeedbackType === 'praise' ? '#16a34a' : '#2563eb',
+                  border: 'none',
+                  color: '#ffffff',
+                  padding: '10px 20px',
+                  borderRadius: '10px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <MessageSquare size={16} /> {workerFeedbackSubmitting ? 'Transmitting Directive...' : 'Send Directive & Apply Action'}
               </button>
             </div>
           </div>

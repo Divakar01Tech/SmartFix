@@ -1,4 +1,5 @@
 import { getStoredWorkers, saveWorkerToStorage, deleteWorkerFromStorage } from '../data/mockData';
+import { getPortalToken } from '../utils/authStorage';
 
 export const getApiBase = () => {
   if (import.meta.env?.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -12,10 +13,28 @@ export const getApiBase = () => {
 
 const API_BASE = getApiBase();
 
-
-const getHeaders = (token) => {
+const getHeaders = (tokenOrRole) => {
   const headers = { 'Content-Type': 'application/json' };
-  const authToken = token || localStorage.getItem('smartfix_token') || localStorage.getItem('smartfix_token');
+  let authToken = null;
+  if (tokenOrRole && typeof tokenOrRole === 'string' && tokenOrRole.startsWith('ey')) {
+    authToken = tokenOrRole;
+  } else if (tokenOrRole === 'customer' || tokenOrRole === 'worker' || tokenOrRole === 'admin') {
+    authToken = getPortalToken(tokenOrRole);
+  } else {
+    // Infer role namespace from active route
+    if (typeof window !== 'undefined' && window.location?.pathname) {
+      if (window.location.pathname.startsWith('/worker')) {
+        authToken = getPortalToken('worker');
+      } else if (window.location.pathname.startsWith('/admin')) {
+        authToken = getPortalToken('admin');
+      } else {
+        authToken = getPortalToken('customer');
+      }
+    } else {
+      authToken = getPortalToken('customer');
+    }
+  }
+
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`;
   }
@@ -23,7 +42,180 @@ const getHeaders = (token) => {
 };
 
 export const apiService = {
-  // Authentication (Email OTP)
+  // Customer Auth Endpoints (/api/customer/auth)
+  customerLogin: async (identifier, password) => {
+    const res = await fetch(`${API_BASE}/customer/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data.message || 'Invalid credentials');
+      err.locked = data.locked;
+      err.remainingMinutes = data.remainingMinutes;
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
+
+  workerGetMe: async (token) => {
+    const res = await fetch(`${API_BASE}/worker/me`, {
+      headers: getHeaders(token || 'worker'),
+    });
+    if (!res.ok) throw new Error('Failed to retrieve worker profile');
+    const data = await res.json();
+    return data.worker || data.user;
+  },
+
+  authMe: async (tokenOrRole) => {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: getHeaders(tokenOrRole),
+    });
+    if (!res.ok) throw new Error('Session verification failed');
+    return await res.json();
+  },
+
+  customerSendLoginOtp: async (email) => {
+    const res = await fetch(`${API_BASE}/customer/auth/login-otp/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to send login OTP');
+    return data;
+  },
+
+  customerVerifyLoginOtp: async (email, otp) => {
+    const res = await fetch(`${API_BASE}/customer/auth/login-otp/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to verify login OTP');
+    return data;
+  },
+
+  customerSendForgotOtp: async (email) => {
+    const res = await fetch(`${API_BASE}/customer/auth/forgot-password/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to request reset OTP');
+    return data;
+  },
+
+  customerVerifyForgotOtp: async (email, otp) => {
+    const res = await fetch(`${API_BASE}/customer/auth/forgot-password/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to verify reset OTP');
+    return data;
+  },
+
+  customerResetPassword: async (resetToken, newPassword) => {
+    const res = await fetch(`${API_BASE}/customer/auth/forgot-password/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resetToken, newPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to reset password');
+    return data;
+  },
+
+  // Service Categories from DB (/api/services/categories)
+  getCategories: async () => {
+    const res = await fetch(`${API_BASE}/services/categories`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch categories');
+    return data.categories || [];
+  },
+
+  // Anonymous Nearby Workers (/api/nearby-workers)
+  getNearbyWorkers: async (lat, lng, category = '') => {
+    const params = new URLSearchParams();
+    if (lat) params.append('lat', lat);
+    if (lng) params.append('lng', lng);
+    if (category) params.append('category', category);
+    const res = await fetch(`${API_BASE}/nearby-workers?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch nearby workers');
+    return data.workers || [];
+  },
+
+  // Razorpay Payment Order & Verification (/api/payments)
+  createPaymentOrder: async (bookingId, useWallet = false, amount = null) => {
+    const payload = { bookingId, useWallet };
+    if (amount !== null && amount !== undefined) payload.amount = amount;
+    const res = await fetch(`${API_BASE}/payments/create-order`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to create payment order');
+    return data;
+  },
+
+  verifyPayment: async (paymentPayload) => {
+    const res = await fetch(`${API_BASE}/payments/verify`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(paymentPayload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Payment signature verification failed');
+    return data;
+  },
+
+  // Wallet
+  getWallet: async () => {
+    const res = await fetch(`${API_BASE}/wallet`, {
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch wallet');
+    return data.wallet || { balance: 0, transactions: [] };
+  },
+
+  // Customer Payment History
+  getMyPayments: async () => {
+    const res = await fetch(`${API_BASE}/payments/my`, {
+      headers: getHeaders('customer'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch payment history');
+    return data.payments || [];
+  },
+
+  // Admin Payment Analytics & History
+  getAdminPayments: async (token) => {
+    const res = await fetch(`${API_BASE}/admin/payments`, {
+      headers: getHeaders(token || 'admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch payments data');
+    return data;
+  },
+
+  // Payment by Booking ID
+  getPaymentByBooking: async (bookingId) => {
+    const res = await fetch(`${API_BASE}/payments/booking/${bookingId}`, {
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch booking payment');
+    return data.payment;
+  },
   sendEmailOtp: async (email) => {
     const res = await fetch(`${API_BASE}/auth/email/send-otp`, {
       method: 'POST',
@@ -59,6 +251,55 @@ export const apiService = {
     if (!res.ok) throw new Error(data.message || 'Registration failed');
     return data;
   },
+
+  forgotPasswordSendOtp: async (email) => {
+    const res = await fetch(`${API_BASE}/auth/forgot-password/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to request reset code');
+    return data;
+  },
+
+  forgotPasswordVerifyOtp: async (email, otp) => {
+    const res = await fetch(`${API_BASE}/auth/forgot-password/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Invalid or expired code');
+    return data;
+  },
+
+  forgotPasswordReset: async (resetToken, newPassword) => {
+    const res = await fetch(`${API_BASE}/auth/forgot-password/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resetToken, newPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to reset password');
+    return data;
+  },
+
+  completeProfile: async (payload, token) => {
+    const authToken = token || localStorage.getItem('smartfix_token');
+    const res = await fetch(`${API_BASE}/auth/complete-profile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to complete profile');
+    return data;
+  },
+
 
   // Services Search (AI + Local)
   searchServices: async (query) => {
@@ -151,6 +392,34 @@ export const apiService = {
     return data.bookings || [];
   },
 
+  getBooking: async (bookingId) => {
+    const res = await fetch(`${API_BASE}/bookings/${bookingId}`, {
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data.message || 'Failed to fetch booking');
+      err.status = res.status;
+      throw err;
+    }
+    return data.booking;
+  },
+
+  cancelBooking: async (bookingId, reason = 'Customer requested cancellation') => {
+    const res = await fetch(`${API_BASE}/bookings/${bookingId}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ status: 'cancelled', reason }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data.message || 'Failed to cancel booking');
+      err.status = res.status;
+      throw err;
+    }
+    return data.booking;
+  },
+
   updateBookingStatus: async (bookingId, status, extraData = {}) => {
     const res = await fetch(`${API_BASE}/bookings/${bookingId}/status`, {
       method: 'PATCH',
@@ -160,6 +429,37 @@ export const apiService = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to update booking status');
     return data.booking;
+  },
+
+  acceptBooking: async (bookingId) => {
+    try {
+      const res = await fetch(`${API_BASE}/bookings/${bookingId}/accept`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok) return data.booking;
+    } catch (e) {
+      console.warn('Direct accept endpoint fallback:', e.message);
+    }
+    // Fallback to updateBookingStatus
+    return apiService.updateBookingStatus(bookingId, 'Accepted');
+  },
+
+  declineBooking: async (bookingId, reason = '') => {
+    try {
+      const res = await fetch(`${API_BASE}/bookings/${bookingId}/decline`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (res.ok) return data.booking;
+    } catch (e) {
+      console.warn('Direct decline endpoint fallback:', e.message);
+    }
+    // Fallback to updateBookingStatus
+    return apiService.updateBookingStatus(bookingId, 'Declined', { cancelReason: reason });
   },
 
   payBooking: async (bookingId, paymentDetails) => {
@@ -363,6 +663,58 @@ export const apiService = {
       headers: getHeaders(),
     });
     return await res.json();
+  },
+
+  getAdminCustomersData: async () => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/customers`, {
+        headers: getHeaders(),
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      return { totalCount: 0, inactiveOneMonthCount: 0, customers: [] };
+    }
+  },
+
+  deleteCustomer: async (customerId) => {
+    const res = await fetch(`${API_BASE}/admin/customers/${customerId}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to delete customer');
+    return data;
+  },
+
+  cleanupInactiveCustomers: async () => {
+    const res = await fetch(`${API_BASE}/admin/customers/inactive-cleanup`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to clean up inactive customers');
+    return data;
+  },
+
+  sendWorkerFeedback: async (workerId, payload) => {
+    const res = await fetch(`${API_BASE}/admin/workers/${workerId}/feedback`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to send worker feedback');
+    return data;
+  },
+
+  getWorkerFeedback: async (workerId) => {
+    const res = await fetch(`${API_BASE}/admin/workers/${workerId}/feedback`, {
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch worker feedback');
+    return data;
   },
 
   getAdminAnalytics: async () => {
@@ -575,7 +927,7 @@ export const apiService = {
     const res = await fetch(`${API_BASE}/worker/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier, password }),
+      body: JSON.stringify({ email: identifier, identifier, password }),
     });
     const data = await res.json();
     if (!res.ok) {

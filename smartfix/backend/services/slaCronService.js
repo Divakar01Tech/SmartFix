@@ -53,9 +53,9 @@ async function runSlaBreachSweep(io) {
     
     // Find active jobs not yet Arrived/Completed
     const activeBookings = await Booking.find({
-      status: { $in: ['Confirmed', 'Accepted', 'EnRoute'] },
+      status: { $in: ['Confirmed', 'Accepted', 'EnRoute', 'confirmed', 'accepted', 'en_route'] },
       slaBreached: { $ne: true },
-      slaDeadline: { $exists: true }
+      slaDeadline: { $exists: true },
     }).populate('customer', 'lat lng locationPoint name phone').populate('worker', 'name phone trade punctualityRate');
 
     if (!activeBookings || activeBookings.length === 0) return;
@@ -163,7 +163,15 @@ async function runSlaBreachSweep(io) {
       // 2. Check for SLA Breach (< 0 mins remaining)
       if (minutesRemaining < 0) {
         booking.slaBreached = true;
-        booking.status = 'SLABreached';
+        booking.status = 'sla_breached';
+
+        booking.statusHistory = booking.statusHistory || [];
+        booking.statusHistory.push({
+          status: 'sla_breached',
+          changedAt: now,
+          actorRole: 'system',
+          reason: '1-hour SLA guarantee breached: Technician did not arrive within 60 minutes of acceptance.',
+        });
 
         // Compute breach distance if we have location data
         if (booking.tracking?.lastLat && booking.tracking?.lastLng && booking.customer?.locationPoint?.coordinates) {

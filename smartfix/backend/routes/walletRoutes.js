@@ -4,6 +4,7 @@ const { protect } = require('../middleware/auth');
 const { getMyWallet, getAllWallets, requestWithdrawal, getSettings, updateSettings, payWithWallet } = require('../controllers/walletController');
 
 router.get('/me', protect, getMyWallet);
+router.get('/', protect, getMyWallet);
 router.get('/admin/all', protect, getAllWallets);
 router.post('/withdraw', protect, requestWithdrawal);
 router.get('/settings', protect, getSettings);

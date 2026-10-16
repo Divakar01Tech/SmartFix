@@ -96,7 +96,14 @@ app.use(cors({
   credentials: true,
 }));
 
+const mongoSanitize = require('express-mongo-sanitize');
+
+// Razorpay Webhook (mounted BEFORE express.json() using express.raw for HMAC signature verification)
+const { handleWebhook } = require('./controllers/paymentController');
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), handleWebhook);
+
 app.use(express.json({ limit: '10mb' }));
+app.use(mongoSanitize());
 app.use(httpLogger);
 app.set('io', io);
 
@@ -121,9 +128,15 @@ app.use('/api', (req, res, next) => {
 
 app.use('/api', apiRateLimiter);
 
+// Admin Auth (unauthenticated endpoints for 2-step OTP login)
+app.use('/api/admin/auth', require('./routes/adminAuthRoutes'));
+
 // Worker (Service Provider) Routes
 app.use('/api/worker/auth', require('./routes/workerAuthRoutes'));
 app.use('/api/worker', require('./routes/workerRoutes'));
+
+// Customer Auth Routes
+app.use('/api/customer/auth', require('./routes/customerAuthRoutes'));
 
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));

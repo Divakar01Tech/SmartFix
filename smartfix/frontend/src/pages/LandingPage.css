@@ -1,0 +1,76 @@
+.landing-page-wrapper {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%);
+  display: flex;
+  flex-direction: column;
+}
+
+.landing-logo-box {
+  background: #2563eb;
+  padding: 8px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+}
+
+.landing-brand-text {
+  font-size: 1.4rem;
+  color: #0f172a;
+}
+
+.role-portal-card {
+  background: #ffffff;
+  transition: all 0.3s ease;
+  border: 1px solid #e2e8f0 !important;
+  text-align: left;
+}
+
+.role-portal-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08) !important;
+}
+
+.customer-card:hover {
+  border-color: #2563eb !important;
+}
+
+.worker-card:hover {
+  border-color: #f59e0b !important;
+}
+
+.role-card-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.customer-badge {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.worker-badge {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.role-features li {
+  font-size: 0.88rem;
+  color: #475569;
+}
+
+.admin-portal-link {
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.admin-portal-link:hover {
+  color: #0f172a !important;
+  text-decoration: underline;
+}

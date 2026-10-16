@@ -139,7 +139,7 @@ const WorkerCard = ({ worker = {}, index = 0, confirmedBooking = false }) => {
           <span className="fs-5 fw-extrabold text-success">₹{worker.ratePerHour}</span>
           <span className="text-muted small"> / {t('per_hour')}</span>
         </div>
-        <Link to={`/booking/${workerId}`} className="btn btn-primary fw-bold px-3 py-2 rounded-3 shadow-sm">
+        <Link to={`/customer/book/${workerId}`} className="btn btn-primary fw-bold px-3 py-2 rounded-3 shadow-sm">
           {t('instant_book')}
         </Link>
       </div>

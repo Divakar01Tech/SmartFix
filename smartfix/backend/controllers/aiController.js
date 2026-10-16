@@ -294,9 +294,33 @@ exports.verifyKycImage = async (req, res) => {
       return res.status(403).json({ message: 'Only admins can use KYC Assist' });
     }
 
-    const { image } = req.body;
+    let { image, workerId, docKey } = req.body;
+    if (!image && workerId) {
+      const fs = require('fs');
+      const path = require('path');
+      const User = require('../models/User');
+      const worker = await User.findById(workerId).select('+kyc');
+      if (worker) {
+        let filePath = null;
+        if (!docKey || docKey === 'aadhaarFront') filePath = worker.kyc?.aadhaarFrontPath || worker.aadhaarDocUrl;
+        else if (docKey === 'aadhaarBack') filePath = worker.kyc?.aadhaarBackPath;
+        else if (docKey === 'secondId') filePath = worker.kyc?.secondIdPath || worker.idProofDocUrl;
+
+        if (filePath && !path.isAbsolute(filePath)) {
+          filePath = path.join(__dirname, '..', filePath.replace(/^\/+/, ''));
+        }
+
+        if (filePath && fs.existsSync(filePath)) {
+          const fileBuffer = fs.readFileSync(filePath);
+          const ext = path.extname(filePath).toLowerCase();
+          const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+          image = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+        }
+      }
+    }
+
     if (!image) {
-      return res.status(400).json({ message: 'Base64 image payload is required' });
+      return res.status(400).json({ message: 'Base64 image payload or valid worker document is required' });
     }
 
     const kycSystemPrompt = `

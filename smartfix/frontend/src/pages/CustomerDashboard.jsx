@@ -11,6 +11,7 @@ import WorkerCard from '../components/WorkerCard';
 import LiveTrackerMap from '../components/LiveTrackerMap';
 import OnlineWorkersWidget from '../components/OnlineWorkersWidget';
 import PaymentModal from '../components/PaymentModal';
+import PayButton from '../components/PayButton';
 import SOSButton from '../components/SOSButton';
 import DisputeModal from '../components/DisputeModal';
 
@@ -517,17 +518,29 @@ const CustomerDashboard = () => {
                           </>
                         )}
 
-                        {b.paymentStatus !== 'Paid' ? (
-                          <button
-                            type="button"
-                            className="abc-action-btn pay-btn"
-                            onClick={() => setSelectedBookingForPayment(b)}
-                          >
-                            <CreditCard size={16} /> Pay Online (+5% Worker Bonus 🎁)
-                          </button>
-                        ) : (
+                        {b.paymentStatus === 'Paid' ? (
                           <span className="badge bg-success p-2 rounded-3 d-inline-flex align-items-center gap-1">
                             <CheckCircle2 size={16} /> Paid Online (+5% Bonus Sent)
+                          </span>
+                        ) : ['completed', 'workcompleted'].includes((b.status || '').toLowerCase()) ? (
+                          <PayButton
+                            booking={b}
+                            buttonClassName="abc-action-btn pay-btn"
+                            buttonText="Pay Now (Razorpay / Wallet)"
+                            onSuccess={() => {
+                              apiService.getBookings?.().then((res) => {
+                                if (Array.isArray(res)) setBookings(res);
+                              }).catch(() => {});
+                            }}
+                            onRefresh={() => {
+                              apiService.getBookings?.().then((res) => {
+                                if (Array.isArray(res)) setBookings(res);
+                              }).catch(() => {});
+                            }}
+                          />
+                        ) : (
+                          <span className="badge bg-light text-muted border p-2 rounded-3 d-inline-flex align-items-center gap-1" style={{ fontSize: '0.75rem' }}>
+                            <Clock size={14} /> Pay unlocks on completion
                           </span>
                         )}
 
@@ -778,10 +791,16 @@ const CustomerDashboard = () => {
 
       {/* Payment Modal */}
       {selectedBookingForPayment && (
-        <PaymentModal
+        <PayButton
+          autoOpen={true}
           booking={selectedBookingForPayment}
-          onClose={() => setSelectedBookingForPayment(null)}
-          onSuccess={handlePaymentSuccess}
+          onSuccess={(details) => {
+            handlePaymentSuccess(details);
+            setSelectedBookingForPayment(null);
+          }}
+          onRefresh={() => {
+            setSelectedBookingForPayment(null);
+          }}
         />
       )}
 

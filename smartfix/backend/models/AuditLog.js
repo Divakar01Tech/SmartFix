@@ -5,12 +5,19 @@ const auditLogSchema = new mongoose.Schema(
     adminId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: false,
     },
+    action: {
+      type: String,
+      default: 'worker_review',
+      index: true,
+    },
+    ip: String,
+    details: mongoose.Schema.Types.Mixed,
     workerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: false,
       index: true,
     },
     aiVerdict: {
@@ -19,8 +26,7 @@ const auditLogSchema = new mongoose.Schema(
     },
     adminDecision: {
       type: String,
-      enum: ['approved', 'rejected'],
-      required: true,
+      required: false,
     },
     agreedWithAi: {
       type: Boolean,

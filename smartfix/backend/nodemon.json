@@ -1,0 +1,26 @@
+{
+  "watch": [
+    "controllers",
+    "middleware",
+    "models",
+    "routes",
+    "services",
+    "socket",
+    "utils",
+    "config",
+    "server.js"
+  ],
+  "ext": "js,json",
+  "ignore": [
+    "node_modules",
+    "logs",
+    "*.log",
+    ".wwebjs_auth",
+    ".wwebjs_cache",
+    "scratch",
+    "tests",
+    "storage",
+    "uploads"
+  ],
+  "delay": "1500"
+}

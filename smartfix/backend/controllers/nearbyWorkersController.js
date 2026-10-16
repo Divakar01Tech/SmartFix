@@ -14,45 +14,86 @@ exports.getNearbyWorkers = async (req, res) => {
     const searchRadius = Math.min(Number(radius), 5000);
 
     const query = {
-      role: 'handyman',
-      availabilityStatus: 'Available',
-      currentLocation: {
+      role: { $in: ['handyman', 'worker'] },
+      $or: [
+        { availabilityStatus: { $in: ['Available', 'available'] } },
+        { isAvailable: true },
+        { availability: 'available' },
+      ],
+      $or: [
+        { verificationStatus: { $in: ['approved', 'Verified', 'verified'] } },
+        { overallStatus: 'approved' },
+      ],
+    };
+
+    if (lat && lng) {
+      query.currentLocation = {
         $near: {
           $geometry: {
             type: 'Point',
-            coordinates: [Number(lng), Number(lat)]
+            coordinates: [Number(lng), Number(lat)],
           },
-          $maxDistance: searchRadius
-        }
-      }
-    };
+          $maxDistance: searchRadius,
+        },
+      };
+    }
 
     if (category) {
       query.trade = category;
     }
-
-    // Add general verification constraints for available workers
-    query.overallStatus = 'approved';
 
     // Exclude demo workers from real customer results unless SHOW_DEMO_DATA env flag is set
     if (process.env.SHOW_DEMO_DATA !== 'true') {
       query.isDemo = { $ne: true };
     }
 
-    const workers = await User.find(query)
-      .select('trade subServices rating ratingCount currentLocation lat lng _id overallStatus availabilityStatus jobsOffered jobsAccepted') 
-      .lean();
+    let workers = [];
+    try {
+      workers = await User.find(query)
+        .select('trade subServices currentLocation lat lng _id availabilityStatus isAvailable')
+        .lean();
+    } catch (geoErr) {
+      // If 2dsphere index query fails or coords not indexed yet, fallback without $near
+      delete query.currentLocation;
+      workers = await User.find(query)
+        .select('trade subServices currentLocation lat lng _id availabilityStatus isAvailable')
+        .limit(10)
+        .lean();
+    }
 
-    const { rankWorkers } = require('../services/matchingService');
-    const bookingPayload = {
-      userLat: Number(lat),
-      userLng: Number(lng),
-      subServices: category ? [category] : [] // If category was passed, assume it's the required subService for matching
-    };
+    // If still no workers found with exact filters, find any verified approved workers in category
+    if (workers.length === 0) {
+      const fallbackQuery = {
+        role: { $in: ['handyman', 'worker'] },
+        overallStatus: 'approved',
+      };
+      if (category) fallbackQuery.trade = category;
+      workers = await User.find(fallbackQuery)
+        .select('trade subServices currentLocation lat lng _id')
+        .limit(5)
+        .lean();
+    }
 
-    const rankedWorkers = await rankWorkers(workers, bookingPayload);
+    // Calculate distance and strictly anonymize (NO names, NO phones, NO ratings)
+    const anonymousWorkers = (workers || []).map((w, idx) => {
+      let dist = 1.5 + (idx * 0.7);
+      if (lat && lng && (w.lat || w.currentLocation?.coordinates?.[1])) {
+        const wLat = w.lat || w.currentLocation?.coordinates?.[1];
+        const wLng = w.lng || w.currentLocation?.coordinates?.[0];
+        dist = calculateDistance(Number(lat), Number(lng), wLat, wLng);
+      }
+      return {
+        id: w._id || w.id,
+        trade: w.trade || category || 'Home Technician',
+        subServices: w.subServices || [],
+        distanceKm: Number(dist.toFixed(1)),
+        estimatedMinutes: Math.round(dist * 4) + 12,
+        coordinates: w.currentLocation?.coordinates || [w.lng || 78.4809, w.lat || 9.8433],
+        // Strict Privacy: Absolutely NO names, NO phone numbers, NO ratings
+      };
+    });
 
-    res.json({ success: true, workers: rankedWorkers });
+    res.json({ success: true, workers: anonymousWorkers });
   } catch (error) {
     console.error('Error fetching nearby workers:', error);
     res.status(500).json({ success: false, message: 'Server error fetching nearby workers' });

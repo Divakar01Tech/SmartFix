@@ -8,7 +8,7 @@ import './Signup.css';
 const Signup = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { setToken, setUser } = useAuth();
+  const { setToken, setUser, setAuthSession } = useAuth();
 
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState('');
@@ -145,13 +145,16 @@ const Signup = () => {
         signupToken
       );
       
-      // Save auth token and user
-      localStorage.setItem('token', res.token);
-      setToken(res.token);
-      setUser(res.user);
+      // Save auth token and user in isolated customer storage
+      if (setAuthSession) {
+        setAuthSession(res.user, res.token, 'customer');
+      } else {
+        if (setToken) setToken(res.token);
+        if (setUser) setUser(res.user);
+      }
       
-      // Redirect to dashboard
-      navigate('/customer-dashboard');
+      // Redirect to customer portal home
+      navigate('/customer/home');
     } catch (err) {
       if (err.response?.status === 401) {
         // Token expired

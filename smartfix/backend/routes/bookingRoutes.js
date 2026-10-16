@@ -14,7 +14,7 @@ const {
   getPendingBookingsForProvider,
   getBookingInvoice,
 } = require('../controllers/bookingController');
-const { protect, requireApprovedWorker } = require('../middleware/authMiddleware');
+const { protect, requireApprovedWorker, requireCustomer } = require('../middleware/authMiddleware');
 
 // If the caller is a worker or handyman, enforce requireApprovedWorker
 const checkWorkerApprovalIfWorker = async (req, res, next) => {
@@ -24,7 +24,7 @@ const checkWorkerApprovalIfWorker = async (req, res, next) => {
   next();
 };
 
-router.post('/', protect, createBooking);
+router.post('/', protect, requireCustomer, createBooking);
 router.get('/my', protect, getMyBookings);
 router.get('/all', protect, getAllBookings);
 router.get('/pending-for-provider', protect, requireApprovedWorker, getPendingBookingsForProvider);

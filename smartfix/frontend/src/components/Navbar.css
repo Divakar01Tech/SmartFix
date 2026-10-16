@@ -143,6 +143,29 @@
   transform: translateY(-1px);
 }
 
+.partner-hub-nav-btn {
+  text-decoration: none;
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1.5px solid #f59e0b;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: 0.84rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  white-space: nowrap;
+}
+
+.partner-hub-nav-btn:hover {
+  background: #f59e0b;
+  color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+}
+
 .login-btn {
   text-decoration: none;
   background-color: var(--primary-color);
@@ -151,7 +174,11 @@
   border-radius: var(--radius-pill);
   font-weight: 600;
   font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
 }
 
 .login-btn:hover {

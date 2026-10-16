@@ -10,7 +10,7 @@ import OnlineWorkersWidget from '../components/OnlineWorkersWidget';
 import { apiService } from '../services/api';
 import { getWorkerDistance, getCityBase } from '../utils/distance';
 import { getUserCurrentLocation } from '../utils/geolocation';
-import { Search, MapPin, Map, LayoutGrid, RotateCcw, Navigation, Wrench, Sparkles, Info } from 'lucide-react';
+import { Search, MapPin, Map, LayoutGrid, RotateCcw, Navigation, Wrench, Sparkles, Info, AlertTriangle } from 'lucide-react';
 import AISearchBar from '../components/AISearchBar';
 import './Browse.css';
 

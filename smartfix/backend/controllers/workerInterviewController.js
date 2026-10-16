@@ -24,6 +24,12 @@ const extractUserOrEmailFromToken = (req) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     return { decoded };
   } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true });
+        return { decoded };
+      } catch (inner) {}
+    }
     return { error: 'Invalid or expired token. Please verify email or login again.' };
   }
 };

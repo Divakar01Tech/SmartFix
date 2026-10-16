@@ -8,9 +8,80 @@ const twilioService = require('../services/twilioService');
 const { generateInvoicePDF } = require('../services/invoiceService');
 const { sendCustomSms } = require('../services/smsService');
 const { createProxySession, closeProxySession } = require('../utils/twilioProxy');
-const { serializeBookingForCustomer, serializeBookingForWorker } = require('../utils/serializers');
+const { toSafeBooking, serializeBookingForCustomer, serializeBookingForWorker } = require('../utils/serializers');
 const { startDispatch } = require('../services/dispatchService');
 
+// State machine normalization helper
+const normalizeStatus = (st) => {
+  if (!st) return 'pending';
+  const s = st.toString().toLowerCase().trim().replace(/[-\s]/g, '_');
+  if (s === 'pendingdispatch') return 'pending';
+  if (s === 'enroute') return 'en_route';
+  if (s === 'slabreached') return 'sla_breached';
+  if (s === 'workinprogress' || s === 'inprogress') return 'en_route';
+  if (s === 'confirmed') return 'accepted';
+  if (s === 'declined') return 'cancelled';
+  if (s === 'captainarrived') return 'arrived';
+  return s;
+};
+
+// Canonical State Machine transition enforcement:
+// pending -> accepted -> en_route -> arrived -> completed -> paid -> reviewed ; cancelled ; sla_breached
+const canTransition = (fromStatus, toStatus, actorRole = '') => {
+  const from = normalizeStatus(fromStatus);
+  const to = normalizeStatus(toStatus);
+  const role = (actorRole || '').toLowerCase();
+
+  // Admin has emergency supervisory override
+  if (role === 'admin') return true;
+
+  if (from === to) return false;
+
+  // Terminal states cannot transition
+  if (from === 'reviewed' || from === 'cancelled') return false;
+
+  const allowedTransitions = {
+    pending: {
+      accepted: ['worker', 'handyman', 'system'],
+      cancelled: ['customer', 'worker', 'handyman', 'system'],
+    },
+    accepted: {
+      en_route: ['worker', 'handyman'],
+      cancelled: ['customer', 'worker', 'handyman'],
+      sla_breached: ['system'],
+    },
+    en_route: {
+      arrived: ['worker', 'handyman'],
+      cancelled: ['customer', 'worker', 'handyman'],
+      sla_breached: ['system'],
+    },
+    arrived: {
+      completed: ['worker', 'handyman'],
+      cancelled: ['worker', 'handyman'],
+    },
+    completed: {
+      paid: ['customer', 'system'],
+    },
+    paid: {
+      reviewed: ['customer'],
+    },
+    sla_breached: {
+      arrived: ['worker', 'handyman'],
+      cancelled: ['customer', 'worker', 'handyman', 'system'],
+    },
+  };
+
+  const targets = allowedTransitions[from];
+  if (!targets) return false;
+
+  const allowedRoles = targets[to];
+  if (!allowedRoles) return false;
+
+  return allowedRoles.includes(role);
+};
+
+exports.normalizeStatus = normalizeStatus;
+exports.canTransition = canTransition;
 
 // ==============================================================
 // Helper: emit socket event safely
@@ -34,10 +105,14 @@ exports.createBooking = async (req, res) => {
       return res.status(401).json({ message: 'Authentication required to create a booking' });
     }
 
-    const pLat = parseFloat(pickupLat);
-    const pLng = parseFloat(pickupLng);
+    const pLat = parseFloat(
+      pickupLat !== undefined ? pickupLat : (req.body.userLat !== undefined ? req.body.userLat : (req.body.lat !== undefined ? req.body.lat : req.body.location?.coordinates?.[1]))
+    ) || 9.8433;
+    const pLng = parseFloat(
+      pickupLng !== undefined ? pickupLng : (req.body.userLng !== undefined ? req.body.userLng : (req.body.lng !== undefined ? req.body.lng : req.body.location?.coordinates?.[0]))
+    ) || 78.4809;
 
-    // Validate location against Tamil Nadu bounds
+    // Validate location against Tamil Nadu bounds and extract district
     const locValidation = await validateTamilNaduLocation(pLat, pLng, address);
     if (!locValidation.valid) {
       return res.status(400).json({ message: locValidation.message });
@@ -53,25 +128,40 @@ exports.createBooking = async (req, res) => {
     const bookingPayload = {
       customer: customerId,
       worker: assignedWorkerId,
-      trade: trade || workerObj?.trade || 'Plumbing',
+      trade: trade || req.body.category || workerObj?.trade || 'Plumbing',
       serviceTier: serviceTier || 'AutoHandyman',
-      date: date || new Date().toISOString().split('T')[0],
-      time: time || '10:00 AM',
-      address: address || 'Tamil Nadu, Tamil Nadu',
-      notes: notes || '',
+      date: date || req.body.scheduledDate || new Date().toISOString().split('T')[0],
+      time: time || req.body.scheduledTime || 'Immediate',
+      address: address || 'Tamil Nadu',
+      district: locValidation.district || locValidation.resolvedDistrict || req.body.district || 'Sivagangai',
+      state: locValidation.state || 'Tamil Nadu',
+      notes: notes || req.body.description || '',
       price: Number(price) || workerObj?.ratePerHour || 350,
-      pickupLat: pLat || 9.8433,
-      pickupLng: pLng || 78.4809,
-      userLat: pLat || 9.8433,
-      userLng: pLng || 78.4809,
-      status: 'Pending',
+      pickupLat: pLat,
+      pickupLng: pLng,
+      userLat: pLat,
+      userLng: pLng,
+      location: {
+        type: 'Point',
+        coordinates: [pLng, pLat],
+      },
+      status: 'pending',
+      statusHistory: [
+        {
+          status: 'pending',
+          changedAt: new Date(),
+          changedBy: customerId,
+          actorRole: 'customer',
+          reason: 'Initial booking creation',
+        },
+      ],
       subServices: Array.isArray(subServices) ? subServices : [],
     };
 
     const created = await Booking.create(bookingPayload);
     const populated = await Booking.findById(created._id)
-      .populate('customer', 'name phone')
-      .populate('worker', 'name phone trade ratePerHour location rating ratingCount');
+      .populate('customer', 'name phone email')
+      .populate('worker', 'name phone trade ratePerHour location rating ratingCount avatar');
 
     // Broadcast Real-time Socket.IO events
     const io = req.app?.get('io');
@@ -83,12 +173,11 @@ exports.createBooking = async (req, res) => {
         io.to(`user-${assignedWorkerId}`).emit('new-booking-request', populated);
         io.to(`worker-${assignedWorkerId}`).emit('new-booking-request', populated);
       } else {
-        // Start ranked AI dispatch instead of broadcasting to everyone
         await startDispatch(created._id, io);
       }
     }
 
-    // Trigger non-blocking SMS notification for assigned worker (Fast2SMS / Twilio)
+    // Trigger non-blocking SMS notification for assigned worker
     if (workerObj && workerObj.phone) {
       const alertMsg = `SmartFix Job Request: New ${trade || 'handyman'} job at ${address || 'Tamil Nadu'}. Open SmartFix App to accept your booking!`;
       sendCustomSms(workerObj.phone, alertMsg).catch(() => {});
@@ -96,12 +185,10 @@ exports.createBooking = async (req, res) => {
       twilioService.sendWhatsApp(workerObj.phone, alertMsg).catch(() => {});
     }
 
+    // Allowlist safe booking serializer (Worker details strictly hidden at 'pending')
+    const safeBooking = toSafeBooking(populated, 'customer');
 
-    // Security Rule: Status is 'Pending', sanitize worker phone and rating
-
-    const sanitizedBooking = sanitizeBookingForRole(populated, req.user?.id, req.user?.role);
-
-    return res.status(201).json({ message: 'Booking created successfully', booking: sanitizedBooking });
+    return res.status(201).json({ message: 'Booking created successfully', booking: safeBooking });
   } catch (err) {
     console.error('Create booking error:', err.message);
     return res.status(500).json({ message: 'Failed to create booking', error: err.message });
@@ -118,11 +205,23 @@ exports.getMyBookings = async (req, res) => {
     const user = await User.findById(userId).catch(() => null);
 
     let query = {};
-    if (role === 'handyman') {
+    if (role === 'handyman' || role === 'worker') {
+      const trades = [user?.trade, ...(user?.categories || [])].filter(Boolean);
       query = {
         $or: [
           { worker: userId },
-          { worker: null, trade: user?.trade || 'Plumbing', status: { $in: ['Pending', 'PendingDispatch'] } },
+          {
+            $and: [
+              { $or: [{ worker: null }, { worker: { $exists: false } }] },
+              { status: { $in: ['Pending', 'pending', 'PendingDispatch', 'requested'] } },
+              {
+                $or: [
+                  { trade: { $in: trades } },
+                  { trade: new RegExp(`^${user?.trade || 'Plumbing'}$`, 'i') },
+                ],
+              },
+            ],
+          },
         ],
       };
     } else {
@@ -130,16 +229,13 @@ exports.getMyBookings = async (req, res) => {
     }
 
     const dbBookings = await Booking.find(query)
-      .populate('customer', 'name phone')
-      .populate('worker', 'name phone trade ratePerHour location rating ratingCount')
+      .populate('customer', 'name phone email')
+      .populate('worker', 'name phone trade ratePerHour location rating ratingCount avatar')
       .sort({ createdAt: -1 });
 
-    // Security Rule: Sanitize each booking based on role and status
-    const sanitizedBookings = (dbBookings || []).map((b) =>
-      sanitizeBookingForRole(b, req.user?.id, req.user?.role)
-    );
+    const safeBookings = (dbBookings || []).map((b) => toSafeBooking(b, role || 'customer'));
 
-    res.status(200).json({ bookings: sanitizedBookings });
+    res.status(200).json({ bookings: safeBookings });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch user bookings', error: err.message });
   }
@@ -179,18 +275,26 @@ exports.getPendingBookingsForProvider = async (req, res) => {
   try {
     const workerId = req.user?.id;
     const worker = await User.findById(workerId);
+    const trades = [worker?.trade, ...(worker?.categories || [])].filter(Boolean);
 
     const dbBookings = await Booking.find({
       $or: [
-        { worker: workerId, status: { $in: ['Pending', 'PendingDispatch'] } },
-        { trade: worker?.trade, status: 'PendingDispatch', worker: null },
+        { worker: workerId, status: { $in: ['Pending', 'pending', 'PendingDispatch', 'requested'] } },
+        {
+          worker: null,
+          status: { $in: ['Pending', 'pending', 'PendingDispatch', 'requested'] },
+          $or: [
+            { trade: { $in: trades } },
+            { trade: new RegExp(`^${worker?.trade || 'Plumbing'}$`, 'i') },
+          ],
+        },
       ],
     })
       .populate('customer', 'name phone')
       .sort({ createdAt: -1 });
 
     const sanitizedBookings = (dbBookings || []).map((b) =>
-      sanitizeBookingForRole(b, req.user?.id, req.user?.role)
+      toSafeBooking(b, req.user?.role || 'worker')
     );
 
     res.status(200).json({ bookings: sanitizedBookings });
@@ -210,17 +314,29 @@ exports.getBookingById = async (req, res) => {
     }
 
     const booking = await Booking.findById(id)
-      .populate('customer', 'name phone')
-      .populate('worker', 'name phone trade ratePerHour location rating ratingCount');
+      .populate('customer', 'name phone email')
+      .populate('worker', 'name phone trade ratePerHour location rating ratingCount avatar');
 
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    const sanitized = sanitizeBookingForRole(booking, req.user?.id, req.user?.role);
-    res.status(200).json({ booking: sanitized });
+    // Privacy Rule: Customer A cannot view Customer B's booking
+    const viewerRole = req.user?.role || 'customer';
+    if (viewerRole === 'customer') {
+      const custId = booking.customer?._id?.toString() || booking.customer?.toString();
+      if (custId !== req.user?.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only view your own bookings.',
+        });
+      }
+    }
+
+    const safe = toSafeBooking(booking, viewerRole);
+    res.status(200).json({ success: true, booking: safe });
   } catch (err) {
-    res.status(500).json({ message: 'Error fetching booking' });
+    res.status(500).json({ message: 'Error fetching booking', error: err.message });
   }
 };
 
@@ -238,10 +354,18 @@ exports.providerAcceptBooking = async (req, res) => {
 
     const booking = await Booking.findById(id).populate('customer');
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    // State machine check: Must be legal transition from current status to 'accepted'
+    if (!canTransition(booking.status, 'accepted', 'worker')) {
+      return res.status(409).json({
+        message: `Illegal status transition: Cannot accept booking in '${booking.status}' status.`,
+      });
+    }
+
     const worker = await User.findById(workerId);
     
     // Create Proxy Session via Twilio API
-    const proxyData = await createProxySession(booking._id, booking.customer.phone, worker.phone);
+    const proxyData = await createProxySession(booking._id, booking.customer?.phone, worker.phone);
 
     // Update worker status to Busy
     if (worker.availabilityStatus !== 'Offline') {
@@ -257,18 +381,27 @@ exports.providerAcceptBooking = async (req, res) => {
     const updated = await Booking.findByIdAndUpdate(
       id,
       {
-        status: 'Accepted',
+        status: 'accepted',
         worker: workerId,
         acceptedAt: now,
         slaDeadline,
         slaBreached: false,
         proxySessionSid: proxyData?.sessionSid || null,
-        proxyNumber: proxyData?.proxyNumber || null
+        proxyNumber: proxyData?.proxyNumber || null,
+        $push: {
+          statusHistory: {
+            status: 'accepted',
+            changedAt: now,
+            changedBy: workerId,
+            actorRole: 'worker',
+            reason: 'Provider accepted booking',
+          },
+        },
       },
       { new: true }
     )
-      .populate('customer', 'name phone')
-      .populate('worker', 'name phone trade ratePerHour location rating ratingCount');
+      .populate('customer', 'name phone email')
+      .populate('worker', 'name phone trade ratePerHour location rating ratingCount avatar');
 
     if (!updated) return res.status(404).json({ message: 'Booking not found' });
 
@@ -280,7 +413,8 @@ exports.providerAcceptBooking = async (req, res) => {
         slaDeadline,
         message: 'Your booking has been accepted! Provider is on the way.',
       });
-      io.to(`booking-${id}`).emit('booking-status-changed', { bookingId: id, status: 'Accepted', slaDeadline });
+      io.to(`booking-${id}`).emit('booking-status-changed', { bookingId: id, status: 'accepted', slaDeadline });
+      io.to(`booking:${id}`).emit('booking-status-changed', { bookingId: id, status: 'accepted', slaDeadline });
       io.emit('booking-updated', updated);
 
       const trackingPayload = {
@@ -293,10 +427,11 @@ exports.providerAcceptBooking = async (req, res) => {
         workerPhone: updated?.worker?.phone || '',
       };
       io.to(`booking-${id}`).emit('tracking-started', trackingPayload);
+      io.to(`booking:${id}`).emit('tracking-started', trackingPayload);
       io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('tracking-started', trackingPayload);
     }
 
-    // Non-blocking SMS/WhatsApp alert to Customer (Fast2SMS / Twilio)
+    // Non-blocking SMS/WhatsApp alert to Customer
     const customerPhone = updated.customer?.phone;
     const workerName = updated.worker?.name || 'Your handyman';
     if (customerPhone) {
@@ -306,11 +441,9 @@ exports.providerAcceptBooking = async (req, res) => {
       twilioService.sendWhatsApp(customerPhone, customerMsg).catch(() => {});
     }
 
-
-    // Now status is 'Accepted', worker phone number & details will be unlocked in sanitized response
-
-    const sanitized = sanitizeBookingForRole(updated, req.user?.id, req.user?.role);
-    res.status(200).json({ message: 'Booking accepted successfully', booking: sanitized });
+    // Now status is 'accepted', worker display details are unlocked in safe serializer
+    const safe = toSafeBooking(updated, req.user?.role || 'worker');
+    res.status(200).json({ message: 'Booking accepted successfully', booking: safe });
   } catch (err) {
     res.status(500).json({ message: 'Failed to accept booking', error: err.message });
   }
@@ -376,24 +509,28 @@ exports.updateBookingStatus = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    const currentStatus = booking.status || 'Pending';
+    const currentStatus = booking.status || 'pending';
     const newStatus = status;
+    const fromStatus = normalizeStatus(booking.status || 'pending');
+    const targetStatus = normalizeStatus(status);
 
-    if (currentStatus === newStatus) {
-      const sanitized = sanitizeBookingForRole(booking, req.user?.id, req.user?.role);
-      return res.status(200).json({ message: `Status is already ${newStatus}`, booking: sanitized });
+    if (fromStatus === targetStatus) {
+      const safe = toSafeBooking(booking, req.user?.role || 'customer');
+      return res.status(200).json({ message: `Status is already ${status}`, booking: safe });
     }
 
-    // Admin can perform any status override; otherwise enforce strict State Machine rules
-    const allowedNextStates = VALID_TRANSITIONS[currentStatus] || [];
-    if (req.user?.role !== 'admin' && !allowedNextStates.includes(newStatus)) {
-      return res.status(400).json({
-        message: `Invalid status transition. Cannot move booking from '${currentStatus}' to '${newStatus}'.`,
+    // Strict State Machine transition enforcement: Illegal jumps rejected with HTTP 409 Conflict
+    const allowed = canTransition(fromStatus, targetStatus, req.user?.role);
+    if (!allowed) {
+      return res.status(409).json({
+        message: `Illegal status transition: Cannot move booking from '${booking.status}' to '${status}' for role '${req.user?.role}'.`,
+        currentStatus: booking.status,
+        requestedStatus: status,
       });
     }
 
     // Photo Proof of Work Validation (Mandatory afterPhotos when marking Completed)
-    if (newStatus === 'Completed') {
+    if (targetStatus === 'completed') {
       const hasAfterPhoto = booking.workProof?.afterPhotos?.length > 0;
       if (!hasAfterPhoto) {
         return res.status(400).json({
@@ -404,15 +541,33 @@ exports.updateBookingStatus = async (req, res) => {
 
     const now = new Date();
     const updateFields = {
-      status: newStatus,
+      status: targetStatus,
       ...(cancelReason && { cancelReason }),
+      ...(cancellationReason && { cancellationReason }),
       ...(completionNotes && { completionNotes }),
+      $push: {
+        statusHistory: {
+          status: targetStatus,
+          changedAt: now,
+          changedBy: req.user?.id || req.user?._id || null,
+          actorRole: req.user?.role || 'system',
+          reason: cancellationReason || cancelReason || completionNotes || req.body.reason || '',
+        },
+      },
     };
+
+    // Cancellation Policy: Free before 'en_route'; after that, flag for Admin
+    if (targetStatus === 'cancelled') {
+      const isPostEnRoute = ['en_route', 'arrived', 'completed'].includes(fromStatus);
+      if (isPostEnRoute) {
+        updateFields.cancellationFlaggedForAdmin = true;
+      }
+    }
 
 
 
     // Cancellation Policy & No-Show Strike Tracking
-    if (newStatus === 'Cancelled') {
+    if (targetStatus === 'cancelled' || newStatus === 'Cancelled') {
       const cancelledBy = reqCancelledBy || (req.user?.role === 'handyman' ? 'worker' : req.user?.role === 'customer' ? 'customer' : 'admin');
       const reason = cancellationReason || cancelReason || 'No reason specified';
 
@@ -422,7 +577,7 @@ exports.updateBookingStatus = async (req, res) => {
       updateFields.cancelledAt = now;
 
       // Worker No-Show Strike rule: Worker cancelling after Confirmed
-      if (cancelledBy === 'worker' && ['Confirmed', 'EnRoute', 'Arrived', 'WorkInProgress'].includes(currentStatus)) {
+      if (cancelledBy === 'worker' && ['Confirmed', 'EnRoute', 'Arrived', 'WorkInProgress', 'confirmed', 'en_route', 'arrived', 'accepted'].includes(currentStatus)) {
         if (booking.worker) {
           const workerUser = await User.findById(booking.worker);
           if (workerUser) {
@@ -440,7 +595,7 @@ exports.updateBookingStatus = async (req, res) => {
     }
 
     // Timestamp, SLA Enforcement & Live Tracking Gate
-    if (newStatus === 'Accepted') {
+    if (targetStatus === 'accepted' || newStatus === 'Accepted') {
       updateFields.acceptedAt = now;
       if (!booking.slaDeadline) {
         updateFields.slaDeadline = new Date(now.getTime() + 60 * 60 * 1000); // 60 minutes SLA
@@ -449,12 +604,12 @@ exports.updateBookingStatus = async (req, res) => {
       const { assessBookingRisk } = require('./riskController');
       const io = req.app?.get('io');
       assessBookingRisk(booking._id, io).catch(err => console.error("Risk Assessment Error:", err));
-    } else if (newStatus === 'EnRoute') {
+    } else if (targetStatus === 'en_route' || newStatus === 'EnRoute') {
       updateFields.enRouteAt = now;
       updateFields['tracking.isActive'] = true;
       updateFields['tracking.startedAt'] = now;
       updateFields['tracking.endedAt'] = null;
-    } else if (newStatus === 'Arrived') {
+    } else if (targetStatus === 'arrived' || newStatus === 'Arrived') {
       updateFields.arrivedAt = now;
       updateFields['tracking.isActive'] = false;
       updateFields['tracking.endedAt'] = now;
@@ -468,29 +623,29 @@ exports.updateBookingStatus = async (req, res) => {
       } else if (booking.slaRiskNotified) {
         updateFields.slaPredictionOutcome = updateFields.slaBreached ? 'PredictedOnTime_ActuallyLate' : 'PredictedOnTime_ActuallyOnTime';
       }
-    } else if (newStatus === 'Cancelled' || newStatus === 'SLABreached') {
+    } else if (targetStatus === 'cancelled' || targetStatus === 'sla_breached' || newStatus === 'Cancelled' || newStatus === 'SLABreached') {
       updateFields['tracking.isActive'] = false;
       updateFields['tracking.endedAt'] = now;
       if (booking.proxySessionSid) {
         await closeProxySession(booking.proxySessionSid);
         updateFields.proxySessionSid = null;
       }
-      if (newStatus === 'SLABreached') {
+      if (targetStatus === 'sla_breached' || newStatus === 'SLABreached') {
         if (booking.slaRisk && booking.slaRisk.level === 'high') {
           updateFields.slaPredictionOutcome = 'PredictedLate_ActuallyLate';
         } else if (booking.slaRiskNotified) {
           updateFields.slaPredictionOutcome = 'PredictedOnTime_ActuallyLate';
         }
       }
-    } else if (newStatus === 'WorkInProgress') {
+    } else if (targetStatus === 'workinprogress' || newStatus === 'WorkInProgress') {
       updateFields.startedAt = now;
-    } else if (newStatus === 'Completed') {
+    } else if (targetStatus === 'completed' || newStatus === 'Completed') {
       updateFields.completedAt = now;
       if (booking.proxySessionSid) {
         await closeProxySession(booking.proxySessionSid);
         updateFields.proxySessionSid = null;
       }
-    } else if (newStatus === 'Paid') {
+    } else if (targetStatus === 'paid' || newStatus === 'Paid') {
       updateFields.paidAt = now;
       // Auto-generate PDF Invoice on Paid status
       try {
@@ -500,7 +655,7 @@ exports.updateBookingStatus = async (req, res) => {
       } catch (pdfErr) {
         console.warn('PDF Invoice generation notice:', pdfErr.message);
       }
-    } else if (newStatus === 'Reviewed') {
+    } else if (targetStatus === 'reviewed' || newStatus === 'Reviewed') {
       updateFields.reviewedAt = now;
     }
 
@@ -536,7 +691,7 @@ exports.updateBookingStatus = async (req, res) => {
       .populate('worker', 'name phone trade ratePerHour location rating ratingCount availabilityStatus');
 
     // Make worker available again if job ends
-    if (['Completed', 'Paid', 'Cancelled'].includes(newStatus) && updated.worker) {
+    if (['Completed', 'Paid', 'Cancelled', 'completed', 'paid', 'cancelled'].includes(targetStatus) && updated.worker) {
       const workerIdToUpdate = updated.worker._id || updated.worker;
       const workerUser = await User.findById(workerIdToUpdate);
       if (workerUser && workerUser.availabilityStatus !== 'Offline') {
@@ -545,7 +700,7 @@ exports.updateBookingStatus = async (req, res) => {
       }
     }
 
-    if (newStatus === 'Completed') {
+    if (targetStatus === 'completed' || newStatus === 'Completed') {
       const { runAiVerification } = require('./workProofController');
       runAiVerification(updated).catch(e => console.error(e));
     }
@@ -554,26 +709,27 @@ exports.updateBookingStatus = async (req, res) => {
     const custPhone = updated?.customer?.phone;
     const wrkName = updated?.worker?.name || 'Technician';
     if (custPhone) {
-      if (newStatus === 'Accepted') {
+      if (targetStatus === 'accepted' || newStatus === 'Accepted') {
         sendCustomSms(custPhone, `SmartFix: Booking #${id.toString().slice(-6)} accepted by ${wrkName}. ETA: 15-25 mins / உங்கள் முன்பதிவு ஏற்றுக்கொள்ளப்பட்டது.`).catch(() => {});
-      } else if (newStatus === 'EnRoute') {
+      } else if (targetStatus === 'en_route' || newStatus === 'EnRoute') {
         sendCustomSms(custPhone, `SmartFix: Worker ${wrkName} is on the way to your address. / உங்கள் தொழிலாளி வழியில் இருக்கிறார்.`).catch(() => {});
-      } else if (newStatus === 'Arrived') {
+      } else if (targetStatus === 'arrived' || newStatus === 'Arrived') {
         sendCustomSms(custPhone, `SmartFix: Worker ${wrkName} has arrived at your door! / தொழிலாளி உங்கள் முகவரிக்கு வந்து சேர்ந்தார்.`).catch(() => {});
-      } else if (newStatus === 'Completed') {
+      } else if (targetStatus === 'completed' || newStatus === 'Completed') {
         sendCustomSms(custPhone, `SmartFix: Service completed by ${wrkName}! Amount: ₹${updated.price}. Thank you! / சேவை வெற்றிகரமாக முடிந்தது.`).catch(() => {});
-      } else if (newStatus === 'Paid') {
+      } else if (targetStatus === 'paid' || newStatus === 'Paid') {
         sendCustomSms(custPhone, `SmartFix: Payment of ₹${updated.price} received successfully. Download your PDF invoice from My Bookings!`).catch(() => {});
       }
     }
 
     const io = req.app?.get('io');
     if (io) {
-      io.to(`booking-${id}`).emit('booking-status-changed', { bookingId: id, status: newStatus });
-      io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('booking-status-changed', { bookingId: id, status: newStatus });
+      io.to(`booking-${id}`).emit('booking-status-changed', { bookingId: id, status: targetStatus });
+      io.to(`booking:${id}`).emit('booking-status-changed', { bookingId: id, status: targetStatus });
+      io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('booking-status-changed', { bookingId: id, status: targetStatus });
       io.emit('booking-updated', updated);
 
-      if (newStatus === 'EnRoute' || newStatus === 'Accepted') {
+      if (targetStatus === 'en_route' || targetStatus === 'accepted' || newStatus === 'EnRoute' || newStatus === 'Accepted') {
         const slaDeadline = updated?.slaDeadline ?? null;
         const trackingPayload = {
           bookingId: id,
@@ -585,21 +741,23 @@ exports.updateBookingStatus = async (req, res) => {
           workerPhone: updated?.worker?.phone || '',
         };
         io.to(`booking-${id}`).emit('tracking-started', trackingPayload);
+        io.to(`booking:${id}`).emit('tracking-started', trackingPayload);
         io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('tracking-started', trackingPayload);
-      } else if (newStatus === 'Arrived' || newStatus === 'Cancelled' || newStatus === 'SLABreached') {
+      } else if (targetStatus === 'arrived' || targetStatus === 'cancelled' || targetStatus === 'sla_breached' || newStatus === 'Arrived' || newStatus === 'Cancelled' || newStatus === 'SLABreached') {
         const trackingEndedPayload = {
           bookingId: id,
-          status: newStatus,
-          arrivedAt: newStatus === 'Arrived' ? now.toISOString() : null,
+          status: targetStatus,
+          arrivedAt: (targetStatus === 'arrived' || newStatus === 'Arrived') ? now.toISOString() : null,
           slaBreached: updateFields.slaBreached ?? false,
         };
         io.to(`booking-${id}`).emit('tracking-ended', trackingEndedPayload);
+        io.to(`booking:${id}`).emit('tracking-ended', trackingEndedPayload);
         io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('tracking-ended', trackingEndedPayload);
       }
     }
 
-    const sanitized = sanitizeBookingForRole(updated, req.user?.id, req.user?.role);
-    res.status(200).json({ message: `Status updated to ${newStatus}`, booking: sanitized });
+    const safe = toSafeBooking(updated, req.user?.role || 'customer');
+    res.status(200).json({ message: `Status updated to ${targetStatus}`, booking: safe });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update booking status', error: err.message });
   }
@@ -758,10 +916,10 @@ exports.rateBooking = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    if (booking.status !== 'Paid') {
-      return res.status(400).json({ message: 'Only Paid bookings can be reviewed' });
+    if (normalizeStatus(booking.status) !== 'paid') {
+      return res.status(400).json({ message: 'Only paid bookings can be reviewed' });
     }
-    if (booking.rating) {
+    if (booking.rating || normalizeStatus(booking.status) === 'reviewed') {
       return res.status(400).json({ message: 'This booking has already been reviewed' });
     }
     if (rating < 1 || rating > 5) {
@@ -771,14 +929,33 @@ exports.rateBooking = async (req, res) => {
       return res.status(400).json({ message: 'Review text cannot exceed 500 characters' });
     }
 
-    const isCustomer = booking.customer?.toString() === userId;
+    const custId = booking.customer?._id?.toString() || booking.customer?.toString();
+    const isCustomer = custId === userId;
     if (!isCustomer) {
       return res.status(403).json({ message: 'Only the customer can review this booking' });
     }
 
-    const updateFields = { status: 'Reviewed', rating, review, customerRatingForWorker: rating, reviewedAt: new Date() };
+    const now = new Date();
+    const updateFields = {
+      status: 'reviewed',
+      rating,
+      review,
+      customerRatingForWorker: rating,
+      reviewedAt: now,
+      $push: {
+        statusHistory: {
+          status: 'reviewed',
+          changedAt: now,
+          changedBy: userId,
+          actorRole: 'customer',
+          reason: 'Customer review and star rating submitted',
+        },
+      },
+    };
 
-    const updated = await Booking.findByIdAndUpdate(id, updateFields, { new: true });
+    const updated = await Booking.findByIdAndUpdate(id, updateFields, { new: true })
+      .populate('customer', 'name phone email')
+      .populate('worker', 'name phone trade ratePerHour location rating ratingCount avatar');
 
     if (isCustomer && booking.worker) {
       try {
@@ -805,8 +982,8 @@ exports.rateBooking = async (req, res) => {
     const { analyzeReviewAspects } = require('../services/reviewAspectService');
     analyzeReviewAspects(id, review, rating).catch(e => console.error(e));
 
-    const sanitized = sanitizeBookingForRole(updated, req.user?.id, req.user?.role);
-    res.status(200).json({ message: 'Rating submitted successfully', booking: sanitized });
+    const safe = toSafeBooking(updated, 'customer');
+    res.status(200).json({ message: 'Rating submitted successfully', booking: safe });
   } catch (err) {
     res.status(500).json({ message: 'Rating failed', error: err.message });
   }

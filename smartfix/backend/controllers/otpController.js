@@ -85,19 +85,12 @@ exports.sendOtp = async (req, res) => {
       }
     }
 
-    // Check if user exists for login
-    if (purpose === 'login' || !purpose) {
-      const query = [];
-      if (formattedPhone) query.push({ phone: formattedPhone });
-      if (normalizedEmail) query.push({ email: normalizedEmail });
-      
-      const existingUser = await User.findOne({ $or: query });
-      if (!existingUser) {
-        return res.status(404).json({
-          success: false,
-          message: 'Account not found. Please sign up first.',
-        });
-      }
+    // Reject phone-login/OTP-login attempts
+    if (purpose === 'login' || (!purpose && !email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone/SMS login is no longer supported. Please use email and password, or Continue with Google.',
+      });
     }
 
     // Twilio Verify disabled temporarily to force WhatsApp DB OTP flow
@@ -180,6 +173,18 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
+    // Google live OTP verification path
+    if (purpose === 'google_verify') {
+      await otpService.consumeVerifiedOtp(formattedPhone, 'google_verify', normalizedEmail).catch(() => {});
+      return res.status(200).json({
+        success: true,
+        verified: true,
+        message: '✅ Google Live OTP verified successfully.',
+        phone: formattedPhone,
+        email: normalizedEmail,
+      });
+    }
+
     // Determine what we're doing: pure phone-verify (for signup step) vs login
     const isSignupVerify = purpose === 'register';
 
@@ -201,78 +206,10 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // Login / OTP-login path: find or create user, issue JWT
-    const queryCond = [];
-    if (formattedPhone) queryCond.push({ phone: formattedPhone });
-    if (normalizedEmail) queryCond.push({ email: normalizedEmail });
-
-    let user = await User.findOne({ $or: queryCond });
-
-    if (!user) {
-      // Auto-create account from OTP login (quick-login flow)
-      const userRole = role === 'worker' ? 'handyman' : (role || 'customer');
-      const isHandyman = userRole === 'handyman';
-      const defaultPassword = req.body.password || `SmartFix@${Math.floor(100000 + Math.random() * 900000)}`;
-
-      user = await User.create({
-        name: name || (isHandyman ? 'Service Partner' : 'SmartFix Customer'),
-        phone: formattedPhone,
-        email: normalizedEmail,
-        password: defaultPassword,
-        role: userRole,
-        trade: isHandyman ? (trade || 'Plumbing') : undefined,
-        subServices: isHandyman ? (subServices || []) : undefined,
-        location: location || 'Tamil Nadu, Tamil Nadu',
-        ratePerHour: isHandyman ? (Number(ratePerHour) || 350) : undefined,
-        verificationStatus: isHandyman ? 'Pending' : 'Verified',
-        isAvailable: isHandyman ? false : true,
-        isOnline: isHandyman ? false : true,
-        phoneVerified: !!formattedPhone,
-      });
-      console.log(`✅ Auto-created user via OTP login: ${user.name} (${user.phone || user.email})`);
-    } else {
-      if (formattedPhone) user.phoneVerified = true;
-      await user.save();
-    }
-
-    // Security checks
-    if ((user.role === 'admin' || role === 'admin') && formattedPhone !== ADMIN_PHONE) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Admin login is restricted.',
-      });
-    }
-
-    if (user.isBlocked) {
-      return res.status(403).json({
-        success: false,
-        message: '🚫 Your account has been suspended. Please contact support.',
-      });
-    }
-
-    await otpService.consumeVerifiedOtp(formattedPhone, purpose || 'login').catch(() => {});
-
-    const token = generateToken(user._id, user.role);
-
-    return res.status(200).json({
-      success: true,
-      message: 'Login successful.',
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        phone: user.phone,
-        role: user.role,
-        trade: user.trade,
-        subServices: user.subServices,
-        location: user.location,
-        ratePerHour: user.ratePerHour,
-        verificationStatus: user.verificationStatus,
-        rejectionReason: user.rejectionReason,
-        preferredLanguage: user.preferredLanguage || 'en',
-        theme: user.theme || 'light',
-        phoneVerified: user.phoneVerified,
-      },
+    // Reject any login / OTP-login path: authentication requires Email + Password or Google
+    return res.status(400).json({
+      success: false,
+      message: 'Phone/SMS login is no longer supported. Please sign in with your email and password, or Continue with Google.',
     });
   } catch (err) {
     console.error('Verify OTP Error:', err.message);

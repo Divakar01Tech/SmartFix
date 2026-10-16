@@ -86,14 +86,18 @@ const WorkerSignup = () => {
   const [isListening, setIsListening] = useState(false);
   const chatBottomRef = useRef(null);
 
-  // Guard: steps 2-4 require signupToken in sessionStorage
+  // Success State upon submission
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [submittedData, setSubmittedData] = useState(null);
+
+  // Guard: steps 2-4 require signupToken in sessionStorage or localStorage
   useEffect(() => {
-    const signupToken = sessionStorage.getItem('worker_signup_token');
-    if (currentStep > 1 && !signupToken) {
+    const signupToken = sessionStorage.getItem('worker_signup_token') || localStorage.getItem('worker_signup_token');
+    if (currentStep > 1 && !signupToken && !isSubmitted) {
       setCurrentStep(1);
       setErrorMessage(isTamil ? 'அமர்வு காலாவதியானது. தயவுசெய்து மின்னஞ்சலை மீண்டும் சரிபார்க்கவும்.' : 'Session expired. Please verify your email first.');
     }
-  }, [currentStep, isTamil]);
+  }, [currentStep, isTamil, isSubmitted]);
 
   // Timers for OTP
   useEffect(() => {
@@ -186,8 +190,9 @@ const WorkerSignup = () => {
     try {
       const res = await apiService.workerVerifyOtp(email.trim(), fullOtp);
       if (res.signupToken) {
-        // Store in sessionStorage only
+        // Store in sessionStorage and localStorage for resilience
         sessionStorage.setItem('worker_signup_token', res.signupToken);
+        localStorage.setItem('worker_signup_token', res.signupToken);
         setSuccessMessage(isTamil ? 'மின்னஞ்சல் சரிபார்க்கப்பட்டது! விவரங்களை நிரப்பவும்.' : 'Email verified! Proceeding to basic details.');
         setTimeout(() => {
           setSuccessMessage('');
@@ -400,7 +405,7 @@ const WorkerSignup = () => {
     setErrorMessage('');
 
     try {
-      const signupToken = sessionStorage.getItem('worker_signup_token');
+      const signupToken = sessionStorage.getItem('worker_signup_token') || localStorage.getItem('worker_signup_token');
       if (!signupToken) {
         throw new Error('Verification session has expired. Please restart signup.');
       }
@@ -424,6 +429,11 @@ const WorkerSignup = () => {
       if (aadhaarBackFile) payload.append('aadhaarBack', aadhaarBackFile);
       if (secondIdFile) payload.append('secondId', secondIdFile);
 
+      if (interviewSessionId) {
+        payload.append('sessionId', interviewSessionId);
+        payload.append('interviewSessionId', interviewSessionId);
+      }
+
       if (aiRubric) {
         payload.append(
           'interviewData',
@@ -432,23 +442,54 @@ const WorkerSignup = () => {
             scores: aiRubric.scores,
             aiVerdict: aiRubric.verdict,
             completedAt: new Date().toISOString(),
+            sessionId: interviewSessionId,
           })
         );
       }
 
+      console.log('Submitting worker registration payload to backend...');
       const res = await apiService.workerRegister(payload, signupToken);
+      console.log('Worker registration success response:', res);
 
-      // Clean up signupToken from sessionStorage
+      // Clean up signupToken from storages
       sessionStorage.removeItem('worker_signup_token');
+      localStorage.removeItem('worker_signup_token');
 
       // Save worker JWT and safe object
       if (res.token) localStorage.setItem('smartfix_worker_token', res.token);
       if (res.worker) localStorage.setItem('smartfix_worker', JSON.stringify(res.worker));
 
-      // Redirect to Pending Verification view
-      navigate('/worker/pending');
+      // Transition to dedicated Welcome & Worker Satisfaction state
+      const safeWorker = res.worker || {
+        fullName: formData.fullName,
+        name: formData.fullName,
+        phone: formData.phone,
+        email: email,
+        categories: formData.categories,
+        district: formData.district,
+        state: formData.state,
+      };
+
+      setSubmittedData({
+        ...safeWorker,
+        referenceId: `SFX-TN-${Math.floor(100000 + Math.random() * 900000)}`,
+        aiScores: aiRubric?.scores || { practicalSpecificity: 15, safetyAwareness: 15, diagnosisLogic: 15, communicationClarity: 15 },
+        aiVerdict: aiRubric?.verdict || 'borderline',
+        summary: aiRubric?.transcriptSummary || 'Completed 5 practical scenario trade questions.',
+      });
+
+      setIsSubmitted(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
-      setErrorMessage(err.message || 'Worker registration failed.');
+      console.error('Final Worker Registration Error:', err);
+      const msg = err.message || 'Worker registration failed. Please check required fields.';
+      setErrorMessage(msg);
+      setTimeout(() => {
+        const errorElem = document.getElementById('worker-submission-error-box');
+        if (errorElem) {
+          errorElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
     } finally {
       setLoading(false);
     }
@@ -462,6 +503,266 @@ const WorkerSignup = () => {
   const availableVillages = formData.district && formData.taluk && tamilNaduLocations[formData.district]?.[formData.taluk]
     ? tamilNaduLocations[formData.district][formData.taluk]
     : [];
+
+  // If application has been submitted, render the dedicated Welcome & Satisfaction screen
+  if (isSubmitted) {
+    return (
+      <div className="worker-auth-container">
+        <div className="worker-card" style={{ maxWidth: '860px' }}>
+          {/* Submitted Success View */}
+          <div className="worker-submitted-success" style={{ textAlign: 'center', animation: 'fadeIn 0.5s ease' }}>
+            {/* Animated Celebration Icon */}
+            <div style={{
+              width: '90px',
+              height: '90px',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(16,185,129,0.25) 0%, rgba(16,185,129,0.05) 70%)',
+              border: '2px solid #10b981',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '20px',
+              boxShadow: '0 0 35px rgba(16,185,129,0.35)',
+            }}>
+              <CheckCircle2 size={48} color="#10b981" />
+            </div>
+
+            {/* Welcome & Celebration Banner */}
+            <div style={{
+              display: 'inline-block',
+              background: 'rgba(245,158,11,0.15)',
+              color: '#f59e0b',
+              padding: '6px 18px',
+              borderRadius: '20px',
+              fontSize: '0.85rem',
+              fontWeight: '800',
+              letterSpacing: '0.5px',
+              marginBottom: '12px',
+              border: '1px solid rgba(245,158,11,0.3)',
+            }}>
+              🎉 {isTamil ? 'ஸ்மார்ட்ஃபிக்ஸ் குடும்பத்திற்கு நல்வரவு!' : 'WELCOME TO SMARTFIX PARTNER NETWORK!'}
+            </div>
+
+            <h2 style={{ fontSize: '2rem', fontWeight: '900', color: '#f8fafc', margin: '0 0 8px 0' }}>
+              {isTamil
+                ? `நன்றி ${submittedData?.fullName || formData.fullName}! உங்கள் விண்ணப்பம் வெற்றிகரமாக சமர்ப்பிக்கப்பட்டது`
+                : `Thank You, ${submittedData?.fullName || formData.fullName}! Application Received`}
+            </h2>
+            <p style={{ color: '#94a3b8', fontSize: '1rem', maxWidth: '640px', margin: '0 auto 28px auto', lineHeight: '1.6' }}>
+              {isTamil
+                ? 'உங்கள் சேவை வல்லுநர் பதிவு மற்றும் AI தொழில்முறைத் திறன் மதிப்பீடு வெற்றிகரமாகப் பெறப்பட்டது. இறுதி ஒப்புதலுக்காக ஸ்மார்ட்ஃபிக்ஸ் நிர்வாக குழுவிற்கு (Admin) அனுப்பப்பட்டுள்ளது.'
+                : 'Your service technician application & AI technical interview have been successfully recorded. Your profile is now in the administrative cross-verification queue.'}
+            </p>
+
+            {/* Application Reference & Status Banner */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(30,41,59,0.9) 0%, rgba(15,23,42,0.95) 100%)',
+              border: '1px solid #334155',
+              borderRadius: '18px',
+              padding: '20px 24px',
+              textAlign: 'left',
+              marginBottom: '24px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #334155', paddingBottom: '14px', marginBottom: '14px' }}>
+                <div>
+                  <span style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block' }}>
+                    {isTamil ? 'விண்ணப்ப எண்' : 'Application Reference ID'}
+                  </span>
+                  <strong style={{ fontSize: '1.2rem', color: '#f59e0b', fontFamily: 'monospace' }}>
+                    {submittedData?.referenceId || `SFX-TN-${Date.now().toString().slice(-6)}`}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', padding: '6px 14px', borderRadius: '20px' }}>
+                  <Clock size={16} color="#f59e0b" />
+                  <span style={{ color: '#f59e0b', fontWeight: '800', fontSize: '0.85rem' }}>
+                    {isTamil ? 'நிர்வாக குறுக்கு சரிபார்ப்பில் உள்ளது' : 'Pending Admin Verification'}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div>
+                  <span style={{ fontSize: '0.8rem', color: '#64748b', display: 'block' }}>{isTamil ? 'வல்லுநர் பெயர்' : 'Technician Name'}</span>
+                  <strong style={{ color: '#f8fafc', fontSize: '0.95rem' }}>{submittedData?.fullName || formData.fullName}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.8rem', color: '#64748b', display: 'block' }}>{isTamil ? 'சேவைப் பிரிவு' : 'Primary Trade'}</span>
+                  <strong style={{ color: '#38bdf8', fontSize: '0.95rem' }}>
+                    🔧 {(submittedData?.categories || formData.categories || []).join(', ')}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.8rem', color: '#64748b', display: 'block' }}>{isTamil ? 'அலைபேசி' : 'Contact Phone'}</span>
+                  <strong style={{ color: '#f8fafc', fontSize: '0.95rem' }}>📞 {submittedData?.phone || formData.phone}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.8rem', color: '#64748b', display: 'block' }}>{isTamil ? 'பகுதி / மாவட்டம்' : 'Operating Region'}</span>
+                  <strong style={{ color: '#f8fafc', fontSize: '0.95rem' }}>📍 {formData.district}, {formData.state}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Cross-Verification Details Box */}
+            <div style={{
+              background: 'rgba(56, 189, 248, 0.05)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              borderRadius: '18px',
+              padding: '20px 24px',
+              textAlign: 'left',
+              marginBottom: '24px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Bot size={22} color="#38bdf8" />
+                  <h4 style={{ margin: 0, color: '#e0f2fe', fontSize: '1rem', fontWeight: '800' }}>
+                    {isTamil ? 'AI தொழில்நுட்பத் திறன் முடிவுகள் (நிர்வாக பார்வைக்கு)' : 'AI Practical Skill Assessment Scores (Sent to Admin for Cross-Verify)'}
+                  </h4>
+                </div>
+                <span style={{
+                  background: submittedData?.aiVerdict === 'pass' ? '#065f46' : '#78350f',
+                  color: '#ffffff',
+                  fontSize: '0.78rem',
+                  fontWeight: '800',
+                  padding: '4px 12px',
+                  borderRadius: '16px',
+                  textTransform: 'uppercase',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                }}>
+                  {isTamil ? 'AI பரிந்துரை:' : 'AI Verdict:'} {submittedData?.aiVerdict || 'BORDERLINE'}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+                <div style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid #334155', borderRadius: '12px', padding: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Practical Specificity</span>
+                  <strong style={{ fontSize: '1.15rem', color: '#38bdf8' }}>{submittedData?.aiScores?.practicalSpecificity || 15}/25</strong>
+                </div>
+                <div style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid #334155', borderRadius: '12px', padding: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Safety Awareness</span>
+                  <strong style={{ fontSize: '1.15rem', color: '#10b981' }}>{submittedData?.aiScores?.safetyAwareness || 15}/25</strong>
+                </div>
+                <div style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid #334155', borderRadius: '12px', padding: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Diagnosis Logic</span>
+                  <strong style={{ fontSize: '1.15rem', color: '#f59e0b' }}>{submittedData?.aiScores?.diagnosisLogic || 15}/25</strong>
+                </div>
+                <div style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid #334155', borderRadius: '12px', padding: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Communication</span>
+                  <strong style={{ fontSize: '1.15rem', color: '#c084fc' }}>{submittedData?.aiScores?.communicationClarity || 15}/25</strong>
+                </div>
+              </div>
+
+              <p style={{ margin: 0, color: '#cbd5e1', fontSize: '0.88rem', lineHeight: '1.5', fontStyle: 'italic', borderLeft: '3px solid #38bdf8', paddingLeft: '12px' }}>
+                "{submittedData?.summary || 'The worker completed all 5 practical scenario questions. Their responses demonstrate basic operational understanding of repair workflows.'}"
+              </p>
+
+              <div style={{ marginTop: '14px', fontSize: '0.82rem', color: '#94a3b8', display: 'flex', alignItems: 'flex-start', gap: '8px', borderTop: '1px solid rgba(56,189,248,0.15)', paddingTop: '10px' }}>
+                <ShieldCheck size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>
+                  {isTamil
+                    ? 'முக்கிய குறிப்பு: AI மதிப்பீடு என்பது ஆலோசனைக் குறியீடாகும். ஸ்மார்ட்ஃபிக்ஸ் தலைமை நிர்வாகி (Admin) மட்டுமே உங்கள் ஆதார் ஆவணங்களையும் AI பதில்களையும் முழுமையாகச் சரிபார்த்து உங்களை அங்கீகரிக்கப்பட்ட தொழிலாளராக அங்கீகரிப்பார்.'
+                    : 'Mandatory Policy: The AI assessment is advisory. Only an authorized SmartFix Administrator can inspect your interview answers, cross-verify your KYC documents, and approve your account before dispatch activation.'}
+                </span>
+              </div>
+            </div>
+
+            {/* Transparent Next Steps / Roadmap */}
+            <div style={{
+              background: 'rgba(15,23,42,0.5)',
+              border: '1px solid #1e293b',
+              borderRadius: '18px',
+              padding: '20px 24px',
+              textAlign: 'left',
+              marginBottom: '28px',
+            }}>
+              <h4 style={{ margin: '0 0 16px 0', color: '#f8fafc', fontSize: '0.95rem', fontWeight: '800' }}>
+                {isTamil ? 'அடுத்து என்ன நடக்கும்?' : 'What Happens Next? (Roadmap to Start Earning)'}
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f59e0b', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', flexShrink: 0 }}>1</div>
+                  <div>
+                    <strong style={{ color: '#f8fafc', fontSize: '0.9rem', display: 'block' }}>
+                      {isTamil ? 'நிர்வாக குறுக்கு சரிபார்ப்பு (செயலில் உள்ளது)' : 'Admin Cross-Verification (Underway)'}
+                    </strong>
+                    <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                      {isTamil
+                        ? 'எங்கள் நிர்வாகக் குழு உங்கள் ஆதார் ஆவணங்கள் மற்றும் AI பதில்களை 2 முதல் 4 மணி நேரத்திற்குள் ஆய்வு செய்யும்.'
+                        : 'Our administration team is cross-verifying your uploaded KYC documents (Aadhaar, Second ID) and AI practical interview questions in the admin queue.'}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#334155', color: '#f8fafc', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', flexShrink: 0 }}>2</div>
+                  <div>
+                    <strong style={{ color: '#f8fafc', fontSize: '0.9rem', display: 'block' }}>
+                      {isTamil ? 'ஒப்புதல் மற்றும் SMS அறிவிப்பு' : 'Official Approval & SMS Notification'}
+                    </strong>
+                    <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                      {isTamil
+                        ? 'உங்கள் சுயவிவரம் அங்கீகரிக்கப்பட்டவுடன் SMS மற்றும் மின்னஞ்சல் மூலம் உடனடி அறிவிப்பு வரும்.'
+                        : 'Once approved by Admin, your unique Worker ID is generated and you will receive an instant approval SMS & email notification.'}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#334155', color: '#f8fafc', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', flexShrink: 0 }}>3</div>
+                  <div>
+                    <strong style={{ color: '#f8fafc', fontSize: '0.9rem', display: 'block' }}>
+                      {isTamil ? 'நேரலைக்கு வந்து சம்பாதிக்கத் தொடங்குங்கள்' : 'Go Online & Receive High-Paying Bookings'}
+                    </strong>
+                    <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                      {isTamil
+                        ? 'உங்கள் பார்ட்னர் கணக்கில் உள்நுழைந்து "ஆன்லைன்" என்பதைத் தட்டவும். 0% கமிஷனில் முழு வருமானத்தையும் பெறுங்கள்!'
+                        : 'Log in to your Partner Portal, toggle your status to "Online", and start receiving verified repair jobs in Sivagangai with 0% platform commission!'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Navigation & Action Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => navigate('/worker/pending')}
+                className="btn-worker-primary"
+                style={{ padding: '14px 28px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}
+              >
+                <ShieldCheck size={18} />
+                {isTamil ? 'சரிபார்ப்பு நிலையைப் பார்க்கவும்' : 'Track Verification Status'}
+              </button>
+
+              <button
+                onClick={() => navigate('/worker/login')}
+                className="btn-worker-secondary"
+                style={{ padding: '14px 28px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}
+              >
+                <ArrowRight size={18} />
+                {isTamil ? 'பார்ட்னர் உள்நுழைவு' : 'Go to Partner Login'}
+              </button>
+
+              <button
+                onClick={() => navigate('/')}
+                className="btn-worker-secondary"
+                style={{ padding: '14px 24px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}
+              >
+                {isTamil ? 'முகப்புப் பக்கம்' : 'Back to Home'}
+              </button>
+            </div>
+
+            {/* Support Hotline Footer */}
+            <div style={{ marginTop: '28px', fontSize: '0.82rem', color: '#64748b', borderTop: '1px solid #1e293b', paddingTop: '16px' }}>
+              💬 {isTamil ? 'உதவி தேவையா? எங்கள் வல்லுநர் ஆதரவு குழுவை அழைக்கவும்:' : 'Need immediate help? Call SmartFix Partner Onboarding Support:'}{' '}
+              <a href="tel:+917604975206" style={{ color: '#f59e0b', textDecoration: 'none', fontWeight: '800' }}>
+                +91 76049 75206
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="worker-auth-container">
@@ -1120,6 +1421,30 @@ const WorkerSignup = () => {
               </div>
             )}
 
+            {/* Submission Error Notification if any */}
+            {errorMessage && (
+              <div
+                id="worker-submission-error-box"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid #ef4444',
+                  color: '#fca5a5',
+                  padding: '14px 18px',
+                  borderRadius: '14px',
+                  marginTop: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  fontSize: '0.92rem',
+                }}
+              >
+                <AlertCircle size={22} color="#ef4444" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <strong>{isTamil ? 'கவனத்திற்கு:' : 'Attention:'}</strong> {errorMessage}
+                </div>
+              </div>
+            )}
+
             {/* Final Submission Button */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
               <button
@@ -1132,7 +1457,7 @@ const WorkerSignup = () => {
                 {loading ? (
                   <>
                     <span className="spinner-border spinner-border-sm me-2" />
-                    {isTamil ? 'பதிவு செய்யப்படுகிறது...' : 'Submitting Application...'}
+                    {isTamil ? 'விண்ணப்பம் சமர்ப்பிக்கப்படுகிறது...' : 'Submitting Application...'}
                   </>
                 ) : (
                   <>

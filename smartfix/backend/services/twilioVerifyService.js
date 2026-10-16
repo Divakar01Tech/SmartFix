@@ -80,14 +80,6 @@ const checkVerificationCode = async (phone, code) => {
     throw new Error('TWILIO_NOT_CONFIGURED');
   }
 
-  if (process.env.OTP_MOCK_MODE === 'true' && code === '123456') {
-    return {
-      success: true,
-      approved: true,
-      mocked: true,
-    };
-  }
-
 
   try {
     const verificationCheck = await client.verify.v2
