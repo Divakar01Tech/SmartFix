@@ -53,29 +53,47 @@ const dispatchNext = async (bookingId, io) => {
 
     const attemptedWorkerIds = pastAttempts.map(a => a.workerId.toString());
 
-    // Find workers within 5km, Available, matching category
-    const query = {
-      role: 'handyman',
-      availabilityStatus: 'Available',
-      _id: { $nin: attemptedWorkerIds },
-      // Exclude demo workers from real customer dispatch unless explicitly enabled
-      ...(process.env.SHOW_DEMO_DATA === 'true' ? {} : { $or: [{ isDemo: false }, { isDemo: { $exists: false } }] }),
-    };
+    // Find workers within 5km, Available, verified, matching category
+    const conditions = [
+      {
+        role: { $in: ['handyman', 'worker'] },
+        $or: [
+          { availabilityStatus: { $in: ['Available', 'available'] } },
+          { isAvailable: true },
+        ],
+        _id: { $nin: attemptedWorkerIds },
+      },
+      {
+        $or: [
+          { verificationStatus: { $in: ['Verified', 'verified', 'approved'] } },
+          { overallStatus: 'approved' },
+          { isVerified: true },
+        ],
+      },
+    ];
+
+    if (process.env.SHOW_DEMO_DATA !== 'true') {
+      conditions.push({ $or: [{ isDemo: false }, { isDemo: { $exists: false } }] });
+    }
     
     // basic category matching
     if (booking.trade && booking.trade !== 'Other' && booking.trade !== 'All') {
       const regex = new RegExp(booking.trade.replace('&', '.*'), 'i');
-      query.$or = [
-        { trade: { $regex: regex } },
-        { subServices: { $in: [new RegExp(booking.trade, 'i')] } }
-      ];
+      conditions.push({
+        $or: [
+          { trade: { $regex: regex } },
+          { subServices: { $in: [new RegExp(booking.trade, 'i')] } }
+        ]
+      });
     }
 
-    let workers = await User.find(query);
+    let workers = await User.find({ $and: conditions });
     
     // Score workers
     let scoredWorkers = workers.map(worker => {
-      const dist = calculateDistance(booking.pickupLat, booking.pickupLng, worker.lat, worker.lng);
+      const wLat = worker.lat != null ? worker.lat : (worker.locationPoint?.coordinates?.[1] ?? worker.currentLocation?.coordinates?.[1] ?? 9.8433);
+      const wLng = worker.lng != null ? worker.lng : (worker.locationPoint?.coordinates?.[0] ?? worker.currentLocation?.coordinates?.[0] ?? 78.4809);
+      const dist = calculateDistance(booking.pickupLat, booking.pickupLng, wLat, wLng);
       
       // Skill: out of 100
       let skillScore = (worker.aiInterview && worker.aiInterview.score) ? worker.aiInterview.score : 50;

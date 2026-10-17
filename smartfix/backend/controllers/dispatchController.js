@@ -74,18 +74,41 @@ exports.findNearestCaptains = async (req, res) => {
 
     let captains = [];
     try {
-      const query = { role: 'handyman', verificationStatus: 'Verified', isAvailable: true };
+      const conditions = [
+        {
+          role: { $in: ['handyman', 'worker'] },
+          $or: [
+            { isAvailable: true },
+            { availabilityStatus: { $in: ['Available', 'available'] } },
+          ],
+        },
+        {
+          $or: [
+            { verificationStatus: { $in: ['Verified', 'verified', 'approved'] } },
+            { overallStatus: 'approved' },
+            { isVerified: true },
+          ],
+        },
+      ];
       if (trade && trade !== 'all') {
-        query.trade = new RegExp(trade.split('&')[0].trim(), 'i');
+        const tradeClean = trade.split('&')[0].trim();
+        conditions.push({
+          $or: [
+            { trade: new RegExp(tradeClean, 'i') },
+            { subServices: { $in: [new RegExp(tradeClean, 'i')] } },
+          ],
+        });
       }
-      captains = await User.find(query);
+      captains = await User.find({ $and: conditions });
     } catch (e) {
       console.warn('DB query captains error:', e.message);
     }
 
     const nearbyCaptains = captains
       .map((c) => {
-        const dist = calculateDistance(pLat, pLng, c.lat || 9.8433, c.lng || 78.4809);
+        const cLat = c.lat != null ? c.lat : (c.locationPoint?.coordinates?.[1] ?? c.currentLocation?.coordinates?.[1] ?? 9.8433);
+        const cLng = c.lng != null ? c.lng : (c.locationPoint?.coordinates?.[0] ?? c.currentLocation?.coordinates?.[0] ?? 78.4809);
+        const dist = calculateDistance(pLat, pLng, cLat, cLng);
         return {
           id: c._id,
           name: c.name,
@@ -93,8 +116,8 @@ exports.findNearestCaptains = async (req, res) => {
           serviceTier: c.serviceTier || 'AutoHandyman',
           rating: c.ratingCount > 0 ? c.rating : 0,
           ratingCount: c.ratingCount || 0,
-          lat: c.lat,
-          lng: c.lng,
+          lat: cLat,
+          lng: cLng,
           distanceKm: dist,
           etaMinutes: Math.max(3, Math.round(dist * 3)),
         };

@@ -84,8 +84,14 @@ exports.sendMessage = async (req, res) => {
     text
   });
 
-  // Emit to socket (assume req.app.get('io') is available)
-  req.app.get('io').to(`booking_${bookingId}`).emit('new_message', chatMessage);
+  // Emit to socket (guarding against null io in testing)
+  const io = req.app?.get('io');
+  if (io) {
+    io.to(`booking_${bookingId}`).emit('new_message', chatMessage);
+    io.to(`booking:${bookingId}`).emit('new_message', chatMessage);
+    io.to(`booking-${bookingId}`).emit('new_message', chatMessage);
+    io.to(`booking:${bookingId}`).emit('chat:message', chatMessage);
+  }
   
   res.status(200).json({ message: chatMessage });
 };

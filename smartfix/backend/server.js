@@ -181,10 +181,15 @@ server.on('error', (err) => {
   }
 });
 
+const ServicePricing = require('./models/ServicePricing');
+
 const startServer = async () => {
   try {
     await connectDB();
     await seedServiceIntervals();
+    if (typeof ServicePricing.seedServicePricing === 'function') {
+      await ServicePricing.seedServicePricing();
+    }
     
     // Initialize WebSocket Location Tracking & SLA Breach Sweeper after DB is connected
     initLocationSocket(io);
@@ -203,4 +208,10 @@ const startServer = async () => {
   server.listen(PORT, HOST, () => console.log(`✅ SmartFix Server & Socket.IO running on ${protocol}://${HOST}:${PORT}`));
 };
 
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
+
+app.server = server;
+module.exports = app;
+

@@ -117,8 +117,8 @@ function initLocationSocket(io) {
     });
 
     // 4. Location update event (with 3-5 sec throttling & no full history bloat)
-    socket.on('location-update', async (data) => {
-      const { bookingId, latitude, longitude, timestamp } = data;
+    const handleLocationUpdate = async (data) => {
+      const { bookingId, latitude, longitude, timestamp } = data || {};
       if (!bookingId || !latitude || !longitude) return;
 
       // Throttle: ignore if updated in the last 4 seconds
@@ -146,6 +146,9 @@ function initLocationSocket(io) {
 
         // Broadcast to the room (Customer receives this)
         io.to(`booking:${bookingId}`).emit('worker-location', safePayload);
+        io.to(`booking:${bookingId}`).emit('worker:location-update', safePayload);
+        io.to(`booking-${bookingId}`).emit('worker-location', safePayload);
+        io.to(`booking-${bookingId}`).emit('worker:location-update', safePayload);
 
         // Update booking lastKnownLocation (no historical bloat)
         booking.tracking = {
@@ -172,7 +175,11 @@ function initLocationSocket(io) {
       } catch (err) {
         console.error('Error in location-update:', err.message);
       }
-    });
+    };
+
+    socket.on('location-update', handleLocationUpdate);
+    socket.on('worker:location-update', handleLocationUpdate);
+
 
     socket.on('disconnect', () => {
       console.log(`🔌 Socket disconnected: ${socket.id}`);

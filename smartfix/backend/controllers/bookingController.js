@@ -415,6 +415,10 @@ exports.providerAcceptBooking = async (req, res) => {
       });
       io.to(`booking-${id}`).emit('booking-status-changed', { bookingId: id, status: 'accepted', slaDeadline });
       io.to(`booking:${id}`).emit('booking-status-changed', { bookingId: id, status: 'accepted', slaDeadline });
+      io.to(`booking-${id}`).emit('booking:status-changed', { bookingId: id, status: 'accepted', slaDeadline });
+      io.to(`booking:${id}`).emit('booking:status-changed', { bookingId: id, status: 'accepted', slaDeadline });
+      io.to(`booking-${id}`).emit('booking:assigned', { bookingId: id, worker: updated.worker });
+      io.to(`booking:${id}`).emit('booking:assigned', { bookingId: id, worker: updated.worker });
       io.emit('booking-updated', updated);
 
       const trackingPayload = {
@@ -726,7 +730,10 @@ exports.updateBookingStatus = async (req, res) => {
     if (io) {
       io.to(`booking-${id}`).emit('booking-status-changed', { bookingId: id, status: targetStatus });
       io.to(`booking:${id}`).emit('booking-status-changed', { bookingId: id, status: targetStatus });
+      io.to(`booking-${id}`).emit('booking:status-changed', { bookingId: id, status: targetStatus });
+      io.to(`booking:${id}`).emit('booking:status-changed', { bookingId: id, status: targetStatus });
       io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('booking-status-changed', { bookingId: id, status: targetStatus });
+      io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('booking:status-changed', { bookingId: id, status: targetStatus });
       io.emit('booking-updated', updated);
 
       if (targetStatus === 'en_route' || targetStatus === 'accepted' || newStatus === 'EnRoute' || newStatus === 'Accepted') {

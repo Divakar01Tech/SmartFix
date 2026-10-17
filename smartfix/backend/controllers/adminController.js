@@ -167,10 +167,10 @@ exports.verifyCaptain = async (req, res) => {
 // @desc Operational analytics: total jobs, revenue, active Handymen, SLA compliance %, daily trends, category demand
 exports.getAdminAnalytics = async (req, res) => {
   try {
-    const totalCaptains = await User.countDocuments({ role: 'handyman' });
-    const activeCaptains = await User.countDocuments({ role: 'handyman', isAvailable: true });
-    const verifiedCaptains = await User.countDocuments({ role: 'handyman', verificationStatus: 'Verified' });
-    const pendingVerificationCount = await User.countDocuments({ role: 'handyman', verificationStatus: 'Pending' });
+    const totalCaptains = await User.countDocuments({ role: { $in: ['handyman', 'worker'] } });
+    const activeCaptains = await User.countDocuments({ role: { $in: ['handyman', 'worker'] }, $or: [{ isAvailable: true }, { availabilityStatus: { $in: ['Available', 'available'] } }] });
+    const verifiedCaptains = await User.countDocuments({ role: { $in: ['handyman', 'worker'] }, $or: [{ verificationStatus: { $in: ['Verified', 'approved', 'verified'] } }, { overallStatus: 'approved' }, { isVerified: true }] });
+    const pendingVerificationCount = await User.countDocuments({ role: { $in: ['handyman', 'worker'] }, $or: [{ verificationStatus: { $in: ['Pending', 'pending', 'pending_verification'] } }, { overallStatus: 'pending' }] });
     const totalCustomers = await User.countDocuments({ role: 'customer' });
     const totalBookings = await Booking.countDocuments();
     const activeBookings = await Booking.countDocuments({ status: { $in: ['Pending', 'Accepted', 'Confirmed', 'EnRoute', 'Arrived', 'WorkInProgress', 'InProgress', 'CaptainArrived'] } });
@@ -487,7 +487,7 @@ exports.getWalletOverview = async (req, res) => {
 // @desc Get performance scorecards for all workers (Completion %, Avg SLA Time, Rating Trend, Badge status)
 exports.getAdminWorkerScorecards = async (req, res) => {
   try {
-    const workers = await User.find({ role: 'handyman' })
+    const workers = await User.find({ role: { $in: ['handyman', 'worker'] } })
       .select('name phone trade verificationStatus rating ratingCount noShowCount isBlocked isSuspended trustedWorkerBadge createdAt');
 
     const scorecards = await Promise.all(
@@ -624,7 +624,7 @@ exports.resolveSOSAlert = async (req, res) => {
 exports.getAdminWithdrawals = async (req, res) => {
   try {
     const Wallet = require('../models/Wallet');
-    const wallets = await Wallet.find({ role: 'handyman' }).populate('user', 'name phone trade');
+    const wallets = await Wallet.find({ role: { $in: ['handyman', 'worker'] } }).populate('user', 'name phone trade');
     
     const withdrawalRequests = [];
     wallets.forEach((wallet) => {

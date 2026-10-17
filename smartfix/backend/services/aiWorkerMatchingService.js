@@ -19,28 +19,42 @@ function getDistanceInKm(lat1, lon1, lat2, lon2) {
  */
 async function matchWorkersForCategory(trade, locationQuery = '', userLat = 9.8433, userLng = 78.4809) {
   try {
-    const query = {
-      role: 'handyman',
-      verificationStatus: 'Verified',
-      isBlocked: { $ne: true },
-      // Exclude demo workers from real customer matching unless explicitly enabled
-      ...(process.env.SHOW_DEMO_DATA === 'true' ? {} : { $or: [{ isDemo: false }, { isDemo: { $exists: false } }] }),
-    };
+    const conditions = [
+      {
+        role: { $in: ['handyman', 'worker'] },
+        isBlocked: { $ne: true },
+      },
+      {
+        $or: [
+          { verificationStatus: { $in: ['Verified', 'verified', 'approved'] } },
+          { overallStatus: 'approved' },
+          { isVerified: true },
+        ],
+      },
+    ];
+
+    if (process.env.SHOW_DEMO_DATA !== 'true') {
+      conditions.push({ $or: [{ isDemo: false }, { isDemo: { $exists: false } }] });
+    }
 
     if (trade && trade !== 'Other' && trade !== 'All') {
       const regex = new RegExp(trade.replace('&', '.*'), 'i');
-      query.$or = [
-        { trade: { $regex: regex } },
-        { subServices: { $in: [new RegExp(trade, 'i')] } }
-      ];
+      conditions.push({
+        $or: [
+          { trade: { $regex: regex } },
+          { subServices: { $in: [new RegExp(trade, 'i')] } }
+        ]
+      });
     }
 
-    let workers = await User.find(query).lean();
+    let workers = await User.find({ $and: conditions }).lean();
 
     // Scoring Algorithm: 
     // Score = (Rating * 20) + (Availability ? 20 : 0) - (Distance * 2)
     const scoredWorkers = workers.map(w => {
-      const distance = getDistanceInKm(userLat, userLng, w.locationLat || 9.85, w.locationLng || 78.49);
+      const wLat = w.lat != null ? w.lat : (w.locationPoint?.coordinates?.[1] ?? w.currentLocation?.coordinates?.[1] ?? w.locationLat ?? 9.85);
+      const wLng = w.lng != null ? w.lng : (w.locationPoint?.coordinates?.[0] ?? w.currentLocation?.coordinates?.[0] ?? w.locationLng ?? 78.49);
+      const distance = getDistanceInKm(userLat, userLng, wLat, wLng);
       const rating = w.rating || 4.0;
       const isAvailable = w.isAvailable || w.isOnline || false;
       

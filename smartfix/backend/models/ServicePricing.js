@@ -84,12 +84,19 @@ const seedData = [
 ];
 
 // Initialize collection with seed data if empty
-ServicePricing.countDocuments({}).then(count => {
-  if (count === 0) {
-    ServicePricing.insertMany(seedData)
-      .then(() => console.log('ServicePricing seeded with 48 combos'))
-      .catch(err => console.error('Error seeding ServicePricing:', err));
+const seedServicePricing = async () => {
+  try {
+    const count = await ServicePricing.countDocuments({});
+    if (count === 0) {
+      await ServicePricing.insertMany(seedData);
+      console.log('🌱 ServicePricing seeded with 48 combos');
+    }
+  } catch (err) {
+    console.warn('ServicePricing seed notice:', err.message);
   }
-}).catch(console.error);
+};
+
+ServicePricing.seedServicePricing = seedServicePricing;
 
 module.exports = ServicePricing;
+

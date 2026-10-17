@@ -81,8 +81,12 @@ const connectDB = async () => {
   // 3. Post-connection operations or guidance
   if (mongoose.connection.readyState === 1) {
     try {
-      const seedHandymen = require('./seed');
-      await seedHandymen();
+      const seedFn = require('./seed');
+      if (typeof seedFn === 'function') {
+        await seedFn();
+      } else if (typeof seedFn?.seedDatabase === 'function') {
+        await seedFn.seedDatabase();
+      }
     } catch (seedErr) {
       console.warn('⚠️ Database seed notice:', seedErr.message);
     }

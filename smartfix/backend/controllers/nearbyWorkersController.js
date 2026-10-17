@@ -15,14 +15,21 @@ exports.getNearbyWorkers = async (req, res) => {
 
     const query = {
       role: { $in: ['handyman', 'worker'] },
-      $or: [
-        { availabilityStatus: { $in: ['Available', 'available'] } },
-        { isAvailable: true },
-        { availability: 'available' },
-      ],
-      $or: [
-        { verificationStatus: { $in: ['approved', 'Verified', 'verified'] } },
-        { overallStatus: 'approved' },
+      $and: [
+        {
+          $or: [
+            { availabilityStatus: { $in: ['Available', 'available'] } },
+            { isAvailable: true },
+            { availability: 'available' },
+          ],
+        },
+        {
+          $or: [
+            { verificationStatus: { $in: ['approved', 'Verified', 'verified'] } },
+            { overallStatus: 'approved' },
+            { isVerified: true },
+          ],
+        },
       ],
     };
 

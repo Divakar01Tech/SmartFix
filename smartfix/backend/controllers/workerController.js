@@ -10,8 +10,12 @@ exports.getWorkers = async (req, res) => {
 
     const conditions = [
       {
-        role: 'handyman',
-        verificationStatus: 'Verified',
+        role: { $in: ['handyman', 'worker'] },
+        $or: [
+          { verificationStatus: { $in: ['Verified', 'verified', 'approved'] } },
+          { overallStatus: 'approved' },
+          { isVerified: true },
+        ],
         // Exclude demo workers from real customer results unless SHOW_DEMO_DATA env flag is set
         ...(process.env.SHOW_DEMO_DATA !== 'true' ? { isDemo: { $ne: true } } : {}),
       },

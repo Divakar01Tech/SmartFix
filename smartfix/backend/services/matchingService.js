@@ -38,7 +38,8 @@ exports.rankWorkers = async (workers, booking) => {
 
   for (const worker of workers) {
     // Candidates MUST be Available and KYC verified
-    if (worker.availabilityStatus !== 'Available' || worker.overallStatus !== 'approved') {
+    const isApproved = worker.overallStatus === 'approved' || worker.verificationStatus === 'approved' || worker.verificationStatus === 'Verified';
+    if (worker.availabilityStatus !== 'Available' || !isApproved) {
       continue;
     }
     // Exclude demo workers from real customer results unless flag is set
@@ -54,7 +55,9 @@ exports.rankWorkers = async (workers, booking) => {
     }
 
     // Calculate distance and enforce <= 5 km
-    const distance = calculateDistance(userLat, userLng, worker.lat, worker.lng);
+    const wLat = worker.lat != null ? worker.lat : (worker.locationPoint?.coordinates?.[1] ?? worker.currentLocation?.coordinates?.[1]);
+    const wLng = worker.lng != null ? worker.lng : (worker.locationPoint?.coordinates?.[0] ?? worker.currentLocation?.coordinates?.[0]);
+    const distance = calculateDistance(userLat, userLng, wLat, wLng);
     if (distance > 5.0) continue;
 
     // --- Scoring Logic (0-1 each) ---
