@@ -244,7 +244,7 @@ exports.sendLoginOtp = async (req, res) => {
       {
         otpHash,
         attempts: 0,
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+        expiresAt: new Date(Date.now() + 12 * 60 * 1000), // 10 minutes (+ 2 min grace buffer)
         createdAt: new Date(),
       },
       { upsert: true, new: true }
@@ -421,7 +421,7 @@ exports.sendForgotPasswordOtp = async (req, res) => {
       {
         otpHash,
         attempts: 0,
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+        expiresAt: new Date(Date.now() + 12 * 60 * 1000), // 10 minutes (+ 2 min grace buffer)
         createdAt: new Date(),
       },
       { upsert: true, new: true }

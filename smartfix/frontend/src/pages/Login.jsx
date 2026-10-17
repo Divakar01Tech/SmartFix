@@ -108,7 +108,7 @@ export default function Login({ initialPortal, initialMode }) {
   const [forgotResetToken, setForgotResetToken] = useState('');
   const [forgotNewPass, setForgotNewPass] = useState('');
   const [forgotConfirmPass, setForgotConfirmPass] = useState('');
-  const [forgotTimer, setForgotTimer] = useState(300); // 5 min
+  const [forgotTimer, setForgotTimer] = useState(600); // 10 min
   const [forgotResendTimer, setForgotResendTimer] = useState(60);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState('');
@@ -130,7 +130,7 @@ export default function Login({ initialPortal, initialMode }) {
     district: 'Sivagangai',
     state: 'Tamil Nadu',
   });
-  const [signupTimer, setSignupTimer] = useState(300);
+  const [signupTimer, setSignupTimer] = useState(600); // 10 min
   const [signupResendTimer, setSignupResendTimer] = useState(60);
   const [signupLoading, setSignupLoading] = useState(false);
   const [signupError, setSignupError] = useState('');
@@ -380,7 +380,7 @@ export default function Login({ initialPortal, initialMode }) {
     try {
       await forgotPasswordSendOtp(forgotEmail);
       setForgotStep(2);
-      setForgotTimer(300);
+      setForgotTimer(600);
       setForgotResendTimer(60);
     } catch (err) {
       setForgotError(err.message || 'Failed to send verification code.');
@@ -449,7 +449,7 @@ export default function Login({ initialPortal, initialMode }) {
     try {
       await apiService.sendEmailOtp(signupEmail.trim().toLowerCase());
       setSignupStep(2);
-      setSignupTimer(300);
+      setSignupTimer(600);
       setSignupResendTimer(60);
     } catch (err) {
       setSignupError(err.message || 'Failed to send verification code.');

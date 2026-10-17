@@ -22,8 +22,8 @@ export default function ForgotPassword() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // 5-min OTP Timer
-  const [timer, setTimer] = useState(300);
+  // 10-min OTP Timer
+  const [timer, setTimer] = useState(600);
   const [resendTimer, setResendTimer] = useState(60);
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export default function ForgotPassword() {
     try {
       await apiService.customerSendForgotOtp(email.trim().toLowerCase());
       setStep(2);
-      setTimer(300);
+      setTimer(600);
       setResendTimer(60);
     } catch (err) {
       setErrorMsg(err.message || t('otp_send_failed', 'Failed to send password reset code'));

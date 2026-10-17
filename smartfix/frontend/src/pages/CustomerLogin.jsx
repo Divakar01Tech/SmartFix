@@ -32,7 +32,7 @@ export default function CustomerLogin() {
   const [otpStep, setOtpStep] = useState(1); // 1 = enter email, 2 = enter otp
   const [otpCode, setOtpCode] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
-  const [otpTimer, setOtpTimer] = useState(300); // 5 minutes expiry
+  const [otpTimer, setOtpTimer] = useState(600); // 10 minutes expiry
   const [resendTimer, setResendTimer] = useState(60);
 
   // Lockout countdown timer
@@ -124,7 +124,7 @@ export default function CustomerLogin() {
     try {
       await apiService.customerSendLoginOtp(otpEmail.trim().toLowerCase());
       setOtpStep(2);
-      setOtpTimer(300);
+      setOtpTimer(600);
       setResendTimer(60);
     } catch (err) {
       if (err.roleMismatch) {

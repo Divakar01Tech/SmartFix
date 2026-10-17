@@ -147,7 +147,7 @@ exports.sendEmailOtp = async (req, res) => {
       otpHash,
       purpose: 'worker-signup',
       attempts: 0,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 12 * 60 * 1000), // 10 minutes (+ 2 min grace buffer)
     });
 
     // Send email via mailer
@@ -705,7 +705,7 @@ exports.forgotPasswordSendOtp = async (req, res) => {
       otpHash,
       purpose: 'worker-reset',
       attempts: 0,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 12 * 60 * 1000), // 10 minutes (+ 2 min grace buffer)
     });
 
     await sendWorkerOtpEmail(normalizedEmail, rawOtp, 'worker-reset');

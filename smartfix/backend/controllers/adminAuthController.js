@@ -107,24 +107,24 @@ exports.adminLogin = async (req, res) => {
     const otp = crypto.randomInt(100000, 999999).toString();
     const otpHash = await bcrypt.hash(otp, 10);
 
-    // Save in Otp collection (purpose 'admin-login', 5 min expiry)
+    // Save in Otp collection (purpose 'admin-login', 10 min expiry + 2 min buffer = 12m)
     await Otp.deleteMany({ email: ADMIN_EMAIL, purpose: 'admin-login' });
     await Otp.create({
       email: ADMIN_EMAIL,
       purpose: 'admin-login',
       otpHash,
       attempts: 0,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 12 * 60 * 1000),
     });
 
     // Send 2FA email to admin
     await sendAdminOtpEmail(ADMIN_EMAIL, otp);
 
-    // Issue 10-minute challenge token
+    // Issue 15-minute challenge token
     const adminOtpToken = jwt.sign(
       { email: ADMIN_EMAIL, purpose: 'admin-otp-challenge' },
       JWT_SECRET,
-      { expiresIn: '10m' }
+      { expiresIn: '15m' }
     );
 
     await AuditLog.create({
@@ -138,6 +138,7 @@ exports.adminLogin = async (req, res) => {
       step: 'otp_required',
       message: 'Authentication code dispatched to the authorized administrator inbox.',
       adminOtpToken,
+      expiresInSeconds: 600,
       emailMasked: ADMIN_EMAIL.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
     });
   } catch (err) {

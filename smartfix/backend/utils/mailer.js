@@ -1,56 +1,89 @@
 const nodemailer = require('nodemailer');
 
+let cachedTransporter = null;
+
 const getTransporter = () => {
-  const user = process.env.EMAIL_USER || process.env.GMAIL_USER;
-  const pass = process.env.EMAIL_PASS || process.env.GMAIL_PASS;
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user,
-      pass,
-    },
-  });
+  const user = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
+  const rawPass = process.env.EMAIL_PASS || process.env.GMAIL_PASS || '';
+  const pass = rawPass.replace(/\s+/g, '');
+
+  if (!cachedTransporter) {
+    cachedTransporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
+      family: 4, // Prevent IPv6 DNS connection delay
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+      auth: {
+        user,
+        pass,
+      },
+    });
+  }
+  return cachedTransporter;
+};
+
+const resetTransporter = () => {
+  cachedTransporter = null;
 };
 
 const getSender = (portalName = 'SmartFix') => {
   if (process.env.MAIL_FROM) {
     return process.env.MAIL_FROM;
   }
-  const user = process.env.EMAIL_USER || process.env.GMAIL_USER;
+  const user = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
   if (user) {
     return `"${portalName}" <${user}>`;
   }
   return `"${portalName}" <noreply@smartfix.com>`;
 };
 
+const HIGH_PRIORITY_HEADERS = {
+  'X-Priority': '1 (Highest)',
+  'X-MSMail-Priority': 'High',
+  'Importance': 'High',
+};
+
 const sendOtpEmail = async (toEmail, otp) => {
   try {
     const mailOptions = {
-      from: getSender('SmartFix'),
+      from: getSender('SmartFix Security'),
       to: toEmail,
-      subject: 'SmartFix - Your Verification Code',
+      subject: 'SmartFix — Your Verification Code',
+      headers: HIGH_PRIORITY_HEADERS,
+      priority: 'high',
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-          <h2 style="color: #2563eb; text-align: center; margin-bottom: 30px;">SmartFix Verification</h2>
-          <p style="font-size: 16px; color: #334155;">Hello,</p>
-          <p style="font-size: 16px; color: #334155;">Please use the following OTP to verify your email address. This code is valid for <strong>5 minutes</strong>.</p>
-          
-          <div style="background-color: #f1f5f9; padding: 20px; border-radius: 8px; text-align: center; margin: 30px 0;">
-            <h1 style="margin: 0; font-size: 32px; letter-spacing: 4px; color: #0f172a;">${otp}</h1>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <span style="font-size: 24px; font-weight: 800; color: #2563eb;">SmartFix</span>
           </div>
-          
-          <p style="font-size: 14px; color: #64748b; text-align: center;">Do not share this OTP with anyone.</p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
-          <p style="font-size: 12px; color: #94a3b8; text-align: center;">If you did not request this, please ignore this email.</p>
+          <h2 style="color: #0f172a; text-align: center; margin-bottom: 12px;">Sign In Verification</h2>
+          <p style="font-size: 15px; color: #334155; line-height: 1.5; text-align: center;">
+            Please use the following single-use verification code to sign in to your SmartFix account.
+          </p>
+          <div style="background-color: #f8fafc; border: 2px dashed #cbd5e1; padding: 20px; border-radius: 10px; text-align: center; margin: 24px 0;">
+            <span style="font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 6px;">One-Time Passcode</span>
+            <h1 style="margin: 0; font-size: 36px; letter-spacing: 8px; color: #0f172a; font-family: monospace;">${otp}</h1>
+            <span style="font-size: 12px; color: #16a34a; font-weight: 600; display: block; margin-top: 8px;">⏱️ Valid for 10 minutes</span>
+          </div>
+          <p style="font-size: 13px; color: #64748b; text-align: center;">Do not share this code with anyone. SmartFix staff will never ask for your code.</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+          <p style="font-size: 11px; color: #94a3b8; text-align: center;">If you did not initiate this request, you can safely ignore this email.</p>
         </div>
       `,
     };
 
     const info = await getTransporter().sendMail(mailOptions);
-    console.log('Email sent: %s', info.messageId);
+    console.log('Customer OTP email dispatched: %s', info.messageId);
     return true;
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('Error sending customer OTP email:', error.message);
+    resetTransporter();
     return false;
   }
 };
@@ -68,6 +101,8 @@ const sendWorkerOtpEmail = async (toEmail, otp, purpose = 'worker-signup') => {
       from: getSender('SmartFix Partner Portal'),
       to: toEmail,
       subject,
+      headers: HIGH_PRIORITY_HEADERS,
+      priority: 'high',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
           <div style="text-align: center; margin-bottom: 24px;">
@@ -79,7 +114,7 @@ const sendWorkerOtpEmail = async (toEmail, otp, purpose = 'worker-signup') => {
           <div style="background-color: #f8fafc; border: 2px dashed #cbd5e1; padding: 20px; border-radius: 10px; text-align: center; margin: 28px 0;">
             <span style="font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 8px;">Verification Code</span>
             <h1 style="margin: 0; font-size: 36px; letter-spacing: 8px; color: #0f172a; font-family: monospace;">${otp}</h1>
-            <span style="font-size: 12px; color: #94a3b8; display: block; margin-top: 8px;">⏱️ Valid for 5 minutes only</span>
+            <span style="font-size: 12px; color: #16a34a; font-weight: 600; display: block; margin-top: 8px;">⏱️ Valid for 10 minutes</span>
           </div>
           
           <p style="font-size: 13px; color: #64748b; text-align: center; margin: 0;">Do NOT share this code with anyone. SmartFix staff will never ask for your code.</p>
@@ -94,6 +129,7 @@ const sendWorkerOtpEmail = async (toEmail, otp, purpose = 'worker-signup') => {
     return true;
   } catch (error) {
     console.error('Error sending worker OTP email:', error.message);
+    resetTransporter();
     return false;
   }
 };
@@ -134,6 +170,7 @@ const sendWorkerApprovalEmail = async (toEmail, workerName) => {
     return true;
   } catch (error) {
     console.error('Error sending worker approval email:', error.message);
+    resetTransporter();
     return false;
   }
 };
@@ -157,7 +194,6 @@ const sendWorkerRejectionEmail = async (toEmail, workerName, rejectionReason) =>
             <strong style="color: #991b1b; display: block; margin-bottom: 4px;">Reason for Rejection / Revision Required:</strong>
             <span style="color: #7f1d1d; font-size: 14px;">${rejectionReason || 'Documents were unclear or did not meet verification criteria.'}</span>
           </div>
-
           <p style="font-size: 14px; color: #475569; line-height: 1.6;">Don't worry! You can easily log in to your provider portal to re-upload clear photos of your ID or retake your AI skill assessment.</p>
           
           <div style="text-align: center; margin: 28px 0;">
@@ -174,6 +210,7 @@ const sendWorkerRejectionEmail = async (toEmail, workerName, rejectionReason) =>
     return true;
   } catch (error) {
     console.error('Error sending worker rejection email:', error.message);
+    resetTransporter();
     return false;
   }
 };
@@ -184,6 +221,8 @@ const sendAdminOtpEmail = async (toEmail, otp) => {
       from: getSender('SmartFix Security'),
       to: toEmail,
       subject: '🛡️ SmartFix Administrator Portal — Single-Use Sign In Code',
+      headers: HIGH_PRIORITY_HEADERS,
+      priority: 'high',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #334155; border-radius: 12px; background: #0f172a; color: #f8fafc;">
           <div style="text-align: center; margin-bottom: 20px;">
@@ -196,7 +235,7 @@ const sendAdminOtpEmail = async (toEmail, otp) => {
           <div style="background-color: #1e293b; border: 1px solid #475569; padding: 20px; border-radius: 8px; text-align: center; margin: 28px 0;">
             <span style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-bottom: 8px;">One-Time Security Passcode</span>
             <h1 style="margin: 0; font-size: 38px; letter-spacing: 8px; color: #38bdf8; font-family: monospace;">${otp}</h1>
-            <span style="font-size: 12px; color: #f87171; display: block; margin-top: 8px;">⏱️ Expires strictly in 5 minutes • 5 attempts maximum</span>
+            <span style="font-size: 12px; color: #38bdf8; font-weight: 600; display: block; margin-top: 8px;">⏱️ Valid for 10 minutes • 5 attempts maximum</span>
           </div>
           <p style="font-size: 12px; color: #94a3b8; text-align: center;">If you did not initiate this administrator sign-in, rotate your ADMIN_PASSWORD_HASH immediately.</p>
         </div>
@@ -208,6 +247,7 @@ const sendAdminOtpEmail = async (toEmail, otp) => {
     return true;
   } catch (error) {
     console.error('Error sending admin OTP email:', error.message);
+    resetTransporter();
     return false;
   }
 };
@@ -215,9 +255,11 @@ const sendAdminOtpEmail = async (toEmail, otp) => {
 const sendPasswordResetOtpEmail = async (toEmail, otp) => {
   try {
     const mailOptions = {
-      from: getSender('SmartFix'),
+      from: getSender('SmartFix Security'),
       to: toEmail,
       subject: 'SmartFix — Password Reset Verification Code',
+      headers: HIGH_PRIORITY_HEADERS,
+      priority: 'high',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
           <div style="text-align: center; margin-bottom: 20px;">
@@ -227,9 +269,10 @@ const sendPasswordResetOtpEmail = async (toEmail, otp) => {
           <p style="font-size: 15px; color: #334155; line-height: 1.5; text-align: center;">
             We received a request to reset your SmartFix account password. Use the 6-digit verification code below to proceed.
           </p>
-          <div style="background-color: #f1f5f9; padding: 20px; border-radius: 8px; text-align: center; margin: 28px 0;">
+          <div style="background-color: #f8fafc; border: 2px dashed #cbd5e1; padding: 20px; border-radius: 10px; text-align: center; margin: 24px 0;">
+            <span style="font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 6px;">Reset Passcode</span>
             <h1 style="margin: 0; font-size: 36px; letter-spacing: 8px; color: #0f172a; font-family: monospace;">${otp}</h1>
-            <span style="font-size: 12px; color: #64748b; display: block; margin-top: 8px;">Valid for 5 minutes</span>
+            <span style="font-size: 12px; color: #16a34a; font-weight: 600; display: block; margin-top: 8px;">⏱️ Valid for 10 minutes</span>
           </div>
           <p style="font-size: 13px; color: #64748b; text-align: center;">If you didn't request a password reset, you can safely ignore this email.</p>
         </div>
@@ -241,6 +284,7 @@ const sendPasswordResetOtpEmail = async (toEmail, otp) => {
     return true;
   } catch (error) {
     console.error('Error sending password reset OTP email:', error.message);
+    resetTransporter();
     return false;
   }
 };

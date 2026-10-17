@@ -46,8 +46,8 @@ export default function AdminLogin() {
   const [lockoutInfo, setLockoutInfo] = useState(null); // { lockUntil, remainingMinutes }
   const [lockoutSecondsLeft, setLockoutSecondsLeft] = useState(0);
 
-  // Step 2 Timers
-  const [otpTimer, setOtpTimer] = useState(300); // 5 minutes (300s)
+  // Step 2 Timers (10 minutes = 600s)
+  const [otpTimer, setOtpTimer] = useState(600);
   const [resendTimer, setResendTimer] = useState(60); // 60s cooldown
 
   // Offline detection listener
@@ -140,7 +140,7 @@ export default function AdminLogin() {
         setAdminOtpToken(res.adminOtpToken);
         setMaskedEmail(res.emailMasked || email.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'));
         setStep(2);
-        setOtpTimer(300);
+        setOtpTimer(res.expiresInSeconds || 600);
         setResendTimer(60);
       } else {
         setGeneralError('Unexpected response from administration service. Try again.');
@@ -195,7 +195,7 @@ export default function AdminLogin() {
       if (res.adminOtpToken) {
         setAdminOtpToken(res.adminOtpToken);
         setOtp('');
-        setOtpTimer(300);
+        setOtpTimer(res.expiresInSeconds || 600);
         setResendTimer(60);
       }
     } catch (err) {

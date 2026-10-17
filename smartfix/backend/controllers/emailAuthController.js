@@ -49,7 +49,7 @@ exports.sendEmailOtp = async (req, res) => {
       { 
         otpHash, 
         attempts: 0, 
-        expiresAt: new Date(Date.now() + 5 * 60000), // 5 minutes
+        expiresAt: new Date(Date.now() + 12 * 60000), // 10 minutes (+ 2 min grace buffer)
         createdAt: new Date()
       },
       { upsert: true, new: true }
@@ -281,7 +281,7 @@ exports.forgotPasswordSendOtp = async (req, res) => {
       {
         otpHash,
         attempts: 0,
-        expiresAt: new Date(Date.now() + 5 * 60000), // 5 minutes
+        expiresAt: new Date(Date.now() + 12 * 60000), // 10 minutes (+ 2 min grace buffer)
         createdAt: new Date(),
       },
       { upsert: true, new: true }
