@@ -477,6 +477,12 @@ exports.updateProfile = async (req, res) => {
 
     if (newPassword && newPassword.trim().length >= 6) {
       user.password = newPassword.trim();
+      if (!user.authProviders) user.authProviders = [];
+      if (!user.authProviders.includes('password')) {
+        user.authProviders.push('password');
+      }
+      user.failedLoginAttempts = 0;
+      user.lockUntil = null;
     }
 
     await user.save();

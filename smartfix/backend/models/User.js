@@ -502,6 +502,7 @@ userSchema.methods.toSafeUser = function () {
     isEmailVerified: !!this.isEmailVerified,
     profileCompleted: !!this.profileCompleted,
     authProviders: this.authProviders || ['password'],
+    hasPassword: !!this.password || (Array.isArray(this.authProviders) && this.authProviders.includes('password')),
     address: this.address || '',
     district: this.district || '',
     state: this.state || '',

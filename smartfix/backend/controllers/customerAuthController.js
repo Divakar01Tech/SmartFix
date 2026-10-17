@@ -112,11 +112,12 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check if account has no password set (e.g., registered via Google OAuth)
+    // Check if account has no password set (e.g., registered via Google OAuth or Email OTP)
     if (!user.password) {
       return res.status(401).json({
         success: false,
-        message: 'This account was created with Google Sign-In and does not have a password set. Please click "Continue with Google" to sign in, or click "Forgot password?" to set a password for email login.',
+        noPasswordSet: true,
+        message: 'This account does not have a password set yet. You can sign in using "Sign in with Google" or "Email OTP Login", or click "Forgot password?" to set a password.',
       });
     }
 

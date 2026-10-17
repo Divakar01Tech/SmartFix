@@ -233,9 +233,26 @@ export default function CustomerLogin() {
 
           {/* Error Message */}
           {errorMsg && lockoutRemainingSecs <= 0 && !roleMismatch && (
-            <div className="alert alert-danger py-2 px-3 small d-flex align-items-center gap-2 mb-3">
-              <AlertCircle size={18} className="flex-shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="alert alert-danger py-2 px-3 small d-flex flex-column gap-2 mb-3">
+              <div className="d-flex align-items-center gap-2">
+                <AlertCircle size={18} className="flex-shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+              {errorMsg.toLowerCase().includes('otp') && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary fw-bold align-self-start mt-1"
+                  onClick={() => {
+                    setActiveTab('otp');
+                    if (identifier && identifier.includes('@')) {
+                      setOtpEmail(identifier.trim());
+                    }
+                    setErrorMsg('');
+                  }}
+                >
+                  Switch to Email OTP Login →
+                </button>
+              )}
             </div>
           )}
 

@@ -159,6 +159,7 @@ export const AuthProvider = ({ children }) => {
       err.locked = data.locked;
       err.remainingMinutes = data.remainingMinutes;
       err.roleMismatch = data.roleMismatch;
+      err.noPasswordSet = data.noPasswordSet;
       err.status = res.status;
       throw err;
     }

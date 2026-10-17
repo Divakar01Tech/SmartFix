@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import { HOME_SERVICES } from '../data/servicesData';
-import { User, Phone, MapPin, Wrench, ShieldCheck, CheckSquare, Square, Lock, Bell, CheckCircle2, Save, Globe, Trash2, AlertTriangle, Sun, Moon } from 'lucide-react';
+import { User, Phone, MapPin, Wrench, ShieldCheck, CheckSquare, Square, Lock, Bell, CheckCircle2, Save, Globe, Trash2, AlertTriangle, Sun, Moon, Mail } from 'lucide-react';
 import LocationSelector from '../components/LocationSelector';
 import './ProfileSettings.css';
 
@@ -495,8 +495,70 @@ const ProfileSettings = () => {
             {/* ACCOUNT SECURITY TAB */}
             {activeTab === 'security' && (
               <div className="tab-pane">
-                <h3 className="tab-pane-title"><Lock size={20} /> Change Password</h3>
-                <p className="tab-pane-desc">Ensure your account is protected with a strong password.</p>
+                {/* Connected Sign-In Methods for Unified Account */}
+                <div className="security-methods-card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px', marginBottom: '24px' }}>
+                  <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '8px', color: '#0f172a' }}>
+                    Unified Sign-In Methods
+                  </h4>
+                  <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '14px' }}>
+                    All connected methods below map directly to your single account (<strong>{user?.email}</strong>). You can sign in using any of them at any time.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Method 1: Email OTP */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Mail size={18} color="#2563eb" />
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: '0.88rem', color: '#1e293b' }}>Gmail OTP Login</strong>
+                          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>Receive a secure 6-digit one-time code to {user?.email}</p>
+                        </div>
+                      </div>
+                      <span className="badge bg-success text-white fw-bold" style={{ fontSize: '0.75rem', padding: '5px 10px', borderRadius: '6px' }}>Always Active</span>
+                    </div>
+
+                    {/* Method 2: Google Sign-In */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
+                          <Globe size={18} color="#ea4335" />
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: '0.88rem', color: '#1e293b' }}>Google Sign-In</strong>
+                          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>One-click login using your Google account ({user?.email})</p>
+                        </div>
+                      </div>
+                      <span className="badge bg-primary text-white fw-bold" style={{ fontSize: '0.75rem', padding: '5px 10px', borderRadius: '6px' }}>Linked</span>
+                    </div>
+
+                    {/* Method 3: Password */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Lock size={18} color="#16a34a" />
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: '0.88rem', color: '#1e293b' }}>Password Login</strong>
+                          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
+                            {user?.hasPassword ? 'Password is configured. You can update it below.' : 'No password set yet. Set a password below to enable password login.'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`badge ${user?.hasPassword ? 'bg-success text-white' : 'bg-warning text-dark'} fw-bold`} style={{ fontSize: '0.75rem', padding: '5px 10px', borderRadius: '6px' }}>
+                        {user?.hasPassword ? 'Active' : 'Not Set'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 className="tab-pane-title"><Lock size={20} /> {user?.hasPassword ? 'Change Password' : 'Set Account Password'}</h3>
+                <p className="tab-pane-desc">
+                  {user?.hasPassword
+                    ? 'Enter a new password below to update it. You can log in using this password, your Google account, or Email OTP.'
+                    : 'Set an account password below. Once saved, you can log in using either this password, Google Sign-In, or Email OTP.'}
+                </p>
 
                 <div className="form-group">
                   <label><Lock size={15} /> New Password</label>
