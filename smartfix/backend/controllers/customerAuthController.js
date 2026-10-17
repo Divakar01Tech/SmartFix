@@ -194,21 +194,24 @@ exports.sendLoginOtp = async (req, res) => {
     }
 
     const normEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: normEmail, role: 'customer' });
 
-    // Generic success response to prevent email harvesting
-    const genericResponse = {
-      success: true,
-      message: 'If a customer account is associated with this email, a login verification code has been sent.',
-    };
-
-    if (!user) {
-      return res.status(200).json(genericResponse);
+    // Check if the user is registered under a different role
+    const existingUser = await User.findOne({ email: normEmail });
+    if (existingUser && existingUser.role !== 'customer') {
+      const isWorker = existingUser.role === 'worker' || existingUser.role === 'handyman';
+      return res.status(403).json({
+        success: false,
+        roleMismatch: true,
+        registeredRole: existingUser.role,
+        message: isWorker
+          ? 'This email is registered as a Service Professional. Please log in via the Technician Portal.'
+          : 'This email is registered as an Administrator. Please log in via the Admin Portal.',
+      });
     }
 
-    // Lockout check
-    if (user.lockUntil && user.lockUntil > new Date()) {
-      const remainingMinutes = Math.ceil((user.lockUntil.getTime() - Date.now()) / 60000);
+    // Lockout check if existing customer
+    if (existingUser && existingUser.lockUntil && existingUser.lockUntil > new Date()) {
+      const remainingMinutes = Math.ceil((existingUser.lockUntil.getTime() - Date.now()) / 60000);
       return res.status(423).json({
         success: false,
         locked: true,
@@ -246,12 +249,20 @@ exports.sendLoginOtp = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // Send email asynchronously
-    sendOtpEmail(normEmail, otp).catch((err) =>
-      console.error('Customer login OTP email dispatch error:', err.message)
-    );
+    // Send email and verify successful dispatch
+    const sent = await sendOtpEmail(normEmail, otp);
+    if (!sent) {
+      console.error(`Customer login OTP email dispatch failed for ${normEmail}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send OTP verification email. Please check your email address or try again shortly.',
+      });
+    }
 
-    return res.status(200).json(genericResponse);
+    return res.status(200).json({
+      success: true,
+      message: 'A 6-digit login verification code has been sent to your email address.',
+    });
   } catch (err) {
     console.error('Send login OTP error:', err);
     return res.status(500).json({ success: false, message: 'Server error sending login OTP.' });
@@ -307,9 +318,22 @@ exports.verifyLoginOtp = async (req, res) => {
     // Success: consume OTP record
     await Otp.deleteOne({ _id: otpDoc._id });
 
-    const user = await User.findOne({ email: normEmail, role: 'customer' });
+    let user = await User.findOne({ email: normEmail, role: 'customer' });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Customer account not found.' });
+      // If customer doesn't exist yet, auto-create customer document for seamless login
+      const defaultName = normEmail.split('@')[0];
+      user = await User.create({
+        name: defaultName,
+        fullName: defaultName,
+        email: normEmail,
+        isEmailVerified: true,
+        profileCompleted: false,
+        authProviders: ['email_otp'],
+        role: 'customer',
+        verificationStatus: 'Verified',
+        isOnline: true,
+        isAvailable: true,
+      });
     }
 
     // Reset lockout
@@ -351,14 +375,26 @@ exports.sendForgotPasswordOtp = async (req, res) => {
     }
 
     const normEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: normEmail, role: 'customer' });
+    const existingUser = await User.findOne({ email: normEmail });
+
+    if (existingUser && existingUser.role !== 'customer') {
+      const isWorker = existingUser.role === 'worker' || existingUser.role === 'handyman';
+      return res.status(403).json({
+        success: false,
+        roleMismatch: true,
+        registeredRole: existingUser.role,
+        message: isWorker
+          ? 'This email is registered as a Service Professional. Please use the Worker forgot password portal.'
+          : 'This email is registered as an Administrator. Password reset must be requested through administrator channels.',
+      });
+    }
 
     const genericResponse = {
       success: true,
       message: 'If an account is associated with this email, a password reset code has been sent.',
     };
 
-    if (!user) {
+    if (!existingUser) {
       return res.status(200).json(genericResponse);
     }
 
@@ -390,9 +426,10 @@ exports.sendForgotPasswordOtp = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    sendPasswordResetOtpEmail(normEmail, otp).catch((err) =>
-      console.error('Customer forgot password email dispatch error:', err.message)
-    );
+    const sent = await sendPasswordResetOtpEmail(normEmail, otp);
+    if (!sent) {
+      console.error('Customer forgot password email dispatch error for:', normEmail);
+    }
 
     return res.status(200).json(genericResponse);
   } catch (err) {

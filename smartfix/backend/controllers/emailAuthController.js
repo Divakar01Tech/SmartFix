@@ -57,8 +57,10 @@ exports.sendEmailOtp = async (req, res) => {
 
     console.log(`[AUTH] 📧 Signup OTP generated for ${email}: ${otp}`);
 
-    // Send email asynchronously without blocking the response
-    sendOtpEmail(email, otp).catch(err => console.error('Background email failed:', err));
+    const emailSent = await sendOtpEmail(email, otp);
+    if (!emailSent) {
+      return res.status(500).json({ success: false, message: 'Failed to dispatch verification email. Please try again.' });
+    }
 
     res.status(200).json({ success: true, message: 'OTP sent successfully to your email.' });
   } catch (error) {
@@ -286,7 +288,7 @@ exports.forgotPasswordSendOtp = async (req, res) => {
     );
 
     const { sendPasswordResetOtpEmail } = require('../utils/mailer');
-    sendPasswordResetOtpEmail(email, otp).catch((err) => console.error('Forgot password email error:', err.message));
+    await sendPasswordResetOtpEmail(email, otp);
 
     return res.status(200).json(genericSuccessResponse);
   } catch (err) {

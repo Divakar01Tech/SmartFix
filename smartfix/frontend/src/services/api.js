@@ -84,7 +84,12 @@ export const apiService = {
       body: JSON.stringify({ email }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Failed to send login OTP');
+    if (!res.ok) {
+      const err = new Error(data.message || 'Failed to send login OTP');
+      err.roleMismatch = data.roleMismatch;
+      err.registeredRole = data.registeredRole;
+      throw err;
+    }
     return data;
   },
 
@@ -106,7 +111,12 @@ export const apiService = {
       body: JSON.stringify({ email }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Failed to request reset OTP');
+    if (!res.ok) {
+      const err = new Error(data.message || 'Failed to request reset OTP');
+      err.roleMismatch = data.roleMismatch;
+      err.registeredRole = data.registeredRole;
+      throw err;
+    }
     return data;
   },
 

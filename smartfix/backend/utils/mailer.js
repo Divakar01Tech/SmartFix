@@ -12,10 +12,21 @@ const getTransporter = () => {
   });
 };
 
+const getSender = (portalName = 'SmartFix') => {
+  if (process.env.MAIL_FROM) {
+    return process.env.MAIL_FROM;
+  }
+  const user = process.env.EMAIL_USER || process.env.GMAIL_USER;
+  if (user) {
+    return `"${portalName}" <${user}>`;
+  }
+  return `"${portalName}" <noreply@smartfix.com>`;
+};
+
 const sendOtpEmail = async (toEmail, otp) => {
   try {
     const mailOptions = {
-      from: process.env.MAIL_FROM || '"SmartFix" <noreply@smartfix.com>',
+      from: getSender('SmartFix'),
       to: toEmail,
       subject: 'SmartFix - Your Verification Code',
       html: `
@@ -54,7 +65,7 @@ const sendWorkerOtpEmail = async (toEmail, otp, purpose = 'worker-signup') => {
       : 'You requested to reset your SmartFix Partner password. Use the 6-digit code below to proceed.';
 
     const mailOptions = {
-      from: process.env.MAIL_FROM || '"SmartFix Partner Portal" <noreply@smartfix.com>',
+      from: getSender('SmartFix Partner Portal'),
       to: toEmail,
       subject,
       html: `
@@ -90,7 +101,7 @@ const sendWorkerOtpEmail = async (toEmail, otp, purpose = 'worker-signup') => {
 const sendWorkerApprovalEmail = async (toEmail, workerName) => {
   try {
     const mailOptions = {
-      from: process.env.MAIL_FROM || '"SmartFix Partner Portal" <noreply@smartfix.com>',
+      from: getSender('SmartFix Partner Portal'),
       to: toEmail,
       subject: '🎉 Congratulations! Your SmartFix Partner Account is Approved',
       html: `
@@ -130,7 +141,7 @@ const sendWorkerApprovalEmail = async (toEmail, workerName) => {
 const sendWorkerRejectionEmail = async (toEmail, workerName, rejectionReason) => {
   try {
     const mailOptions = {
-      from: process.env.MAIL_FROM || '"SmartFix Partner Portal" <noreply@smartfix.com>',
+      from: getSender('SmartFix Partner Portal'),
       to: toEmail,
       subject: 'SmartFix Partner Application Status Update',
       html: `
@@ -170,7 +181,7 @@ const sendWorkerRejectionEmail = async (toEmail, workerName, rejectionReason) =>
 const sendAdminOtpEmail = async (toEmail, otp) => {
   try {
     const mailOptions = {
-      from: process.env.MAIL_FROM || '"SmartFix Security" <noreply@smartfix.com>',
+      from: getSender('SmartFix Security'),
       to: toEmail,
       subject: '🛡️ SmartFix Administrator Portal — Single-Use Sign In Code',
       html: `
@@ -204,7 +215,7 @@ const sendAdminOtpEmail = async (toEmail, otp) => {
 const sendPasswordResetOtpEmail = async (toEmail, otp) => {
   try {
     const mailOptions = {
-      from: process.env.MAIL_FROM || '"SmartFix" <noreply@smartfix.com>',
+      from: getSender('SmartFix'),
       to: toEmail,
       subject: 'SmartFix — Password Reset Verification Code',
       html: `
@@ -257,7 +268,7 @@ const sendWorkerFeedbackEmail = async (toEmail, workerName, feedbackType = 'inst
       : 'ℹ️ Action Taken: Advisory Recorded.';
 
     const mailOptions = {
-      from: process.env.MAIL_FROM || '"SmartFix Administration" <noreply@smartfix.com>',
+      from: getSender('SmartFix Administration'),
       to: toEmail,
       subject: `SmartFix Service Management: ${typeConfig.title}`,
       html: `

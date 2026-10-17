@@ -118,6 +118,7 @@ export default function CustomerLogin() {
       return;
     }
     setErrorMsg('');
+    setRoleMismatch(null);
     setOtpLoading(true);
 
     try {
@@ -126,7 +127,16 @@ export default function CustomerLogin() {
       setOtpTimer(300);
       setResendTimer(60);
     } catch (err) {
-      setErrorMsg(err.message || t('otp_send_failed', 'Failed to send verification code.'));
+      if (err.roleMismatch) {
+        const isWorker = err.registeredRole === 'worker' || err.registeredRole === 'handyman' || err.message?.toLowerCase().includes('technician') || err.message?.toLowerCase().includes('professional');
+        setRoleMismatch({
+          message: err.message,
+          link: isWorker ? '/worker/login' : '/admin/login',
+          linkText: isWorker ? t('go_to_worker_portal', 'Go to Technician Portal') : t('go_to_admin_portal', 'Go to Admin Portal'),
+        });
+      } else {
+        setErrorMsg(err.message || t('otp_send_failed', 'Failed to send verification code.'));
+      }
     } finally {
       setOtpLoading(false);
     }
