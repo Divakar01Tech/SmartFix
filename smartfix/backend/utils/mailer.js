@@ -8,22 +8,29 @@ const getTransporter = () => {
   const pass = rawPass.replace(/\s+/g, '');
 
   if (!cachedTransporter) {
-    cachedTransporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
-      family: 4, // Prevent IPv6 DNS connection delay
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-      auth: {
-        user,
-        pass,
-      },
-    });
+    if (user.endsWith('@gmail.com') || process.env.EMAIL_SERVICE === 'gmail') {
+      cachedTransporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user,
+          pass,
+        },
+      });
+    } else {
+      cachedTransporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        family: 4,
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+        auth: {
+          user,
+          pass,
+        },
+      });
+    }
   }
   return cachedTransporter;
 };
@@ -217,36 +224,43 @@ const sendWorkerRejectionEmail = async (toEmail, workerName, rejectionReason) =>
 
 const sendAdminOtpEmail = async (toEmail, otp) => {
   try {
+    const user = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
+    const sender = getSender('SmartFix Security');
+
     const mailOptions = {
-      from: getSender('SmartFix Security'),
+      from: sender,
       to: toEmail,
-      subject: '🛡️ SmartFix Administrator Portal — Single-Use Sign In Code',
-      headers: HIGH_PRIORITY_HEADERS,
-      priority: 'high',
+      replyTo: user || toEmail,
+      subject: `SmartFix Admin Verification Code: ${otp}`,
+      text: `SmartFix Admin Login Verification\n\nYour 6-digit administrative verification code is: ${otp}\n\nThis single-use code is valid for 10 minutes (5 attempts maximum).\nIf you did not initiate this administrator sign-in, please verify your account security immediately.`,
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #334155; border-radius: 12px; background: #0f172a; color: #f8fafc;">
-          <div style="text-align: center; margin-bottom: 20px;">
-            <span style="font-size: 22px; font-weight: 800; color: #38bdf8; letter-spacing: 1px;">SMARTFIX CONTROL CONSOLE</span>
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+          <div style="margin-bottom: 20px;">
+            <h2 style="margin: 0; color: #0f172a; font-size: 20px;">SmartFix Control Console</h2>
+            <p style="margin: 4px 0 0; color: #64748b; font-size: 13px;">Administrator Authentication</p>
           </div>
-          <h2 style="color: #f1f5f9; text-align: center; margin-bottom: 12px;">Admin 2-Factor Authentication</h2>
-          <p style="font-size: 14px; color: #cbd5e1; text-align: center; line-height: 1.5;">
-            An administrative login attempt was verified against system credentials. Enter the single-use 6-digit authentication code below to grant privileged session access.
+          <p style="color: #334155; font-size: 14px; line-height: 1.5; margin-top: 0;">
+            Here is your single-use verification code for administrative portal access:
           </p>
-          <div style="background-color: #1e293b; border: 1px solid #475569; padding: 20px; border-radius: 8px; text-align: center; margin: 28px 0;">
-            <span style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-bottom: 8px;">One-Time Security Passcode</span>
-            <h1 style="margin: 0; font-size: 38px; letter-spacing: 8px; color: #38bdf8; font-family: monospace;">${otp}</h1>
-            <span style="font-size: 12px; color: #38bdf8; font-weight: 600; display: block; margin-top: 8px;">⏱️ Valid for 10 minutes • 5 attempts maximum</span>
+          <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 11px; font-weight: 700; color: #64748b; letter-spacing: 1.5px; text-transform: uppercase;">One-Time Security Passcode</span>
+            <div style="font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #0284c7; font-family: monospace; margin: 8px 0 0;">
+              ${otp}
+            </div>
+            <p style="margin: 8px 0 0; font-size: 12px; color: #16a34a; font-weight: 600;">⏱️ Valid for 10 minutes &bull; 5 attempts maximum</p>
           </div>
-          <p style="font-size: 12px; color: #94a3b8; text-align: center;">If you did not initiate this administrator sign-in, rotate your ADMIN_PASSWORD_HASH immediately.</p>
+          <p style="color: #64748b; font-size: 12px; line-height: 1.5; margin: 0;">
+            If you did not initiate this administrator sign-in, rotate your password immediately.
+          </p>
         </div>
       `,
     };
 
     const info = await getTransporter().sendMail(mailOptions);
-    console.log(`Admin OTP email sent to ${toEmail}: %s`, info.messageId);
+    console.log(`✅ Admin OTP email dispatched to ${toEmail}: %s`, info.messageId);
     return true;
   } catch (error) {
-    console.error('Error sending admin OTP email:', error.message);
+    console.error('❌ Error sending admin OTP email:', error.message);
     resetTransporter();
     return false;
   }

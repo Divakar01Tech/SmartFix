@@ -117,8 +117,10 @@ exports.adminLogin = async (req, res) => {
       expiresAt: new Date(Date.now() + 12 * 60 * 1000),
     });
 
-    // Send 2FA email to admin
-    await sendAdminOtpEmail(ADMIN_EMAIL, otp);
+    // Dispatch 2FA email immediately (non-blocking for instant UI transition)
+    sendAdminOtpEmail(ADMIN_EMAIL, otp).catch((err) => {
+      console.error('❌ Background Admin OTP Email Delivery Failure:', err.message);
+    });
 
     if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') {
       console.log(`🔐 [ADMIN 2FA OTP] Single-use code for ${ADMIN_EMAIL}: ${otp}`);
@@ -137,14 +139,20 @@ exports.adminLogin = async (req, res) => {
       details: { email: ADMIN_EMAIL },
     }).catch(() => null);
 
-    return res.status(200).json({
+    const responsePayload = {
       success: true,
       step: 'otp_required',
       message: 'Authentication code dispatched to the authorized administrator inbox.',
       adminOtpToken,
       expiresInSeconds: 600,
       emailMasked: ADMIN_EMAIL.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
-    });
+    };
+
+    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') {
+      responsePayload.devOtp = otp;
+    }
+
+    return res.status(200).json(responsePayload);
   } catch (err) {
     console.error('Admin Login Step 1 Error:', err);
     return res.status(500).json({ success: false, message: 'Server error during administrator sign-in.' });

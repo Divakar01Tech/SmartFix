@@ -35,6 +35,7 @@ export default function AdminLogin() {
   // Challenge Token & State from Step 1
   const [adminOtpToken, setAdminOtpToken] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
+  const [devOtp, setDevOtp] = useState('');
 
   // UI & Loading States
   const [loading, setLoading] = useState(false);
@@ -139,6 +140,7 @@ export default function AdminLogin() {
       if (res.step === 'otp_required' && res.adminOtpToken) {
         setAdminOtpToken(res.adminOtpToken);
         setMaskedEmail(res.emailMasked || email.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'));
+        setDevOtp(res.devOtp || '');
         setStep(2);
         setOtpTimer(res.expiresInSeconds || 600);
         setResendTimer(60);
@@ -194,6 +196,7 @@ export default function AdminLogin() {
       const res = await adminLogin(email, password);
       if (res.adminOtpToken) {
         setAdminOtpToken(res.adminOtpToken);
+        setDevOtp(res.devOtp || '');
         setOtp('');
         setOtpTimer(res.expiresInSeconds || 600);
         setResendTimer(60);
@@ -360,8 +363,33 @@ export default function AdminLogin() {
         {step === 2 && (
           <form onSubmit={handleOtpSubmit} className="admin-otp-section" noValidate>
             <p className="admin-otp-instruction">
-              Authentication code dispatched to <strong>{maskedEmail}</strong>. Code valid for 5 minutes.
+              Authentication code dispatched to <strong>{maskedEmail}</strong>. Code valid for 10 minutes.
             </p>
+
+            {devOtp && (
+              <div
+                style={{
+                  background: 'rgba(56, 189, 248, 0.1)',
+                  border: '1px dashed #38bdf8',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '16px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setOtp(devOtp)}
+                title="Click to auto-fill code"
+              >
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                  ⚡ Dev Auto-Code: <strong style={{ color: '#38bdf8', letterSpacing: '2px', fontSize: '15px' }}>{devOtp}</strong>
+                </div>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>(Click here to auto-fill)</span>
+              </div>
+            )}
+
+            <div style={{ fontSize: '12px', color: '#94a3b8', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid #334155', borderRadius: '6px', padding: '8px 12px', marginBottom: '16px', textAlign: 'left', lineHeight: '1.4' }}>
+              <span>ℹ️ <strong>Email delivery note:</strong> In Gmail, also check your <strong>All Mail</strong>, <strong>Updates</strong>, or <strong>Spam</strong> folder if the notification is delayed.</span>
+            </div>
 
             <OtpInput
               value={otp}
