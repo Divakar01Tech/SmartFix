@@ -1,42 +1,70 @@
 const nodemailer = require('nodemailer');
 
-let cachedTransporter = null;
-
-const getTransporter = () => {
+const createTransporter = (port = 465, secure = true) => {
   const user = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
   const rawPass = process.env.EMAIL_PASS || process.env.GMAIL_PASS || '';
   const pass = rawPass.replace(/\s+/g, '');
 
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port,
+    secure,
+    family: 4, // CRITICAL: Always force IPv4 for cloud containers (Render, AWS, Heroku)
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
+    auth: {
+      user,
+      pass,
+    },
+    tls: {
+      rejectUnauthorized: true,
+      minVersion: 'TLSv1.2',
+    },
+  });
+};
+
+let cachedTransporter = null;
+let cachedFallbackTransporter = null;
+
+const getTransporter = () => {
   if (!cachedTransporter) {
-    if (user.endsWith('@gmail.com') || process.env.EMAIL_SERVICE === 'gmail') {
-      cachedTransporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user,
-          pass,
-        },
-      });
-    } else {
-      cachedTransporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
-        family: 4,
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
-        auth: {
-          user,
-          pass,
-        },
-      });
-    }
+    cachedTransporter = createTransporter(465, true);
   }
   return cachedTransporter;
 };
 
+const getFallbackTransporter = () => {
+  if (!cachedFallbackTransporter) {
+    cachedFallbackTransporter = createTransporter(587, false);
+  }
+  return cachedFallbackTransporter;
+};
+
 const resetTransporter = () => {
   cachedTransporter = null;
+  cachedFallbackTransporter = null;
+};
+
+const dispatchMailWithFallback = async (mailOptions, description = 'Email') => {
+  try {
+    const info = await getTransporter().sendMail(mailOptions);
+    console.log(`✅ ${description} dispatched via Port 465 to ${mailOptions.to}: ${info.messageId}`);
+    return true;
+  } catch (err465) {
+    console.warn(`⚠️ ${description} Port 465 failed (${err465.message}). Retrying with Port 587 STARTTLS...`);
+    resetTransporter();
+
+    try {
+      const fallback = getFallbackTransporter();
+      const info = await fallback.sendMail(mailOptions);
+      console.log(`✅ ${description} dispatched via Port 587 fallback to ${mailOptions.to}: ${info.messageId}`);
+      return true;
+    } catch (err587) {
+      console.error(`❌ ${description} failed on both Port 465 and Port 587:`, err587.message);
+      return false;
+    }
+  }
 };
 
 const getSender = (portalName = 'SmartFix') => {
@@ -256,9 +284,7 @@ const sendAdminOtpEmail = async (toEmail, otp) => {
       `,
     };
 
-    const info = await getTransporter().sendMail(mailOptions);
-    console.log(`✅ Admin OTP email dispatched to ${toEmail}: %s`, info.messageId);
-    return true;
+    return await dispatchMailWithFallback(mailOptions, 'Admin 2FA OTP Email');
   } catch (error) {
     console.error('❌ Error sending admin OTP email:', error.message);
     resetTransporter();
@@ -372,6 +398,7 @@ module.exports = {
   sendPasswordResetOtpEmail,
   sendWorkerFeedbackEmail,
   getTransporter,
+  getFallbackTransporter,
   resetTransporter,
 };
 

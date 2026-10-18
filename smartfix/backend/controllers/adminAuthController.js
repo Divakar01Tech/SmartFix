@@ -326,27 +326,41 @@ exports.checkSmtpStatus = async (req, res) => {
       });
     }
 
-    const { getTransporter } = require('../utils/mailer');
-    const transporter = getTransporter();
+    const { getTransporter, getFallbackTransporter } = require('../utils/mailer');
 
+    let port465Success = false;
+    let port465Error = null;
     try {
-      await transporter.verify();
-      return res.status(200).json({
-        configured: true,
-        smtpConnected: true,
-        userMasked: user.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
-        adminEmailMasked: adminEmail.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
-        message: 'SMTP credentials verified successfully with Gmail.',
-      });
-    } catch (smtpErr) {
-      return res.status(200).json({
-        configured: true,
-        smtpConnected: false,
-        error: smtpErr.message,
-        userMasked: user.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
-        message: `SMTP connection/authentication failed: ${smtpErr.message}`,
-      });
+      await getTransporter().verify();
+      port465Success = true;
+    } catch (err) {
+      port465Error = err.message;
     }
+
+    let port587Success = false;
+    let port587Error = null;
+    if (!port465Success) {
+      try {
+        await getFallbackTransporter().verify();
+        port587Success = true;
+      } catch (err) {
+        port587Error = err.message;
+      }
+    }
+
+    const working = port465Success || port587Success;
+    return res.status(200).json({
+      configured: true,
+      smtpConnected: working,
+      workingPort: port465Success ? 465 : (port587Success ? 587 : null),
+      port465: { success: port465Success, error: port465Error },
+      port587: { success: port587Success, error: port587Error },
+      userMasked: user.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
+      adminEmailMasked: adminEmail.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
+      message: working
+        ? `SMTP credentials and network verified successfully via Port ${port465Success ? 465 : 587}!`
+        : `SMTP connection failed on both Port 465 and Port 587. Check Google App Password permissions.`,
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
