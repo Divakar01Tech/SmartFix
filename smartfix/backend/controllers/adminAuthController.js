@@ -117,12 +117,34 @@ exports.adminLogin = async (req, res) => {
       expiresAt: new Date(Date.now() + 12 * 60 * 1000),
     });
 
-    // Dispatch 2FA email immediately (non-blocking for instant UI transition)
-    sendAdminOtpEmail(ADMIN_EMAIL, otp).catch((err) => {
-      console.error('❌ Background Admin OTP Email Delivery Failure:', err.message);
-    });
+    // Ensure email credentials exist on the host
+    const emailUser = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
+    const emailPass = (process.env.EMAIL_PASS || process.env.GMAIL_PASS || '').trim();
+    const isMockOrDev = process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true';
 
-    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') {
+    if (!emailUser || !emailPass) {
+      console.warn('⚠️ EMAIL_USER or EMAIL_PASS environment variable is missing on this instance.');
+      if (!isMockOrDev) {
+        return res.status(503).json({
+          success: false,
+          message: 'Server email credentials (EMAIL_USER or EMAIL_PASS) are not configured. Please add them in your Render dashboard environment variables.',
+        });
+      }
+    }
+
+    // Dispatch 2FA email and verify delivery
+    let emailDispatched = false;
+    if (emailUser && emailPass) {
+      emailDispatched = await sendAdminOtpEmail(ADMIN_EMAIL, otp);
+      if (!emailDispatched && !isMockOrDev) {
+        return res.status(502).json({
+          success: false,
+          message: 'Failed to deliver the two-factor authentication email. Please verify SMTP credentials or check server network connectivity.',
+        });
+      }
+    }
+
+    if (isMockOrDev) {
       console.log(`🔐 [ADMIN 2FA OTP] Single-use code for ${ADMIN_EMAIL}: ${otp}`);
     }
 
@@ -136,7 +158,7 @@ exports.adminLogin = async (req, res) => {
     await AuditLog.create({
       action: 'admin_login_otp_dispatched',
       ip,
-      details: { email: ADMIN_EMAIL },
+      details: { email: ADMIN_EMAIL, emailDispatched },
     }).catch(() => null);
 
     const responsePayload = {
@@ -148,7 +170,7 @@ exports.adminLogin = async (req, res) => {
       emailMasked: ADMIN_EMAIL.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
     };
 
-    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') {
+    if (isMockOrDev) {
       responsePayload.devOtp = otp;
     }
 
@@ -279,3 +301,54 @@ exports.adminVerifyOtp = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error during OTP verification.' });
   }
 };
+
+/**
+ * Diagnostic: GET /api/admin/auth/smtp-check
+ * Safe inspection of SMTP configuration and connectivity
+ */
+exports.checkSmtpStatus = async (req, res) => {
+  try {
+    const user = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
+    const rawPass = (process.env.EMAIL_PASS || process.env.GMAIL_PASS || '').trim();
+    const hasPass = Boolean(rawPass);
+    const passLength = rawPass ? rawPass.length : 0;
+    const adminEmail = (process.env.ADMIN_EMAIL || 'muthudivakar01022006@gmail.com').toLowerCase().trim();
+
+    if (!user || !hasPass) {
+      return res.status(200).json({
+        configured: false,
+        userPresent: Boolean(user),
+        passPresent: hasPass,
+        passLength,
+        userMasked: user ? user.replace(/(^.{2})(.*)(@.*$)/, '$1***$3') : null,
+        adminEmailMasked: adminEmail.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
+        message: 'EMAIL_USER or EMAIL_PASS environment variables are missing on this server instance. Please set them in your deployment environment settings.',
+      });
+    }
+
+    const { getTransporter } = require('../utils/mailer');
+    const transporter = getTransporter();
+
+    try {
+      await transporter.verify();
+      return res.status(200).json({
+        configured: true,
+        smtpConnected: true,
+        userMasked: user.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
+        adminEmailMasked: adminEmail.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
+        message: 'SMTP credentials verified successfully with Gmail.',
+      });
+    } catch (smtpErr) {
+      return res.status(200).json({
+        configured: true,
+        smtpConnected: false,
+        error: smtpErr.message,
+        userMasked: user.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
+        message: `SMTP connection/authentication failed: ${smtpErr.message}`,
+      });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+

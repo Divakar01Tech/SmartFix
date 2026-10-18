@@ -113,6 +113,18 @@ app.get('/', (req, res) => {
   res.send('SmartFix API & Socket.IO server is running...');
 });
 
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'connecting_or_disconnected',
+    hasEmailUser: !!(process.env.EMAIL_USER || process.env.GMAIL_USER),
+    hasEmailPass: !!(process.env.EMAIL_PASS || process.env.GMAIL_PASS),
+    hasAdminPassword: !!process.env.ADMIN_PASSWORD_HASH,
+    nodeEnv: process.env.NODE_ENV || 'development',
+  });
+});
+
 app.use('/invoices', express.static(path.join(__dirname, 'invoices')));
 
 // Database readiness guard for all /api endpoints

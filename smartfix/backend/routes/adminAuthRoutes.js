@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { adminLogin, adminVerifyOtp } = require('../controllers/adminAuthController');
+const { adminLogin, adminVerifyOtp, checkSmtpStatus } = require('../controllers/adminAuthController');
 
 // Strict IP Rate Limiter for Administrator Login
 const adminAuthLimiter = rateLimit({
@@ -18,5 +18,6 @@ const adminAuthLimiter = rateLimit({
 // Admin Authentication Endpoints (Unlinked route /admin/login)
 router.post('/login', adminAuthLimiter, adminLogin);
 router.post('/verify-otp', adminAuthLimiter, adminVerifyOtp);
+router.get('/smtp-check', checkSmtpStatus);
 
 module.exports = router;

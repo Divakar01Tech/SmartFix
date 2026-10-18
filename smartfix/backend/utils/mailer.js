@@ -371,6 +371,8 @@ module.exports = {
   sendAdminOtpEmail,
   sendPasswordResetOtpEmail,
   sendWorkerFeedbackEmail,
+  getTransporter,
+  resetTransporter,
 };
 
 
