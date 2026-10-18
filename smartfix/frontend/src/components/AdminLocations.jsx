@@ -26,7 +26,7 @@ const AdminLocations = () => {
   const loadDistricts = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const res = await fetch(`${getApiBase()}/admin/locations/districts`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -84,7 +84,7 @@ const AdminLocations = () => {
 
   const toggleDistrictActive = async (dId, confirmActivation = false) => {
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const res = await fetch(`${getApiBase()}/admin/locations/districts/${dId}/toggle-active`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -108,7 +108,7 @@ const AdminLocations = () => {
 
   const saveTalukRadius = async () => {
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const res = await fetch(`${getApiBase()}/admin/locations/taluks/${editingTaluk._id || editingTaluk.id}`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -127,7 +127,7 @@ const AdminLocations = () => {
   const handleAddVillage = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const res = await fetch(`${getApiBase()}/admin/locations/villages`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -153,7 +153,7 @@ const AdminLocations = () => {
 
   const toggleVillageActive = async (vId, isActive) => {
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const res = await fetch(`${getApiBase()}/admin/locations/villages/${vId}`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },

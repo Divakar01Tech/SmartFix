@@ -10,7 +10,7 @@ const NEW_PASSWORD = process.argv[2] || 'admin123';
 
 async function setAdminPassword() {
   try {
-    await mongoose.connect(MONGO_URI);
+    await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 5000 });
     console.log('✅ Connected to MongoDB');
 
     const salt = await bcrypt.genSalt(12);
@@ -47,6 +47,7 @@ async function setAdminPassword() {
     }
 
     console.log(`🔑 Admin Password set successfully to: "${NEW_PASSWORD}"`);
+    console.log(`💡 To sync with backend/.env: ADMIN_PASSWORD_HASH=${hashedPassword}`);
   } catch (err) {
     console.error('❌ Error setting admin password:', err.message);
   } finally {

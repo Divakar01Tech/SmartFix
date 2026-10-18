@@ -30,7 +30,7 @@ export default function AdminAnalytics() {
     try {
       setLoading(true);
       setError('');
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const headers = { 'Authorization': token ? `Bearer ${token}` : '' };
       const apiBase = getApiBase();
 

@@ -284,6 +284,7 @@ export const AuthProvider = ({ children }) => {
 
     const authUser = data.user;
     setPortalAuth('admin', data.token, authUser);
+    localStorage.setItem('smartfix_token', data.token);
     setAdminUser(authUser);
     setAdminToken(data.token);
     reconnectSocketForRole('admin');
@@ -419,6 +420,7 @@ export const AuthProvider = ({ children }) => {
 
   const logoutAdmin = () => {
     logoutRole('admin');
+    localStorage.removeItem('smartfix_token');
     window.location.href = '/admin/login';
   };
 

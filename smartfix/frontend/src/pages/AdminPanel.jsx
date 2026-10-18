@@ -117,7 +117,7 @@ const AdminPanel = ({ initialTab }) => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const headers = { 'Authorization': token ? `Bearer ${token}` : '' };
       const apiBase = getApiBase();
 
@@ -187,7 +187,7 @@ const AdminPanel = ({ initialTab }) => {
 
   const resolveSosAlert = async (alertId) => {
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const apiBase = getApiBase();
       const res = await fetch(`${apiBase}/admin/sos-alerts/${alertId}/resolve`, {
         method: 'PATCH',
@@ -207,7 +207,7 @@ const AdminPanel = ({ initialTab }) => {
 
   const handleResolveDispute = async (id, status, decision, notes) => {
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const apiBase = getApiBase();
       const res = await fetch(`${apiBase}/admin/disputes/${id}/resolve`, {
         method: 'PATCH',
@@ -230,7 +230,7 @@ const AdminPanel = ({ initialTab }) => {
     setAiInsightsData(null);
     setAiInsightsLoading(true);
     try {
-      const token = localStorage.getItem('smartfix_token');
+      const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token');
       const res = await fetch(`${getApiBase()}/admin/workers/${worker._id || worker.id}/review-insights`, {
         headers: { 'Authorization': token ? `Bearer ${token}` : '' }
       });
@@ -1062,7 +1062,7 @@ const AdminPanel = ({ initialTab }) => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
               {pendingCaptains.map((c) => {
                 const cId = c._id || c.id;
-                const token = localStorage.getItem('smartfix_token') || '';
+                const token = localStorage.getItem('hm_admin_token') || localStorage.getItem('smartfix_token') || '';
                 const apiBase = getApiBase();
                 const aadhaarDisplay = c.kyc?.aadhaarLast4 ? `XXXX-XXXX-${c.kyc.aadhaarLast4}` : (c.aadhaarNumber || 'Not specified');
                 const secondIdTypeDisplay = c.kyc?.secondIdType || c.idProofType || 'Second ID / DL';

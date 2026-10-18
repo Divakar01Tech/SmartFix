@@ -120,6 +120,10 @@ exports.adminLogin = async (req, res) => {
     // Send 2FA email to admin
     await sendAdminOtpEmail(ADMIN_EMAIL, otp);
 
+    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') {
+      console.log(`🔐 [ADMIN 2FA OTP] Single-use code for ${ADMIN_EMAIL}: ${otp}`);
+    }
+
     // Issue 15-minute challenge token
     const adminOtpToken = jwt.sign(
       { email: ADMIN_EMAIL, purpose: 'admin-otp-challenge' },
@@ -227,7 +231,7 @@ exports.adminVerifyOtp = async (req, res) => {
         adminUser.role = 'admin';
       }
       const adminPassHash = process.env.ADMIN_PASSWORD_HASH || ADMIN_PASSWORD_HASH;
-      if (adminPassHash) {
+      if (!adminUser.password && adminPassHash) {
         adminUser.password = adminPassHash;
       }
       await adminUser.save();
