@@ -46,7 +46,76 @@ const resetTransporter = () => {
   cachedFallbackTransporter = null;
 };
 
+const sendViaHttpApi = async (mailOptions, description) => {
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const brevoApiKey = process.env.BREVO_API_KEY;
+
+  if (resendApiKey) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || 'SmartFix <onboarding@resend.dev>',
+          to: [mailOptions.to],
+          subject: mailOptions.subject,
+          html: mailOptions.html,
+          text: mailOptions.text,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        console.log(`✅ ${description} dispatched via Resend HTTP API to ${mailOptions.to}: ${data.id}`);
+        return true;
+      }
+      console.warn(`⚠️ Resend HTTP API returned error:`, data);
+    } catch (err) {
+      console.warn(`⚠️ Resend HTTP API fetch failed:`, err.message);
+    }
+  }
+
+  if (brevoApiKey) {
+    try {
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': brevoApiKey.trim(),
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: 'SmartFix Security', email: (process.env.EMAIL_USER || 'noreply@smartfix.com').trim() },
+          to: [{ email: mailOptions.to }],
+          subject: mailOptions.subject,
+          htmlContent: mailOptions.html,
+          textContent: mailOptions.text,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        console.log(`✅ ${description} dispatched via Brevo HTTP API to ${mailOptions.to}: ${data.messageId}`);
+        return true;
+      }
+      console.warn(`⚠️ Brevo HTTP API returned error:`, data);
+    } catch (err) {
+      console.warn(`⚠️ Brevo HTTP API fetch failed:`, err.message);
+    }
+  }
+
+  return false;
+};
+
 const dispatchMailWithFallback = async (mailOptions, description = 'Email') => {
+  // Priority 1: Cloud-native HTTP API (Resend / Brevo) - uses HTTPS Port 443, never blocked on Render
+  if (process.env.RESEND_API_KEY || process.env.BREVO_API_KEY) {
+    const httpSuccess = await sendViaHttpApi(mailOptions, description);
+    if (httpSuccess) return true;
+  }
+
+  // Priority 2: Direct TCP Port 465 (SSL, IPv4)
   try {
     const info = await getTransporter().sendMail(mailOptions);
     console.log(`✅ ${description} dispatched via Port 465 to ${mailOptions.to}: ${info.messageId}`);
@@ -55,6 +124,7 @@ const dispatchMailWithFallback = async (mailOptions, description = 'Email') => {
     console.warn(`⚠️ ${description} Port 465 failed (${err465.message}). Retrying with Port 587 STARTTLS...`);
     resetTransporter();
 
+    // Priority 3: Direct TCP Port 587 (STARTTLS, IPv4)
     try {
       const fallback = getFallbackTransporter();
       const info = await fallback.sendMail(mailOptions);
@@ -113,9 +183,7 @@ const sendOtpEmail = async (toEmail, otp) => {
       `,
     };
 
-    const info = await getTransporter().sendMail(mailOptions);
-    console.log('Customer OTP email dispatched: %s', info.messageId);
-    return true;
+    return await dispatchMailWithFallback(mailOptions, 'Customer OTP Email');
   } catch (error) {
     console.error('Error sending customer OTP email:', error.message);
     resetTransporter();
@@ -159,9 +227,7 @@ const sendWorkerOtpEmail = async (toEmail, otp, purpose = 'worker-signup') => {
       `,
     };
 
-    const info = await getTransporter().sendMail(mailOptions);
-    console.log(`Worker OTP email sent to ${toEmail}: %s`, info.messageId);
-    return true;
+    return await dispatchMailWithFallback(mailOptions, 'Worker OTP Email');
   } catch (error) {
     console.error('Error sending worker OTP email:', error.message);
     resetTransporter();
@@ -200,9 +266,7 @@ const sendWorkerApprovalEmail = async (toEmail, workerName) => {
       `,
     };
 
-    const info = await getTransporter().sendMail(mailOptions);
-    console.log(`Worker approval email sent to ${toEmail}: %s`, info.messageId);
-    return true;
+    return await dispatchMailWithFallback(mailOptions, 'Worker Approval Email');
   } catch (error) {
     console.error('Error sending worker approval email:', error.message);
     resetTransporter();
@@ -240,9 +304,7 @@ const sendWorkerRejectionEmail = async (toEmail, workerName, rejectionReason) =>
       `,
     };
 
-    const info = await getTransporter().sendMail(mailOptions);
-    console.log(`Worker rejection email sent to ${toEmail}: %s`, info.messageId);
-    return true;
+    return await dispatchMailWithFallback(mailOptions, 'Worker Rejection Email');
   } catch (error) {
     console.error('Error sending worker rejection email:', error.message);
     resetTransporter();
