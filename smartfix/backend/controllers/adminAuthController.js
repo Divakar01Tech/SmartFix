@@ -132,16 +132,10 @@ exports.adminLogin = async (req, res) => {
       }
     }
 
-    // Dispatch 2FA email and verify delivery
+    // Dispatch real-time 2FA email to admin inbox
     let emailDispatched = false;
     if (emailUser && emailPass) {
       emailDispatched = await sendAdminOtpEmail(ADMIN_EMAIL, otp);
-    }
-
-    if (!emailDispatched) {
-      console.warn(`🔐 [ADMIN 2FA OTP] Email delivery blocked by host firewall. Emergency access code for ${ADMIN_EMAIL}: ${otp}`);
-    } else if (isMockOrDev) {
-      console.log(`🔐 [ADMIN 2FA OTP] Single-use code for ${ADMIN_EMAIL}: ${otp}`);
     }
 
     // Issue 15-minute challenge token
@@ -160,18 +154,11 @@ exports.adminLogin = async (req, res) => {
     const responsePayload = {
       success: true,
       step: 'otp_required',
-      message: emailDispatched
-        ? 'Authentication code dispatched to the authorized administrator inbox.'
-        : 'Outbound SMTP is blocked by cloud firewall (ports 465/587). A single-use verification code has been generated below for instant access.',
+      message: 'Authentication code dispatched to your registered administrator email.',
       adminOtpToken,
       expiresInSeconds: 600,
       emailMasked: ADMIN_EMAIL.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
     };
-
-    // If email failed on cloud or if running in dev/mock mode, display the code
-    if (!emailDispatched || isMockOrDev) {
-      responsePayload.devOtp = otp;
-    }
 
     return res.status(200).json(responsePayload);
   } catch (err) {
