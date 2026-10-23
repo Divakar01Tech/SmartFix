@@ -10,9 +10,9 @@ const createTransporter = (port = 465, secure = true) => {
     port,
     secure,
     family: 4, // CRITICAL: Always force IPv4 for cloud containers (Render, AWS, Heroku)
-    connectionTimeout: 8000,
-    greetingTimeout: 8000,
-    socketTimeout: 10000,
+    connectionTimeout: 4000,
+    greetingTimeout: 4000,
+    socketTimeout: 6000,
     auth: {
       user,
       pass,
