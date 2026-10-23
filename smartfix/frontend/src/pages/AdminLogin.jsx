@@ -35,7 +35,6 @@ export default function AdminLogin() {
   // Challenge Token & State from Step 1
   const [adminOtpToken, setAdminOtpToken] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
-  const [devOtp, setDevOtp] = useState('');
 
   // UI & Loading States
   const [loading, setLoading] = useState(false);
@@ -140,7 +139,6 @@ export default function AdminLogin() {
       if (res.step === 'otp_required' && res.adminOtpToken) {
         setAdminOtpToken(res.adminOtpToken);
         setMaskedEmail(res.emailMasked || email.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'));
-        setDevOtp(res.devOtp || '');
         setStep(2);
         setOtpTimer(res.expiresInSeconds || 600);
         setResendTimer(60);
@@ -196,7 +194,6 @@ export default function AdminLogin() {
       const res = await adminLogin(email, password);
       if (res.adminOtpToken) {
         setAdminOtpToken(res.adminOtpToken);
-        setDevOtp(res.devOtp || '');
         setOtp('');
         setOtpTimer(res.expiresInSeconds || 600);
         setResendTimer(60);
@@ -366,28 +363,6 @@ export default function AdminLogin() {
               Authentication code dispatched to <strong>{maskedEmail}</strong>. Code valid for 10 minutes.
             </p>
 
-            {devOtp && (
-              <div
-                className="admin-dev-otp-card"
-                onClick={() => setOtp(devOtp)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setOtp(devOtp);
-                  }
-                }}
-                title="Click to auto-fill code"
-              >
-                <div className="admin-dev-otp-header">
-                  <span className="admin-dev-otp-badge">⚡ Quick Access Code</span>
-                  <span className="admin-dev-otp-hint">(Click to auto-fill)</span>
-                </div>
-                <div className="admin-dev-otp-code">{devOtp}</div>
-              </div>
-            )}
-
             <div style={{ fontSize: '12px', color: '#94a3b8', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid #334155', borderRadius: '6px', padding: '8px 12px', marginBottom: '16px', textAlign: 'left', lineHeight: '1.4' }}>
               <span>ℹ️ <strong>Email delivery note:</strong> In Gmail, also check your <strong>All Mail</strong>, <strong>Updates</strong>, or <strong>Spam</strong> folder if the notification is delayed.</span>
             </div>
@@ -445,7 +420,6 @@ export default function AdminLogin() {
               onClick={() => {
                 setStep(1);
                 setOtp('');
-                setDevOtp('');
                 setGeneralError('');
               }}
             >

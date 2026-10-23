@@ -121,15 +121,24 @@ exports.adminLogin = async (req, res) => {
     const emailUser = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
     const emailPass = (process.env.EMAIL_PASS || process.env.GMAIL_PASS || '').trim();
 
-    // Dispatch 2FA email in background for fast, non-blocking UI response
+    // Dispatch real-time 2FA email to admin email address
+    let emailDispatched = false;
     if (emailUser && emailPass) {
-      sendAdminOtpEmail(ADMIN_EMAIL, otp).catch((err) => {
-        console.warn('⚠️ Background Admin OTP Email Delivery Note:', err.message);
+      emailDispatched = await sendAdminOtpEmail(ADMIN_EMAIL, otp);
+      if (!emailDispatched) {
+        console.error(`❌ Admin OTP email delivery failed to ${ADMIN_EMAIL}`);
+        return res.status(502).json({
+          success: false,
+          message: `Failed to deliver verification code to ${ADMIN_EMAIL}. Please verify your server email credentials (EMAIL_PASS in backend/.env).`,
+        });
+      }
+    } else {
+      console.warn('⚠️ Server email credentials (EMAIL_USER or EMAIL_PASS) are not configured.');
+      return res.status(503).json({
+        success: false,
+        message: 'Server email credentials (EMAIL_USER or EMAIL_PASS) are not configured in backend/.env.',
       });
     }
-
-    // Always log OTP for administrative debugging & fast verification
-    console.log(`🔐 [ADMIN 2FA OTP] Single-use code for ${ADMIN_EMAIL}: ${otp}`);
 
     // Issue 15-minute challenge token
     const adminOtpToken = jwt.sign(
@@ -141,7 +150,7 @@ exports.adminLogin = async (req, res) => {
     await AuditLog.create({
       action: 'admin_login_otp_dispatched',
       ip,
-      details: { email: ADMIN_EMAIL },
+      details: { email: ADMIN_EMAIL, emailDispatched: true },
     }).catch(() => null);
 
     const responsePayload = {
@@ -151,7 +160,6 @@ exports.adminLogin = async (req, res) => {
       adminOtpToken,
       expiresInSeconds: 600,
       emailMasked: ADMIN_EMAIL.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
-      devOtp: otp, // Enables fast, instant OTP auto-fill & verification
     };
 
     return res.status(200).json(responsePayload);
