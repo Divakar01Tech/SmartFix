@@ -5,14 +5,13 @@ const createTransporter = (port = 465, secure = true) => {
   const rawPass = process.env.EMAIL_PASS || process.env.GMAIL_PASS || '';
   const pass = rawPass.replace(/\s+/g, '');
 
-  return nodemailer.createTransport({
+  const config = {
     host: 'smtp.gmail.com',
     port,
     secure,
-    family: 4, // CRITICAL: Always force IPv4 for cloud containers (Render, AWS, Heroku)
-    connectionTimeout: 4000,
-    greetingTimeout: 4000,
-    socketTimeout: 6000,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: {
       user,
       pass,
@@ -21,7 +20,14 @@ const createTransporter = (port = 465, secure = true) => {
       rejectUnauthorized: true,
       minVersion: 'TLSv1.2',
     },
-  });
+  };
+
+  // Only force IPv4 if explicitly instructed or running in cloud containers like Render
+  if (process.env.SMTP_FORCE_IPV4 === 'true' || process.env.RENDER) {
+    config.family = 4;
+  }
+
+  return nodemailer.createTransport(config);
 };
 
 let cachedTransporter = null;
@@ -131,8 +137,22 @@ const dispatchMailWithFallback = async (mailOptions, description = 'Email') => {
       console.log(`✅ ${description} dispatched via Port 587 fallback to ${mailOptions.to}: ${info.messageId}`);
       return true;
     } catch (err587) {
-      console.error(`❌ ${description} failed on both Port 465 and Port 587:`, err587.message);
-      return false;
+      console.warn(`⚠️ ${description} failed on Port 465 and Port 587 (${err587.message}). Trying service: 'gmail' fallback...`);
+      try {
+        const user = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
+        const rawPass = process.env.EMAIL_PASS || process.env.GMAIL_PASS || '';
+        const pass = rawPass.replace(/\s+/g, '');
+        const serviceTransporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: { user, pass },
+        });
+        const info = await serviceTransporter.sendMail(mailOptions);
+        console.log(`✅ ${description} dispatched via Gmail service fallback to ${mailOptions.to}: ${info.messageId}`);
+        return true;
+      } catch (errService) {
+        console.error(`❌ ${description} failed on all SMTP transports:`, errService.message);
+        return false;
+      }
     }
   }
 };

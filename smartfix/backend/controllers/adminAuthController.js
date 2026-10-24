@@ -117,6 +117,11 @@ exports.adminLogin = async (req, res) => {
       expiresAt: new Date(Date.now() + 12 * 60 * 1000),
     });
 
+    // Log OTP to server console in development / local testing
+    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') {
+      console.log(`🔐 [ADMIN 2FA OTP] Single-use code for ${ADMIN_EMAIL}: ${otp}`);
+    }
+
     // Ensure email credentials exist on the host
     const emailUser = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
     const emailPass = (process.env.EMAIL_PASS || process.env.GMAIL_PASS || '').trim();
