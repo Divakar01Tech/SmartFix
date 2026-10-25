@@ -361,16 +361,38 @@ const HandymanDashboard = ({ initialTab }) => {
   };
 
   const handleStatusUpdate = async (bId, nextStatus) => {
-    try {
-      await apiService.updateBookingStatus(bId, nextStatus, { workerId: user?._id || user?.id });
-    } catch (e) {}
+    const isCompleted = ['completed', 'workcompleted'].includes((nextStatus || '').toLowerCase());
 
+    // 1. Instantly update local state so active jobs list removes it immediately
     setBookings((prev) =>
-      prev.map((b) => ((b._id || b.id) === bId ? { ...b, status: nextStatus } : b))
+      prev.map((b) =>
+        (b._id || b.id) === bId
+          ? { ...b, status: nextStatus, completedAt: new Date().toISOString() }
+          : b
+      )
     );
 
-    setToastMessage(`⚡ Job status updated to ${nextStatus}!`);
-    setTimeout(() => setToastMessage(''), 4000);
+    // 2. If completed, switch tab to Completed Jobs page immediately
+    if (isCompleted) {
+      setActiveTab('completed');
+      setToastMessage(`🎉 Work Completed! Order #${String(bId).slice(-6)} moved to Completed Work page.`);
+    } else {
+      setToastMessage(`⚡ Job status updated to ${nextStatus}!`);
+    }
+
+    // 3. Persist update to backend database
+    try {
+      await apiService.updateBookingStatus(bId, nextStatus, {
+        workerId: user?._id || user?.id,
+        completedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Backend status update notice:', e.message);
+    }
+
+    setTimeout(() => setToastMessage(''), 5000);
+    // 4. Reload from database to ensure complete sync
+    loadBookings();
   };
 
   const handleWithdrawSubmit = async (e) => {
@@ -503,10 +525,12 @@ const HandymanDashboard = ({ initialTab }) => {
     return ['accepted', 'confirmed', 'enroute', 'en_route', 'arrived', 'captainarrived', 'inprogress', 'workinprogress'].includes(s);
   });
 
-  const completedBookings = bookings.filter((b) => {
-    const s = (b.status || '').toLowerCase();
-    return ['completed', 'workcompleted', 'paid', 'reviewed'].includes(s);
-  });
+  const completedBookings = bookings
+    .filter((b) => {
+      const s = (b.status || '').toLowerCase();
+      return ['completed', 'workcompleted', 'paid', 'reviewed'].includes(s);
+    })
+    .sort((a, b) => new Date(b.completedAt || b.updatedAt || b.createdAt || 0) - new Date(a.completedAt || a.updatedAt || a.createdAt || 0));
 
   const cancelledBookings = bookings.filter((b) => {
     const s = (b.status || '').toLowerCase();
@@ -932,39 +956,72 @@ const HandymanDashboard = ({ initialTab }) => {
                     <div className="aj-stepper-actions">
                       {/* Accepted → start journey en-route to customer */}
                       {['Accepted', 'accepted', 'Confirmed', 'confirmed'].includes(b.status) && (
-                        <button
-                          type="button"
-                          className="step-btn arrival-btn"
-                          onClick={() => handleStatusUpdate(bId, 'EnRoute')}
-                        >
-                          <Navigation size={16} /> Start Journey → "En Route to Customer"
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="step-btn arrival-btn"
+                            style={{ flex: 1, minWidth: '180px' }}
+                            onClick={() => handleStatusUpdate(bId, 'EnRoute')}
+                          >
+                            <Navigation size={16} /> Start Journey → "En Route"
+                          </button>
+                          <button
+                            type="button"
+                            className="step-btn complete-work-btn"
+                            style={{ flex: 1, minWidth: '180px', background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', fontWeight: '800' }}
+                            onClick={() => handleStatusUpdate(bId, 'Completed')}
+                          >
+                            <CheckCircle2 size={16} /> Complete Work ✓
+                          </button>
+                        </div>
                       )}
 
                       {/* EnRoute → mark physical arrival, stops GPS tracking */}
                       {['EnRoute', 'en_route'].includes(b.status) && (
-                        <button
-                          type="button"
-                          className="step-btn arrival-btn"
-                          onClick={() => handleStatusUpdate(bId, 'Arrived')}
-                        >
-                          <MapPin size={16} /> Mark "I Have Arrived at Location"
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="step-btn arrival-btn"
+                            style={{ flex: 1, minWidth: '180px' }}
+                            onClick={() => handleStatusUpdate(bId, 'Arrived')}
+                          >
+                            <MapPin size={16} /> Mark "I Have Arrived"
+                          </button>
+                          <button
+                            type="button"
+                            className="step-btn complete-work-btn"
+                            style={{ flex: 1, minWidth: '180px', background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', fontWeight: '800' }}
+                            onClick={() => handleStatusUpdate(bId, 'Completed')}
+                          >
+                            <CheckCircle2 size={16} /> Complete Work ✓
+                          </button>
+                        </div>
                       )}
 
                       {['Arrived', 'arrived', 'CaptainArrived'].includes(b.status) && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           <label className="step-btn" style={{ background: '#475569', cursor: 'pointer', textAlign: 'center' }}>
-                            {uploadingStage === `${bId}-before` ? 'Uploading...' : '📷 Upload Before Photo'}
+                            {uploadingStage === `${bId}-before` ? 'Uploading...' : '📷 Upload Before Photo (Optional)'}
                             <input type="file" accept="image/*" hidden onChange={(e) => handleUploadProof(e, bId, 'before')} disabled={uploadingStage} />
                           </label>
-                          <button
-                            type="button"
-                            className="step-btn start-work-btn"
-                            onClick={() => handleStatusUpdate(bId, 'WorkInProgress')}
-                          >
-                            <Wrench size={16} /> Mark "Work In Progress"
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              className="step-btn start-work-btn"
+                              style={{ flex: 1, minWidth: '150px' }}
+                              onClick={() => handleStatusUpdate(bId, 'WorkInProgress')}
+                            >
+                              <Wrench size={16} /> Mark "Work In Progress"
+                            </button>
+                            <button
+                              type="button"
+                              className="step-btn complete-work-btn"
+                              style={{ flex: 1, minWidth: '180px', background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', fontWeight: '800' }}
+                              onClick={() => handleStatusUpdate(bId, 'Completed')}
+                            >
+                              <CheckCircle2 size={16} /> Complete Work &amp; Move to Completed Page ✓
+                            </button>
+                          </div>
                         </div>
                       )}
 
@@ -972,15 +1029,16 @@ const HandymanDashboard = ({ initialTab }) => {
                       {(b.status === 'WorkInProgress' || b.status === 'InProgress' || b.status === 'workinprogress' || b.status === 'in_progress') && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           <label className="step-btn" style={{ background: '#475569', cursor: 'pointer', textAlign: 'center' }}>
-                            {uploadingStage === `${bId}-after` ? 'Uploading...' : '📸 Upload After Photo'}
+                            {uploadingStage === `${bId}-after` ? 'Uploading...' : '📸 Upload After Photo (Optional)'}
                             <input type="file" accept="image/*" hidden onChange={(e) => handleUploadProof(e, bId, 'after')} disabled={uploadingStage} />
                           </label>
                           <button
                             type="button"
                             className="step-btn complete-work-btn"
+                            style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', fontWeight: '800', padding: '14px', fontSize: '1rem' }}
                             onClick={() => handleStatusUpdate(bId, 'Completed')}
                           >
-                            <CheckCircle2 size={16} /> Complete Job &amp; Collect ₹{b.price} Payment
+                            <CheckCircle2 size={18} /> Complete Work &amp; Move to Completed Work Page (Collect ₹{b.price}) ✓
                           </button>
                         </div>
                       )}
@@ -996,13 +1054,37 @@ const HandymanDashboard = ({ initialTab }) => {
       {/* Tab 3: Completed Jobs */}
       {activeTab === 'completed' && (
         <div className="hd-tab-content">
-          <h2 className="section-title">✓ Completed Service Orders & Payout Records</h2>
+          <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h2 className="section-title mb-0">✓ Completed Service Orders &amp; Payout Records</h2>
+            <span className="badge bg-success-subtle text-success fs-6 px-3 py-2 rounded-pill fw-bold border border-success">
+              🟢 {completedBookings.length} Total Completed Jobs
+            </span>
+          </div>
+
+          {completedBookings.length > 0 && (
+            <div className="alert alert-success d-flex align-items-center justify-content-between p-3 rounded-4 mb-3 border-0 shadow-sm flex-wrap gap-2" style={{ background: '#ecfdf5', color: '#065f46' }}>
+              <div className="d-flex align-items-center gap-2">
+                <CheckCircle size={24} className="text-success flex-shrink-0" />
+                <div>
+                  <strong className="d-block">All Completed Work Recorded Successfully</strong>
+                  <small style={{ color: '#047857' }}>Completed jobs are safely archived here. 90% base share + 5% online rewards are credited to your withdrawable wallet.</small>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-success fw-bold rounded-3 px-3 shadow-sm"
+                onClick={() => setActiveTab('earnings')}
+              >
+                View In Wallet 💰
+              </button>
+            </div>
+          )}
 
           {completedBookings.length === 0 ? (
             <div className="empty-state-box">
               <CheckCircle2 size={48} color="#94a3b8" />
               <h3>No Completed Jobs Yet</h3>
-              <p>Jobs you complete will be logged here with customer ratings & 90% payout breakdowns.</p>
+              <p>Jobs you complete will be logged here with customer ratings &amp; 90% payout breakdowns.</p>
             </div>
           ) : (
             <div className="completed-table-wrapper">
@@ -1012,6 +1094,7 @@ const HandymanDashboard = ({ initialTab }) => {
                     <th>Job ID</th>
                     <th>Customer Name</th>
                     <th>Service Trade</th>
+                    <th>Status</th>
                     <th>Total Fare</th>
                     <th>Base Share (90%)</th>
                     <th>Bonus (+5%)</th>
@@ -1031,8 +1114,16 @@ const HandymanDashboard = ({ initialTab }) => {
                     return (
                       <tr key={bId}>
                         <td><strong>#{String(bId).slice(-6)}</strong></td>
-                        <td>{b.customerName || b.customer?.name || 'Customer'}</td>
+                        <td>
+                          <div className="fw-bold text-dark">{b.customerName || b.customer?.name || 'Customer'}</div>
+                          <small className="text-muted">{b.location || b.address || 'Service Spot'}</small>
+                        </td>
                         <td>{b.trade}</td>
+                        <td>
+                          <span className="badge bg-success-subtle text-success fw-bold px-2 py-1 rounded-pill border border-success">
+                            ✓ Completed
+                          </span>
+                        </td>
                         <td>₹{price}</td>
                         <td>₹{baseShare}</td>
                         <td><span className="text-success fw-bold">+₹{bonus}</span></td>
