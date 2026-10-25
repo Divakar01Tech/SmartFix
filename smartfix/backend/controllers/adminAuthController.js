@@ -132,17 +132,27 @@ exports.adminLogin = async (req, res) => {
       emailDispatched = await sendAdminOtpEmail(ADMIN_EMAIL, otp);
       if (!emailDispatched) {
         console.error(`❌ Admin OTP email delivery failed to ${ADMIN_EMAIL}`);
-        return res.status(502).json({
-          success: false,
-          message: `Failed to deliver verification code to ${ADMIN_EMAIL}. Please verify your server email credentials (EMAIL_PASS in backend/.env).`,
-        });
+        if (process.env.OTP_MOCK_MODE === 'true' || process.env.NODE_ENV !== 'production') {
+          console.warn(`⚠️ [DEV FALLBACK] Email failed but proceeding in development mode. Admin OTP is: ${otp}`);
+          emailDispatched = true;
+        } else {
+          return res.status(502).json({
+            success: false,
+            message: `Failed to deliver verification code to ${ADMIN_EMAIL}. Please verify your server email credentials (EMAIL_PASS in backend/.env).`,
+          });
+        }
       }
     } else {
-      console.warn('⚠️ Server email credentials (EMAIL_USER or EMAIL_PASS) are not configured.');
-      return res.status(503).json({
-        success: false,
-        message: 'Server email credentials (EMAIL_USER or EMAIL_PASS) are not configured in backend/.env.',
-      });
+      if (process.env.OTP_MOCK_MODE === 'true' || process.env.NODE_ENV !== 'production') {
+        console.warn(`⚠️ [DEV FALLBACK] Server email credentials not set. Admin OTP is: ${otp}`);
+        emailDispatched = true;
+      } else {
+        console.warn('⚠️ Server email credentials (EMAIL_USER or EMAIL_PASS) are not configured.');
+        return res.status(503).json({
+          success: false,
+          message: 'Server email credentials (EMAIL_USER or EMAIL_PASS) are not configured in backend/.env.',
+        });
+      }
     }
 
     // Issue 15-minute challenge token
@@ -165,6 +175,7 @@ exports.adminLogin = async (req, res) => {
       adminOtpToken,
       expiresInSeconds: 600,
       emailMasked: ADMIN_EMAIL.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
+      ...(process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true' ? { devOtp: otp } : {}),
     };
 
     return res.status(200).json(responsePayload);

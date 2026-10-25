@@ -3,13 +3,20 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
-import { Wrench, User, LogOut, Wallet, Calendar, Search, Sun, Moon, Bell, ShieldCheck, CreditCard } from 'lucide-react';
+import { useComfort } from '../context/ComfortContext';
+import { Wrench, User, LogOut, Wallet, Calendar, Search, Sun, Moon, Bell, ShieldCheck, CreditCard, Heart, Sliders } from 'lucide-react';
 import './CustomerNavbar.css';
 
 export default function CustomerNavbar() {
   const { customerUser, logoutCustomer } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const {
+    setIsCommandPaletteOpen,
+    setIsComfortModalOpen,
+    setIsSavedModalOpen,
+    favoriteWorkers,
+  } = useComfort();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const location = useLocation();
 
@@ -70,6 +77,54 @@ export default function CustomerNavbar() {
 
         {/* Right Controls */}
         <div className="d-flex align-items-center gap-2">
+          {/* Quick Search Trigger (Ctrl+K) */}
+          <button
+            type="button"
+            className="btn btn-sm btn-light border rounded-pill px-2 py-1 d-flex align-items-center gap-1 text-secondary"
+            onClick={() => setIsCommandPaletteOpen(true)}
+            title="Search services, handymen & pages (Ctrl+K)"
+            aria-label="Quick Search"
+            style={{ fontSize: '0.78rem' }}
+          >
+            <Search size={14} className="text-primary" />
+            <span className="d-none d-lg-inline">Search</span>
+            <kbd className="bg-white border rounded px-1 text-muted ms-1" style={{ fontSize: '0.65rem' }}>⌘K</kbd>
+          </button>
+
+          {/* Saved Specialists Trigger */}
+          <button
+            type="button"
+            className="btn btn-sm btn-light border rounded-circle p-2 position-relative"
+            onClick={() => setIsSavedModalOpen(true)}
+            title={`Saved Specialists (${favoriteWorkers.length})`}
+            aria-label="Saved Specialists"
+          >
+            <Heart
+              size={15}
+              className={favoriteWorkers.length > 0 ? 'text-danger' : 'text-secondary'}
+              style={favoriteWorkers.length > 0 ? { fill: '#ef4444' } : {}}
+            />
+            {favoriteWorkers.length > 0 && (
+              <span
+                className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                style={{ fontSize: '0.6rem', padding: '2px 4px' }}
+              >
+                {favoriteWorkers.length}
+              </span>
+            )}
+          </button>
+
+          {/* Accessibility & Comfort Settings */}
+          <button
+            type="button"
+            className="btn btn-sm btn-light border rounded-circle p-2"
+            onClick={() => setIsComfortModalOpen(true)}
+            title="Text Size & Comfort Settings (Alt+A)"
+            aria-label="Comfort Settings"
+          >
+            <span style={{ fontWeight: 800, fontSize: '0.85rem', fontFamily: 'serif' }}>Aa</span>
+          </button>
+
           {/* Language Toggle */}
           <div className="btn-group p-1 bg-light rounded-pill border" role="group">
             <button
@@ -115,7 +170,7 @@ export default function CustomerNavbar() {
               {dropdownOpen && (
                 <div
                   className="dropdown-menu show shadow-lg border-0 rounded-3 position-absolute end-0 mt-2 py-2"
-                  style={{ minWidth: '200px', zIndex: 1050 }}
+                  style={{ minWidth: '220px', zIndex: 1050 }}
                 >
                   <div className="px-3 py-2 border-bottom">
                     <strong className="d-block text-dark small">{customerUser.name || 'Customer'}</strong>
@@ -135,6 +190,31 @@ export default function CustomerNavbar() {
                   >
                     <Calendar size={14} /> My Bookings
                   </Link>
+                  <button
+                    type="button"
+                    className="dropdown-item py-2 d-flex align-items-center justify-content-between small"
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      setIsSavedModalOpen(true);
+                    }}
+                  >
+                    <span className="d-flex align-items-center gap-2">
+                      <Heart size={14} className="text-danger" /> Saved Specialists
+                    </span>
+                    {favoriteWorkers.length > 0 && (
+                      <span className="badge bg-danger rounded-pill">{favoriteWorkers.length}</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="dropdown-item py-2 d-flex align-items-center gap-2 small"
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      setIsComfortModalOpen(true);
+                    }}
+                  >
+                    <Sliders size={14} className="text-primary" /> Comfort & Text Size
+                  </button>
                   <Link
                     to="/customer/wallet"
                     className="dropdown-item py-2 d-flex align-items-center gap-2 small"

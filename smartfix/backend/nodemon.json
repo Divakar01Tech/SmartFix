@@ -8,9 +8,10 @@
     "socket",
     "utils",
     "config",
-    "server.js"
+    "server.js",
+    ".env"
   ],
-  "ext": "js,json",
+  "ext": "js,json,env",
   "ignore": [
     "node_modules",
     "logs",

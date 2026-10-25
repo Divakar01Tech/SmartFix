@@ -114,8 +114,27 @@ const HandymanDashboard = ({ initialTab }) => {
     }
   };
 
+  // Load saved worker bank & UPI payout details
+  const loadBankDetails = async () => {
+    try {
+      const data = await apiService.getWorkerBankDetails();
+      if (data && data.success && data.bankDetails) {
+        const b = data.bankDetails;
+        if (b.bankAccountName) setBankAccountName(b.bankAccountName);
+        if (b.bankName) setBankName(b.bankName);
+        if (b.bankAccountNumber) setBankAccountNumber(b.bankAccountNumber);
+        if (b.bankIfscCode) setBankIfscCode(b.bankIfscCode);
+        if (b.upiId) setUpiId(b.upiId);
+        if (b.upiPhone) setUpiPhone(b.upiPhone);
+      }
+    } catch (err) {
+      console.warn('Bank details fetch notice:', err.message);
+    }
+  };
+
   useEffect(() => {
     loadBookings();
+    loadBankDetails();
   }, []);
 
   // Auto-show AI Interview Modal for new Handymen who haven't completed it
@@ -364,9 +383,9 @@ const HandymanDashboard = ({ initialTab }) => {
 
     setWithdrawSubmitting(true);
 
-    if (savePayoutDetails && updateProfile) {
+    if (savePayoutDetails) {
       try {
-        await updateProfile({
+        await apiService.updateWorkerBankDetails({
           upiPhone,
           upiId,
           bankAccountName,
@@ -375,6 +394,18 @@ const HandymanDashboard = ({ initialTab }) => {
           bankIfscCode,
         });
       } catch (err) {}
+      if (updateProfile) {
+        try {
+          await updateProfile({
+            upiPhone,
+            upiId,
+            bankAccountName,
+            bankName,
+            bankAccountNumber,
+            bankIfscCode,
+          });
+        } catch (err) {}
+      }
     }
 
     try {
@@ -411,6 +442,39 @@ const HandymanDashboard = ({ initialTab }) => {
       setToastMessage(`🎉 Instant Payout of ₹${amt} transferred to ${destinationText}! Transaction ID: ${txnId}`);
       setTimeout(() => setToastMessage(''), 8000);
     }, 1200);
+  };
+
+  const handleSaveBankDetails = async () => {
+    setWithdrawSubmitting(true);
+    try {
+      await apiService.updateWorkerBankDetails({
+        upiPhone,
+        upiId,
+        bankAccountName,
+        bankName,
+        bankAccountNumber,
+        bankIfscCode,
+      });
+      if (updateProfile) {
+        try {
+          await updateProfile({
+            upiPhone,
+            upiId,
+            bankAccountName,
+            bankName,
+            bankAccountNumber,
+            bankIfscCode,
+          });
+        } catch (err) {}
+      }
+      setToastMessage('✅ Bank Account & UPI Payout details saved successfully!');
+      setTimeout(() => setToastMessage(''), 5000);
+      setShowWithdrawModal(false);
+    } catch (err) {
+      alert(`Could not save bank details: ${err.message}`);
+    } finally {
+      setWithdrawSubmitting(false);
+    }
   };
 
   const getLocationLabel = (b) => {
@@ -1399,19 +1463,29 @@ const HandymanDashboard = ({ initialTab }) => {
                 </label>
               </div>
 
-              <button
-                type="submit"
-                className="btn btn-success btn-lg w-100 fw-extrabold rounded-3 py-3 shadow-sm d-flex align-items-center justify-content-center gap-2"
-                disabled={withdrawSubmitting}
-              >
-                {withdrawSubmitting ? (
-                  <>Processing Instant Transfer...</>
-                ) : (
-                  <>
-                    <CheckCircle2 size={20} /> Submit Instant Payout Request (₹{withdrawAmount || totalWorkerPayout})
-                  </>
-                )}
-              </button>
+              <div className="d-flex flex-column flex-sm-row gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline-primary fw-bold rounded-3 py-2 px-3 d-flex align-items-center justify-content-center gap-1"
+                  onClick={handleSaveBankDetails}
+                  disabled={withdrawSubmitting}
+                >
+                  💾 Save Bank Details Only
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-success btn-lg flex-fill fw-extrabold rounded-3 py-3 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                  disabled={withdrawSubmitting}
+                >
+                  {withdrawSubmitting ? (
+                    <>Processing Instant Transfer...</>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={20} /> Submit Instant Payout (₹{withdrawAmount || totalWorkerPayout})
+                    </>
+                  )}
+                </button>
+              </div>
             </form>
           </div>
         </div>

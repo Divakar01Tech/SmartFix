@@ -1097,4 +1097,35 @@ export const apiService = {
     if (!res.ok) throw new Error(data.message || 'Failed to record review decision.');
     return data;
   },
+
+  withdrawWallet: async (withdrawalData) => {
+    const res = await fetch(`${API_BASE}/wallet/withdraw`, {
+      method: 'POST',
+      headers: getHeaders('worker'),
+      body: JSON.stringify(withdrawalData),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to process withdrawal');
+    return data;
+  },
+
+  getWorkerBankDetails: async () => {
+    const res = await fetch(`${API_BASE}/wallet/bank-details`, {
+      headers: getHeaders('worker'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch bank details');
+    return data.bankDetails || {};
+  },
+
+  updateWorkerBankDetails: async (bankData) => {
+    const res = await fetch(`${API_BASE}/wallet/bank-details`, {
+      method: 'PUT',
+      headers: getHeaders('worker'),
+      body: JSON.stringify(bankData),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update bank details');
+    return data;
+  },
 };

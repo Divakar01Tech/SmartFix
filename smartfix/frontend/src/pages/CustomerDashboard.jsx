@@ -14,18 +14,20 @@ import PaymentModal from '../components/PaymentModal';
 import PayButton from '../components/PayButton';
 import SOSButton from '../components/SOSButton';
 import DisputeModal from '../components/DisputeModal';
+import { useComfort } from '../context/ComfortContext';
 
-import { User, Calendar, Clock, MapPin, Wrench, ShieldCheck, CheckCircle2, Phone, PhoneCall, MessageSquare, AlertCircle, RefreshCw, Star, CreditCard, Navigation, Gift, Sparkles, XCircle, RotateCcw, Map, Download, Camera } from 'lucide-react';
+import { User, Calendar, Clock, MapPin, Wrench, ShieldCheck, CheckCircle2, Phone, PhoneCall, MessageSquare, AlertCircle, RefreshCw, Star, CreditCard, Navigation, Gift, Sparkles, XCircle, RotateCcw, Map, Download, Camera, Heart } from 'lucide-react';
 import './Dashboard.css';
 
 const CustomerDashboard = () => {
   const { user } = useAuth();
   const { startCall } = useCall();
   const { t } = useLanguage();
+  const { favoriteWorkers } = useComfort();
   const [bookings, setBookings] = useState([]);
   const [allWorkers, setAllWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('active'); // 'active' | 'map' | 'completed' | 'cancelled'
+  const [activeTab, setActiveTab] = useState('active'); // 'active' | 'map' | 'completed' | 'cancelled' | 'saved'
   const [toastMessage, setToastMessage] = useState('');
   // SLA countdown — ticks every second to display remaining arrival time
   const [, setNow] = useState(Date.now());
@@ -342,6 +344,12 @@ const CustomerDashboard = () => {
           onClick={() => setActiveTab('cancelled')}
         >
           <XCircle size={16} /> Cancelled Orders <span className="badge bg-white text-danger rounded-pill">{cancelledBookings.length}</span>
+        </button>
+        <button
+          className={`btn btn-sm fw-bold rounded-2 px-3 py-2 d-flex align-items-center gap-2 ${activeTab === 'saved' ? 'btn-danger text-white shadow-xs' : 'btn-light text-secondary'}`}
+          onClick={() => setActiveTab('saved')}
+        >
+          <Heart size={16} style={activeTab === 'saved' ? { fill: '#ffffff' } : {}} /> Saved Specialists <span className="badge bg-white text-danger rounded-pill">{favoriteWorkers.length}</span>
         </button>
       </div>
 
@@ -766,6 +774,35 @@ const CustomerDashboard = () => {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 4: Saved Specialists */}
+      {activeTab === 'saved' && (
+        <div className="cd-tab-content">
+          {favoriteWorkers.length === 0 ? (
+            <div className="alert alert-light border shadow-sm rounded-4 p-5 text-center my-3">
+              <Heart size={48} className="text-danger mb-3 mx-auto" />
+              <h4 className="fw-bold text-dark mb-2">No Saved Specialists Yet</h4>
+              <p className="text-secondary max-w-md mx-auto mb-3">
+                Whenever you find an electrician, plumber or specialist you trust, click the heart (❤️) on their card in Browse Experts to save them here for 1-click rebooking!
+              </p>
+              <Link to="/customer/experts" className="btn btn-primary fw-bold rounded-3 px-4 py-2">
+                Browse Nearby Specialists
+              </Link>
+            </div>
+          ) : (
+            <div className="row g-3">
+              {favoriteWorkers.map((w, idx) => {
+                const wId = w._id || w.id;
+                return (
+                  <div key={wId || idx} className="col-12 col-md-6 col-lg-4">
+                    <WorkerCard worker={w} confirmedBooking={true} index={idx} />
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

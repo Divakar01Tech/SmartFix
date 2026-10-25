@@ -35,6 +35,7 @@ export default function AdminLogin() {
   // Challenge Token & State from Step 1
   const [adminOtpToken, setAdminOtpToken] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
+  const [devOtp, setDevOtp] = useState('');
 
   // UI & Loading States
   const [loading, setLoading] = useState(false);
@@ -139,6 +140,7 @@ export default function AdminLogin() {
       if (res.step === 'otp_required' && res.adminOtpToken) {
         setAdminOtpToken(res.adminOtpToken);
         setMaskedEmail(res.emailMasked || email.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'));
+        if (res.devOtp) setDevOtp(res.devOtp);
         setStep(2);
         setOtpTimer(res.expiresInSeconds || 600);
         setResendTimer(60);
@@ -194,6 +196,7 @@ export default function AdminLogin() {
       const res = await adminLogin(email, password);
       if (res.adminOtpToken) {
         setAdminOtpToken(res.adminOtpToken);
+        if (res.devOtp) setDevOtp(res.devOtp);
         setOtp('');
         setOtpTimer(res.expiresInSeconds || 600);
         setResendTimer(60);
@@ -366,6 +369,19 @@ export default function AdminLogin() {
             <div style={{ fontSize: '12px', color: '#94a3b8', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid #334155', borderRadius: '6px', padding: '8px 12px', marginBottom: '16px', textAlign: 'left', lineHeight: '1.4' }}>
               <span>ℹ️ <strong>Email delivery note:</strong> In Gmail, also check your <strong>All Mail</strong>, <strong>Updates</strong>, or <strong>Spam</strong> folder if the notification is delayed.</span>
             </div>
+
+            {devOtp && (
+              <div style={{ fontSize: '13px', color: '#38bdf8', background: 'rgba(14, 165, 233, 0.1)', border: '1px solid rgba(14, 165, 233, 0.3)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>🔑 <strong>Test Code:</strong> <code style={{ letterSpacing: '2px', fontWeight: 'bold' }}>{devOtp}</code></span>
+                <button
+                  type="button"
+                  onClick={() => setOtp(devOtp)}
+                  style={{ background: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 10px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  Auto-fill
+                </button>
+              </div>
+            )}
 
             <OtpInput
               value={otp}

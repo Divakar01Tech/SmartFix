@@ -1,15 +1,18 @@
 import { Link } from 'react-router-dom';
-import { MapPin, Wrench, ShieldCheck, Phone, MessageSquare, Navigation, Lock, Award, Sparkles, PhoneCall } from 'lucide-react';
+import { MapPin, Wrench, ShieldCheck, Phone, MessageSquare, Navigation, Lock, Award, Sparkles, PhoneCall, Heart } from 'lucide-react';
 import { getWorkerDistance } from '../utils/distance';
 import { useCall } from '../context/CallContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useComfort } from '../context/ComfortContext';
 import './WorkerCard.css';
 
 const WorkerCard = ({ worker = {}, index = 0, confirmedBooking = false }) => {
   const { startCall } = useCall();
   const { t, tTrade, language } = useLanguage();
+  const { isFavorite, toggleFavorite } = useComfort();
   const safeWorker = worker || {};
   const workerId = safeWorker._id || safeWorker.id || 'w1';
+  const isWorkerFavorited = isFavorite(workerId);
   const ratingVal = Number(safeWorker.rating) || 0;
   const ratingCountVal = Number(safeWorker.ratingCount) || 0;
   const phoneNum = safeWorker.phone || '';
@@ -30,7 +33,7 @@ const WorkerCard = ({ worker = {}, index = 0, confirmedBooking = false }) => {
       : '5+ years exp';
 
   return (
-    <div className="card h-100 border-0 shadow-sm rounded-4 p-3 worker-card-bootstrap transition-all animate-scale-up">
+    <div className="card h-100 border-0 shadow-sm rounded-4 p-3 worker-card-bootstrap transition-all animate-scale-up position-relative">
       <div className="d-flex justify-content-between align-items-center mb-2">
         <div className="d-flex align-items-center gap-1">
           {distanceKm <= 3.0 ? (
@@ -52,8 +55,33 @@ const WorkerCard = ({ worker = {}, index = 0, confirmedBooking = false }) => {
             </span>
           )}
         </div>
-        <div className="badge bg-warning-subtle text-warning-emphasis fw-bold px-2 py-1 rounded-pill border border-warning">
-          <ShieldCheck size={13} color="#d97706" /> {t('verified_badge')}
+        <div className="d-flex align-items-center gap-2">
+          <div className="badge bg-warning-subtle text-warning-emphasis fw-bold px-2 py-1 rounded-pill border border-warning">
+            <ShieldCheck size={13} color="#d97706" /> {t('verified_badge')}
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm p-1 rounded-circle border-0 d-flex align-items-center justify-content-center"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleFavorite(safeWorker);
+            }}
+            title={isWorkerFavorited ? 'Remove from saved specialists' : 'Save specialist for 1-click rebooking'}
+            aria-label={isWorkerFavorited ? 'Remove favorite' : 'Add favorite'}
+            style={{
+              width: 28,
+              height: 28,
+              background: isWorkerFavorited ? 'rgba(239, 68, 68, 0.12)' : 'rgba(148, 163, 184, 0.15)',
+              color: isWorkerFavorited ? '#ef4444' : '#64748b',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <Heart
+              size={14}
+              style={isWorkerFavorited ? { fill: '#ef4444' } : {}}
+            />
+          </button>
         </div>
       </div>
 

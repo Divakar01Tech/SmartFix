@@ -3,7 +3,8 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
-import { Search, Wrench, User, LogOut, LayoutDashboard, ShieldCheck, ChevronDown, Sun, Moon, Bell } from 'lucide-react';
+import { useComfort } from '../context/ComfortContext';
+import { Search, Wrench, User, LogOut, LayoutDashboard, ShieldCheck, ChevronDown, Sun, Moon, Bell, Heart, Sliders } from 'lucide-react';
 import { getApiBase } from '../services/api';
 import './Navbar.css';
 
@@ -11,6 +12,12 @@ const Navbar = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const {
+    setIsCommandPaletteOpen,
+    setIsComfortModalOpen,
+    setIsSavedModalOpen,
+    favoriteWorkers,
+  } = useComfort();
   const [search, setSearch] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -141,6 +148,40 @@ const Navbar = () => {
             aria-label="Toggle Theme"
           >
             {theme === 'light' ? <Moon size={18} color="#475569" /> : <Sun size={18} color="#f59e0b" />}
+          </button>
+
+          {/* Saved Specialists Button */}
+          <button
+            type="button"
+            className="theme-toggle-btn position-relative"
+            onClick={() => setIsSavedModalOpen(true)}
+            title={`Saved Specialists (${favoriteWorkers.length})`}
+            aria-label="Saved Specialists"
+          >
+            <Heart
+              size={18}
+              className={favoriteWorkers.length > 0 ? 'text-danger' : 'text-secondary'}
+              style={favoriteWorkers.length > 0 ? { fill: '#ef4444' } : {}}
+            />
+            {favoriteWorkers.length > 0 && (
+              <span
+                className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                style={{ fontSize: '0.6rem', padding: '2px 4px' }}
+              >
+                {favoriteWorkers.length}
+              </span>
+            )}
+          </button>
+
+          {/* Comfort & Accessibility Button */}
+          <button
+            type="button"
+            className="theme-toggle-btn"
+            onClick={() => setIsComfortModalOpen(true)}
+            title="Text Size & Comfort Settings (Alt+A)"
+            aria-label="Comfort Settings"
+          >
+            <span style={{ fontWeight: 800, fontSize: '0.9rem', fontFamily: 'serif' }}>Aa</span>
           </button>
 
           <Link to="/browse" className={`nav-link ${location.pathname === '/browse' ? 'active' : ''}`}>

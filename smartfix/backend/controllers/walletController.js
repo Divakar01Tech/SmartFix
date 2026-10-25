@@ -34,6 +34,7 @@ exports.requestWithdrawal = async (req, res) => {
   try {
     const { amount, payoutMethod, upiPhone, upiId, bankAccountName, bankAccountNumber, bankIfscCode, bankName } = req.body;
     const userId = req.user?.id;
+    const User = require('../models/User');
 
     let wallet = await Wallet.findOne({ user: userId });
     if (!wallet) {
@@ -47,12 +48,60 @@ exports.requestWithdrawal = async (req, res) => {
 
     await wallet.debit(withdrawAmt, desc);
 
+    // Save/update bank account details on User document for future payouts
+    if (userId) {
+      await User.findByIdAndUpdate(userId, {
+        upiPhone: upiPhone || '',
+        upiId: upiId || '',
+        bankAccountName: bankAccountName || '',
+        bankAccountNumber: bankAccountNumber || '',
+        bankIfscCode: (bankIfscCode || '').toUpperCase(),
+        bankName: bankName || '',
+      });
+    }
+
     res.status(200).json({
+      success: true,
       message: `Withdrawal request of ₹${withdrawAmt} processed successfully!`,
       wallet,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message || 'Failed to process withdrawal' });
+    res.status(500).json({ success: false, message: err.message || 'Failed to process withdrawal' });
+  }
+};
+
+// GET /api/wallet/bank-details
+exports.getBankDetails = async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const user = await User.findById(req.user.id).select('bankAccountName bankAccountNumber bankIfscCode bankName upiId upiPhone');
+    res.status(200).json({ success: true, bankDetails: user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to fetch bank details' });
+  }
+};
+
+// PUT /api/wallet/bank-details
+exports.updateBankDetails = async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const { bankAccountName, bankAccountNumber, bankIfscCode, bankName, upiId, upiPhone } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        bankAccountName: bankAccountName || '',
+        bankAccountNumber: bankAccountNumber || '',
+        bankIfscCode: (bankIfscCode || '').toUpperCase(),
+        bankName: bankName || '',
+        upiId: upiId || '',
+        upiPhone: upiPhone || '',
+      },
+      { new: true }
+    ).select('bankAccountName bankAccountNumber bankIfscCode bankName upiId upiPhone');
+
+    res.status(200).json({ success: true, message: 'Bank details saved successfully', bankDetails: user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to update bank details' });
   }
 };
 

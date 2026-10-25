@@ -10,13 +10,15 @@ import OnlineWorkersWidget from '../components/OnlineWorkersWidget';
 import { apiService } from '../services/api';
 import { getWorkerDistance, getCityBase } from '../utils/distance';
 import { getUserCurrentLocation } from '../utils/geolocation';
-import { Search, MapPin, Map, LayoutGrid, RotateCcw, Navigation, Wrench, Sparkles, Info, AlertTriangle } from 'lucide-react';
+import { Search, MapPin, Map, LayoutGrid, RotateCcw, Navigation, Wrench, Sparkles, Info, AlertTriangle, Heart } from 'lucide-react';
 import AISearchBar from '../components/AISearchBar';
+import { useComfort } from '../context/ComfortContext';
 import './Browse.css';
 
 const Browse = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const { isFavorite, favoriteWorkers } = useComfort();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialCategory = searchParams.get('category') || 'all';
   const initialQuery = searchParams.get('q') || '';
@@ -30,6 +32,7 @@ const Browse = () => {
   const [location, setLocation] = useState('all');
   const [within5km, setWithin5km] = useState(false);
   const [onlineOnly, setOnlineOnly] = useState(initialOnline);
+  const [savedOnly, setSavedOnly] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
   const [userGps, setUserGps] = useState(null);
   const [locatingGps, setLocatingGps] = useState(false);
@@ -170,7 +173,10 @@ const Browse = () => {
           !selectedSubService ||
           (Array.isArray(w.subServices) && w.subServices.some((s) => typeof s === 'string' && s.toLowerCase() === selectedSubService.toLowerCase()));
 
-        return matchesCategory && matchesQuery && matchesLocation && matchesProximity && matchesOnline && matchesSubService;
+        const workerId = w._id || w.id;
+        const matchesSaved = !savedOnly || isFavorite(workerId);
+
+        return matchesCategory && matchesQuery && matchesLocation && matchesProximity && matchesOnline && matchesSubService && matchesSaved;
       });
 
     if (userGps || within5km) {
@@ -178,7 +184,7 @@ const Browse = () => {
     }
 
     return result;
-  }, [workers, category, query, location, within5km, onlineOnly, userGps, user, selectedSubService]);
+  }, [workers, category, query, location, within5km, onlineOnly, savedOnly, isFavorite, userGps, user, selectedSubService]);
 
   const handleCategoryChange = (id) => {
     setCategory(id);
@@ -379,6 +385,15 @@ const Browse = () => {
               {within5km ? '≤ 5 km Radial Active' : 'Within 5 km'}
             </button>
 
+            <button
+              type="button"
+              className={`btn btn-sm fw-bold rounded-3 py-2 d-flex align-items-center gap-1 ${savedOnly ? 'btn-danger text-white shadow-xs' : 'btn-outline-danger'}`}
+              onClick={() => setSavedOnly(!savedOnly)}
+              title="Show only your saved specialists"
+            >
+              <Heart size={14} style={savedOnly ? { fill: '#ffffff' } : {}} />
+              {savedOnly ? `Saved Only (${favoriteWorkers.length})` : `Saved (${favoriteWorkers.length})`}
+            </button>
 
             <button
               type="button"

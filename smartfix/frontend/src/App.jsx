@@ -54,9 +54,14 @@ const Terms = lazy(() => import('./pages/Terms'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const SEOLandingPage = lazy(() => import('./pages/SEOLandingPage'));
 
-// Global Modals / Floating Widgets
+// Global Modals / Floating Widgets & User Comfort Suite
 import SmartFixAiWidget from './components/SmartFixAiWidget';
 import WebRtcCallModal from './components/WebRtcCallModal';
+import CommandPalette from './components/CommandPalette';
+import ComfortToolbarModal from './components/ComfortToolbarModal';
+import SavedWorkersModal from './components/SavedWorkersModal';
+import OfflineAlert from './components/OfflineAlert';
+import ComfortQuickDock from './components/ComfortQuickDock';
 
 const PageLoader = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
@@ -399,6 +404,11 @@ function App() {
 
       <SmartFixAiWidget />
       <WebRtcCallModal />
+      <CommandPalette />
+      <ComfortToolbarModal />
+      <SavedWorkersModal />
+      <OfflineAlert />
+      <ComfortQuickDock />
     </>
   );
 }

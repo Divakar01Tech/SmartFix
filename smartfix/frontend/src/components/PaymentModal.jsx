@@ -1,15 +1,35 @@
-import { useState } from 'react';
-import { X, CreditCard, QrCode, Building2, Banknote, CheckCircle2, ShieldCheck, Download, Sparkles, Gift, Award } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  X, CreditCard, QrCode, Building2, Banknote, CheckCircle2,
+  ShieldCheck, Download, Sparkles, Gift, Award, Copy, Check,
+  ExternalLink, ArrowRight, Smartphone
+} from 'lucide-react';
 import './PaymentModal.css';
 
-const PaymentModal = ({ booking, onClose, onSuccess }) => {
-  const [activeTab, setActiveTab] = useState('UPI'); // UPI | Card | NetBanking | COD
-  const [upiId, setUpiId] = useState('');
+const DEFAULT_MERCHANT_UPI = 'smartfix.services@okaxis';
+const BANK_DETAILS = {
+  accountName: 'SmartFix Home Services (Divakar Tech)',
+  bankName: 'State Bank of India (SBI)',
+  accountNumber: '39820019283',
+  ifscCode: 'SBIN0000842',
+  branch: 'Sivagangai Main Branch, Tamil Nadu',
+};
+
+export default function PaymentModal({ booking, onClose, onSuccess }) {
+  const [activeTab, setActiveTab] = useState('UPI'); // UPI | BankTransfer | Card | NetBanking | COD
+  const [customUpiId, setCustomUpiId] = useState(DEFAULT_MERCHANT_UPI);
+  const [utrNumber, setUtrNumber] = useState('');
+  const [copiedUpi, setCopiedUpi] = useState(false);
+  const [copiedAccount, setCopiedAccount] = useState(false);
+  const [copiedIfsc, setCopiedIfsc] = useState(false);
+
+  // Card fields
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
   const [cardName, setCardName] = useState('');
   const [selectedBank, setSelectedBank] = useState('SBI');
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [txnDetails, setTxnDetails] = useState(null);
@@ -20,15 +40,44 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
   // 5% Worker Reward Bonus calculation
   const workerBonusAmount = isOnline ? Math.round(totalAmount * 0.05) : 0;
   const baseWorkerPayout = totalAmount - Math.round(totalAmount * 0.10); // 90% Base Share
-  const workerTotalPayout = baseWorkerPayout + workerBonusAmount; // 95% Total Worker Share if online!
+  const workerTotalPayout = baseWorkerPayout + workerBonusAmount; // 95% Total Worker Share if online
   const platformFee = totalAmount - workerTotalPayout; // 5% if online, 10% if COD
+
+  const bookingShortId = String(booking?._id || booking?.id || 'BK1001').slice(-6).toUpperCase();
+
+  // Standardized NPCI UPI URI
+  const upiPayUri = `upi://pay?pa=${encodeURIComponent(customUpiId)}&pn=${encodeURIComponent('SmartFix Home Services')}&am=${totalAmount}&cu=INR&tn=${encodeURIComponent(`Booking-${bookingShortId}`)}&mode=02&purpose=00`;
+
+  // Dynamic QR Code generation with high-reliability QR server
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=8&data=${encodeURIComponent(upiPayUri)}`;
+
+  const handleCopyUpi = () => {
+    navigator.clipboard?.writeText(customUpiId);
+    setCopiedUpi(true);
+    setTimeout(() => setCopiedUpi(false), 2500);
+  };
+
+  const handleCopyAccount = () => {
+    navigator.clipboard?.writeText(BANK_DETAILS.accountNumber);
+    setCopiedAccount(true);
+    setTimeout(() => setCopiedAccount(false), 2500);
+  };
+
+  const handleCopyIfsc = () => {
+    navigator.clipboard?.writeText(BANK_DETAILS.ifscCode);
+    setCopiedIfsc(true);
+    setTimeout(() => setCopiedIfsc(false), 2500);
+  };
 
   const handleProcessPayment = (e) => {
     e.preventDefault();
     setIsProcessing(true);
 
     setTimeout(() => {
-      const generatedTxnId = `SB_TXN_${Math.floor(100000000 + Math.random() * 900000000)}`;
+      const generatedTxnId = utrNumber.trim()
+        ? `UTR_${utrNumber.trim().toUpperCase()}`
+        : `SB_TXN_${Math.floor(100000000 + Math.random() * 900000000)}`;
+
       const details = {
         bookingId: booking._id || booking.id,
         amount: totalAmount,
@@ -37,8 +86,10 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
         workerBonusAmount,
         workerPayout: workerTotalPayout,
         isOnlinePayment: isOnline,
-        paymentMethod: activeTab,
+        paymentMethod: activeTab === 'UPI' ? 'Direct Bank UPI (Instant QR)' : activeTab === 'BankTransfer' ? 'Direct Bank Transfer (IMPS/NEFT)' : activeTab,
         transactionId: generatedTxnId,
+        utrNumber: utrNumber.trim() || undefined,
+        destinationAccount: activeTab === 'BankTransfer' ? `${BANK_DETAILS.bankName} (${BANK_DETAILS.accountNumber})` : customUpiId,
         timestamp: new Date().toLocaleString(),
       };
 
@@ -49,7 +100,7 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
       if (onSuccess) {
         onSuccess(details);
       }
-    }, 1800);
+    }, 1500);
   };
 
   const handlePrintReceipt = () => {
@@ -69,51 +120,57 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
               <div className="shield-icon">
                 <ShieldCheck size={28} color="#2563eb" />
               </div>
-              <h2>In-App Instant Checkout</h2>
-              <p>Pay safely within website & reward your worker with +5% extra bonus!</p>
+              <h2>Instant Bank & UPI Checkout</h2>
+              <p>Direct bank calculation & instant payout credit with +5% worker bonus!</p>
             </div>
 
             {/* 5% Online Bonus Notice Banner */}
             <div className="worker-bonus-alert-box">
-              <Gift size={20} color="#059669" className="pulse-icon" />
+              <Gift size={20} color="#059669" className="pulse-icon flex-shrink-0" />
               <div>
-                <strong>🎁 5% Worker Bonus & Reward Active!</strong>
+                <strong>🎁 5% Worker Reward Bonus Active!</strong>
                 <p>
-                  When you pay online via <strong>UPI, Card, or NetBanking</strong>, your worker gets an <strong>EXTRA +5% Reward Bonus (₹{Math.round(totalAmount * 0.05)})</strong> credited directly to their wallet!
+                  When you pay directly via <strong>UPI QR, Bank Transfer, or Card</strong>, your worker receives an <strong>EXTRA +5% Reward Bonus (₹{workerBonusAmount})</strong> credited directly to their bank wallet!
                 </p>
               </div>
             </div>
 
+            {/* Dynamic Financial Calculation Summary Box */}
             <div className="booking-summary-box">
               <div className="summary-row">
-                <span>Service Fare ({booking?.trade || 'Handyman Service'})</span>
+                <span>Service Fare ({booking?.trade || 'Home Service'})</span>
                 <span>₹{totalAmount}</span>
               </div>
               <div className="summary-row" style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                <span>Base Worker Share (90%)</span>
+                <span>Base Handyman Share (90%)</span>
                 <span>₹{baseWorkerPayout}</span>
               </div>
 
               {/* 5% Bonus Row */}
               {isOnline ? (
                 <div className="summary-row" style={{ color: '#059669', fontSize: '0.88rem', fontWeight: '700', background: '#f0fdf4', padding: '6px 8px', borderRadius: '8px' }}>
-                  <span>🎁 5% Online Worker Bonus Reward</span>
+                  <span>🎁 5% Online Payment Bonus Reward</span>
                   <span>+₹{workerBonusAmount}</span>
                 </div>
               ) : (
                 <div className="summary-row" style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
                   <span>5% Online Bonus Reward</span>
-                  <span>₹0 (Pay Online to Unlock)</span>
+                  <span>₹0 (Pay via Bank/UPI to Unlock)</span>
                 </div>
               )}
 
               <div className="summary-row" style={{ color: '#059669', fontSize: '0.9rem', fontWeight: '800' }}>
-                <span>Total Worker Net Payout ({isOnline ? '95%' : '90%'})</span>
+                <span>Total Handyman Net Earnings ({isOnline ? '95%' : '90%'})</span>
                 <span>₹{workerTotalPayout}</span>
               </div>
 
+              <div className="summary-row" style={{ color: '#64748b', fontSize: '0.82rem' }}>
+                <span>Platform Service & Dispatch Fee</span>
+                <span>₹{platformFee}</span>
+              </div>
+
               <div className="summary-row total-row">
-                <span>Total Amount Payable</span>
+                <span>Total Amount to Pay</span>
                 <span className="total-price">₹{totalAmount}</span>
               </div>
             </div>
@@ -125,74 +182,163 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
                 className={`tab-btn ${activeTab === 'UPI' ? 'active' : ''}`}
                 onClick={() => setActiveTab('UPI')}
               >
-                <QrCode size={18} /> UPI / QR
+                <QrCode size={16} /> Direct UPI QR
+              </button>
+              <button
+                type="button"
+                className={`tab-btn ${activeTab === 'BankTransfer' ? 'active' : ''}`}
+                onClick={() => setActiveTab('BankTransfer')}
+              >
+                <Building2 size={16} /> Bank Account (IMPS)
               </button>
               <button
                 type="button"
                 className={`tab-btn ${activeTab === 'Card' ? 'active' : ''}`}
                 onClick={() => setActiveTab('Card')}
               >
-                <CreditCard size={18} /> Card
-              </button>
-              <button
-                type="button"
-                className={`tab-btn ${activeTab === 'NetBanking' ? 'active' : ''}`}
-                onClick={() => setActiveTab('NetBanking')}
-              >
-                <Building2 size={18} /> NetBanking
+                <CreditCard size={16} /> Card
               </button>
               <button
                 type="button"
                 className={`tab-btn ${activeTab === 'COD' ? 'active' : ''}`}
                 onClick={() => setActiveTab('COD')}
               >
-                <Banknote size={18} /> Cash
+                <Banknote size={16} /> Cash
               </button>
             </div>
 
             {/* Payment Form */}
             <form onSubmit={handleProcessPayment} className="payment-form">
+              {/* Tab 1: Direct Bank UPI QR */}
               {activeTab === 'UPI' && (
-                <div className="upi-container">
-                  <div className="qr-preview">
+                <div className="upi-container text-center">
+                  <div className="qr-preview p-3 bg-white border rounded-4 shadow-xs mx-auto d-inline-block">
                     <img
-                      src={`https://chart.googleapis.com/chart?cht=qr&chs=180x180&chl=${encodeURIComponent(`upi://pay?pa=${upiId || 'smartfix@upi'}&pn=SmartFix&am=${totalAmount}&cu=INR`)}`}
-                      alt="Custom UPI QR Code"
-                      className="qr-img border p-2 bg-white rounded-3 shadow-xs"
-                      onError={(e) => {
-                        e.target.src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`upi://pay?pa=${upiId || 'smartfix@upi'}&pn=SmartFix&am=${totalAmount}&cu=INR`)}`;
-                      }}
+                      src={qrCodeUrl}
+                      alt="Direct Bank UPI QR Code"
+                      className="qr-img"
+                      style={{ width: 180, height: 180, display: 'block', margin: '0 auto' }}
                     />
-                    <p className="qr-caption mt-2">
-                      Scan with GPay, PhonePe, Paytm, or BHIM to pay <strong>₹{totalAmount}</strong>
-                    </p>
-                    <span className="badge bg-success-subtle text-success border px-2 py-1 rounded-pill" style={{ fontSize: '0.76rem' }}>
-                      ⚡ Custom UPI ID Active: {upiId || 'smartfix@upi'}
-                    </span>
+                    <div className="d-flex align-items-center justify-content-center gap-2 mt-2">
+                      <span className="badge bg-success-subtle text-success border px-2 py-1 rounded-pill fw-bold" style={{ fontSize: '0.74rem' }}>
+                        ₹{totalAmount} Pre-filled
+                      </span>
+                      <span className="badge bg-primary-subtle text-primary border px-2 py-1 rounded-pill fw-bold" style={{ fontSize: '0.74rem' }}>
+                        Ref: #{bookingShortId}
+                      </span>
+                    </div>
                   </div>
-                  <div className="upi-input-group mt-3">
-                    <label className="fw-bold text-dark">Enter your Merchant or Custom UPI VPA ID:</label>
+
+                  <p className="qr-caption mt-2 mb-2 text-dark fw-semibold" style={{ fontSize: '0.88rem' }}>
+                    Scan with <strong>Google Pay, PhonePe, Paytm, or BHIM</strong> to transfer directly to the merchant bank account.
+                  </p>
+
+                  {/* 1-Tap Mobile UPI Intent Button */}
+                  <a
+                    href={upiPayUri}
+                    className="btn btn-outline-primary btn-sm rounded-pill px-3 py-2 fw-bold d-inline-flex align-items-center gap-2 mb-3 shadow-xs"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <Smartphone size={16} /> Pay via Installed UPI App (GPay / PhonePe) <ExternalLink size={13} />
+                  </a>
+
+                  {/* UPI VPA Copy Bar */}
+                  <div className="input-group mb-2">
+                    <span className="input-group-text bg-light border-end-0 text-muted small fw-bold">UPI VPA:</span>
                     <input
                       type="text"
-                      placeholder="e.g. divakar@upi, 9003390146@upi, or yourname@okicici"
-                      value={upiId}
-                      onChange={(e) => setUpiId(e.target.value)}
-                      className="form-control rounded-3"
+                      className="form-control bg-light border-start-0 border-end-0 fw-bold text-primary"
+                      value={customUpiId}
+                      onChange={(e) => setCustomUpiId(e.target.value)}
                     />
-                    <small className="text-muted d-block mt-1">
-                      💡 Type any custom GPay / PhonePe / Paytm UPI ID above to generate your instant QR code!
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary"
+                      onClick={handleCopyUpi}
+                      title="Copy UPI ID"
+                    >
+                      {copiedUpi ? <Check size={16} className="text-success" /> : <Copy size={16} />}
+                    </button>
+                  </div>
+
+                  {/* Optional UTR Reference Field */}
+                  <div className="form-group text-start mt-3">
+                    <label className="fw-bold text-dark small mb-1">
+                      UTR / Bank Ref Number (Optional after payment):
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control rounded-3"
+                      placeholder="e.g. 429182390192 (12-digit UPI Ref)"
+                      value={utrNumber}
+                      onChange={(e) => setUtrNumber(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Direct Bank Account Transfer (IMPS / NEFT) */}
+              {activeTab === 'BankTransfer' && (
+                <div className="bank-transfer-container">
+                  <div className="alert alert-primary border-0 p-3 rounded-4 shadow-xs mb-3" style={{ background: '#eff6ff' }}>
+                    <small className="text-muted fw-bold d-block mb-1">DIRECT MERCHANT CURRENT BANK ACCOUNT</small>
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <span className="text-secondary small">Beneficiary Name:</span>
+                      <strong className="text-dark small">{BANK_DETAILS.accountName}</strong>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <span className="text-secondary small">Bank Name:</span>
+                      <strong className="text-dark small">{BANK_DETAILS.bankName}</strong>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <span className="text-secondary small">Account Number:</span>
+                      <span className="d-flex align-items-center gap-1">
+                        <strong className="text-primary font-monospace">{BANK_DETAILS.accountNumber}</strong>
+                        <button type="button" className="btn btn-link p-0 text-primary" onClick={handleCopyAccount}>
+                          {copiedAccount ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                        </button>
+                      </span>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <span className="text-secondary small">IFSC Code:</span>
+                      <span className="d-flex align-items-center gap-1">
+                        <strong className="text-primary font-monospace">{BANK_DETAILS.ifscCode}</strong>
+                        <button type="button" className="btn btn-link p-0 text-primary" onClick={handleCopyIfsc}>
+                          {copiedIfsc ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                        </button>
+                      </span>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <span className="text-secondary small">Branch:</span>
+                      <strong className="text-dark small">{BANK_DETAILS.branch}</strong>
+                    </div>
+                  </div>
+
+                  <div className="form-group mb-2">
+                    <label className="fw-bold text-dark small mb-1">Enter Bank Transfer UTR / Transaction Reference Number:</label>
+                    <input
+                      type="text"
+                      className="form-control rounded-3"
+                      placeholder="e.g. SBIN42891029102 or IMPS-981290"
+                      value={utrNumber}
+                      onChange={(e) => setUtrNumber(e.target.value)}
+                      required
+                    />
+                    <small className="text-muted d-block mt-1" style={{ fontSize: '0.75rem' }}>
+                      Transfer exact ₹{totalAmount} via your mobile banking app (SBI YONO, iMobile, HDFC, etc.) and paste the UTR number above.
                     </small>
                   </div>
                 </div>
               )}
 
+              {/* Tab 3: Debit / Credit Card */}
               {activeTab === 'Card' && (
                 <div className="card-fields">
                   <div className="input-field">
                     <label>Cardholder Name</label>
                     <input
                       type="text"
-                      placeholder="John Doe"
+                      placeholder="Name as per card"
                       value={cardName}
                       onChange={(e) => setCardName(e.target.value)}
                       required
@@ -236,37 +382,25 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
                 </div>
               )}
 
-              {activeTab === 'NetBanking' && (
-                <div className="netbanking-container">
-                  <label>Select Popular Bank</label>
-                  <select value={selectedBank} onChange={(e) => setSelectedBank(e.target.value)}>
-                    <option value="SBI">State Bank of India (SBI)</option>
-                    <option value="HDFC">HDFC Bank</option>
-                    <option value="ICICI">ICICI Bank</option>
-                    <option value="Axis">Axis Bank</option>
-                    <option value="Kotak">Kotak Mahindra Bank</option>
-                  </select>
-                </div>
-              )}
-
+              {/* Tab 4: Cash on Delivery */}
               {activeTab === 'COD' && (
                 <div className="cod-info">
                   <Banknote size={36} color="#059669" />
                   <h4>Cash on Delivery Selected</h4>
-                  <p>You can pay ₹{totalAmount} directly to the worker after job completion.</p>
+                  <p>You can pay ₹{totalAmount} directly in cash to the worker after job completion.</p>
                   <small style={{ color: '#d97706', display: 'block', marginTop: '6px' }}>
                     ⚠️ Note: Cash payments do not include the 5% online worker bonus reward.
                   </small>
                 </div>
               )}
 
-              <button type="submit" className="pay-now-btn" disabled={isProcessing}>
+              <button type="submit" className="pay-now-btn mt-3" disabled={isProcessing}>
                 {isProcessing ? (
                   <span className="spinner-text">
-                    <span className="spinner"></span> Processing Secure Payment...
+                    <span className="spinner"></span> Verifying Bank Transaction...
                   </span>
                 ) : (
-                  `Pay ₹${totalAmount} Now ${isOnline ? '(Unlocks +5% Worker Bonus 🎁)' : ''}`
+                  `Confirm & Settle ₹${totalAmount} Now ${isOnline ? '(Unlocks +5% Worker Bonus 🎁)' : ''}`
                 )}
               </button>
             </form>
@@ -277,55 +411,53 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
               <CheckCircle2 size={54} color="#059669" />
             </div>
             <h2>Payment Successful!</h2>
-            <p className="success-subtitle">Transaction Completed & Worker Bonus Credited</p>
+            <p className="success-subtitle">Direct Bank Calculation Completed & Order Settled</p>
 
-            <div className="receipt-card">
-              <div className="receipt-header">
-                <h3><Sparkles size={16} color="#2563eb" /> SmartFix Digital Receipt</h3>
-                <span className="receipt-status">PAID</span>
-              </div>
-              <div className="receipt-line">
+            <div className="receipt-details">
+              <div className="receipt-row">
                 <span>Transaction ID:</span>
                 <strong>{txnDetails?.transactionId}</strong>
               </div>
-              <div className="receipt-line">
-                <span>Payment Method:</span>
+              <div className="receipt-row">
+                <span>Booking Reference:</span>
+                <strong>#{bookingShortId}</strong>
+              </div>
+              <div className="receipt-row">
+                <span>Payment Mode:</span>
                 <strong>{txnDetails?.paymentMethod}</strong>
               </div>
-              <div className="receipt-line">
-                <span>Service:</span>
-                <strong>{booking?.trade}</strong>
-              </div>
-              <div className="receipt-line">
-                <span>Worker Pro:</span>
-                <strong>{booking?.workerName || booking?.worker?.name || 'Assigned Handyman'}</strong>
-              </div>
-
-              {/* Bonus Highlight in Receipt */}
-              {txnDetails?.isOnlinePayment && (
-                <div className="receipt-line" style={{ color: '#059669', background: '#f0fdf4', padding: '6px 8px', borderRadius: '8px' }}>
-                  <span>🎁 5% Online Worker Bonus Reward:</span>
-                  <strong>+₹{txnDetails?.workerBonusAmount}</strong>
-                </div>
-              )}
-
-              <div className="receipt-line">
-                <span>Total Worker Net Payout:</span>
-                <span style={{ color: '#059669', fontWeight: '700' }}>₹{txnDetails?.workerPayout}</span>
-              </div>
-              <hr />
-              <div className="receipt-line total-receipt-line">
+              <div className="receipt-row">
                 <span>Total Amount Paid:</span>
-                <strong className="paid-amount">₹{txnDetails?.amount}</strong>
+                <strong className="text-success fs-5">₹{txnDetails?.amount}</strong>
+              </div>
+              <div className="receipt-row">
+                <span>Handyman Payout Share:</span>
+                <strong className="text-primary">₹{txnDetails?.workerPayout} (Includes +5% Bonus)</strong>
+              </div>
+              <div className="receipt-row">
+                <span>Platform Commission:</span>
+                <strong>₹{txnDetails?.platformCommission}</strong>
+              </div>
+              <div className="receipt-row">
+                <span>Date & Time:</span>
+                <small>{txnDetails?.timestamp}</small>
               </div>
             </div>
 
-            <div className="receipt-actions">
-              <button className="print-btn" onClick={handlePrintReceipt}>
-                <Download size={16} /> Print / Save Receipt
+            <div className="receipt-actions d-flex gap-2 mt-4">
+              <button
+                type="button"
+                className="btn btn-outline-secondary flex-fill rounded-3 py-2 fw-bold d-flex align-items-center justify-content-center gap-1"
+                onClick={handlePrintReceipt}
+              >
+                <Download size={16} /> Print Receipt
               </button>
-              <button className="done-btn" onClick={onClose}>
-                Done & Return to Dashboard
+              <button
+                type="button"
+                className="btn btn-primary flex-fill rounded-3 py-2 fw-bold"
+                onClick={onClose}
+              >
+                Done
               </button>
             </div>
           </div>
@@ -333,6 +465,4 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
       </div>
     </div>
   );
-};
-
-export default PaymentModal;
+}

@@ -1005,6 +1005,15 @@ const AdminPanel = ({ initialTab }) => {
                         </td>
                         <td style={{ padding: '14px 12px', color: '#475569' }}>
                           <Phone size={13} style={{ display: 'inline', marginRight: '4px' }} /> {w.phone}
+                          {w.bankAccountNumber ? (
+                            <div style={{ fontSize: '0.74rem', color: '#166534', fontWeight: '700', marginTop: '2px' }} title={`${w.bankName || 'Bank'} A/c ****${String(w.bankAccountNumber).slice(-4)}`}>
+                              🏦 A/c: ••••{String(w.bankAccountNumber).slice(-4)}
+                            </div>
+                          ) : w.upiId ? (
+                            <div style={{ fontSize: '0.74rem', color: '#0284c7', fontWeight: '700', marginTop: '2px' }} title={w.upiId}>
+                              📱 UPI: {w.upiId}
+                            </div>
+                          ) : null}
                         </td>
                         <td style={{ padding: '14px 12px', fontWeight: '800', color: '#059669' }}>
                           ₹{w.ratePerHour}/hr
@@ -1148,6 +1157,30 @@ const AdminPanel = ({ initialTab }) => {
                           )}
                         </div>
                       </div>
+
+                      {/* Registered Payout Bank & UPI Details */}
+                      {(c.bankAccountNumber || c.upiId) && (
+                        <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '12px', border: '1px solid #bbf7d0', marginBottom: '16px' }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: '800', color: '#166534', marginBottom: '6px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <CreditCard size={14} /> Registered Bank &amp; UPI Payout
+                          </div>
+                          {c.bankAccountNumber && (
+                            <div style={{ fontSize: '0.82rem', color: '#14532d', marginBottom: '3px' }}>
+                              <strong>{c.bankName || 'Bank'}:</strong> A/c ****{String(c.bankAccountNumber).slice(-4)} (IFSC: {c.bankIfscCode || '—'})
+                            </div>
+                          )}
+                          {c.bankAccountName && (
+                            <div style={{ fontSize: '0.78rem', color: '#4b5563', marginBottom: '3px' }}>
+                              Holder: <strong>{c.bankAccountName}</strong>
+                            </div>
+                          )}
+                          {c.upiId && (
+                            <div style={{ fontSize: '0.82rem', color: '#15803d' }}>
+                              <strong>UPI ID:</strong> {c.upiId} {c.upiPhone ? `(Phone: ${c.upiPhone})` : ''}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* AI Skill Assessment Review */}
                       <button

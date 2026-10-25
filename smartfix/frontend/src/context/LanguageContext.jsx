@@ -37,12 +37,18 @@ export const translations = {
     search_placeholder: 'Search plumbers, electricians, AC repair...',
     search_btn: 'Search',
     
-    // Theme & Language
+    // Theme & Language & Comfort
     light_mode: 'Light Mode',
     dark_mode: 'Dark Mode',
     select_language: 'Preferred Language',
     language_en: 'English',
     language_ta: 'தமிழ் (Tamil)',
+    comfort_title: 'Comfort & Accessibility',
+    saved_specialists: 'Saved Specialists',
+    quick_search: 'Quick Search',
+    text_size: 'Text Size',
+    high_contrast: 'High Contrast Mode',
+    reduced_motion: 'Reduced Motion',
 
     // Home & Browse Pages
     welcome_label: 'Welcome / வணக்கமுடன்',
@@ -189,12 +195,18 @@ export const translations = {
     search_placeholder: 'பிளம்பர், எலக்ட்ரீஷியன், ஏசி பழுது பார்க்க தேடவும்...',
     search_btn: 'தேடு',
     
-    // Theme & Language
+    // Theme & Language & Comfort
     light_mode: 'லைட் மோட்',
     dark_mode: 'டார்க் மோட்',
     select_language: 'விருப்ப மொழி',
     language_en: 'English',
     language_ta: 'தமிழ் (Tamil)',
+    comfort_title: 'வசதி & அணுகல் அமைப்புகள்',
+    saved_specialists: 'சேமிக்கப்பட்ட நிபுணர்கள்',
+    quick_search: 'விரைவு தேடல்',
+    text_size: 'எழுத்து அளவு',
+    high_contrast: 'அதிக மாறுபாடு முறை',
+    reduced_motion: 'குறைந்த அசைவு முறை',
 
     // Home & Browse Pages
     welcome_label: 'வணக்கமுடன்',

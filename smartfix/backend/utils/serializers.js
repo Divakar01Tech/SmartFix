@@ -247,6 +247,12 @@ exports.toSafeWorker = (worker) => {
     availability: w.availability || (w.availabilityStatus?.toLowerCase() || 'offline'),
     rating: w.rating,
     ratingCount: w.ratingCount || 0,
+    bankAccountNumber: w.bankAccountNumber || '',
+    bankAccountName: w.bankAccountName || '',
+    bankIfscCode: w.bankIfscCode || '',
+    bankName: w.bankName || '',
+    upiId: w.upiId || '',
+    upiPhone: w.upiPhone || '',
     workerId: w.workerId || '',
     createdAt: w.createdAt,
   };

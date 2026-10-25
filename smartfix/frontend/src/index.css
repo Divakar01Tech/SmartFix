@@ -56,6 +56,45 @@
   color-scheme: dark;
 }
 
+/* Accessibility & Comfort Sizing Tokens */
+html[data-font-size="normal"] {
+  font-size: 100%;
+}
+
+html[data-font-size="large"] {
+  font-size: 112.5%;
+}
+
+html[data-font-size="xlarge"] {
+  font-size: 125%;
+}
+
+/* High Contrast Mode for Outdoor / Bright Sunlight */
+html[data-contrast="high"] {
+  filter: contrast(1.12);
+}
+
+html[data-contrast="high"] body {
+  --text-dark: #000000;
+  --border-color: #64748b;
+}
+
+html[data-contrast="high"][data-theme="dark"] body {
+  --text-dark: #ffffff;
+  --card-bg: #090d16;
+  --border-color: #94a3b8;
+}
+
+/* Reduced Motion Mode for Calm Reading */
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
 html {
   scroll-behavior: smooth;
 }

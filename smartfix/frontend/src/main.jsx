@@ -7,6 +7,7 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { CallProvider } from './context/CallContext.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import { LanguageProvider } from './context/LanguageContext.jsx';
+import { ComfortProvider } from './context/ComfortContext.jsx';
 import { HelmetProvider } from 'react-helmet-async';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import './index.css';
@@ -22,11 +23,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <BrowserRouter>
           <ThemeProvider>
             <LanguageProvider>
-              <AuthProvider>
-                <CallProvider>
-                  <App />
-                </CallProvider>
-              </AuthProvider>
+              <ComfortProvider>
+                <AuthProvider>
+                  <CallProvider>
+                    <App />
+                  </CallProvider>
+                </AuthProvider>
+              </ComfortProvider>
             </LanguageProvider>
           </ThemeProvider>
         </BrowserRouter>
