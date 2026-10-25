@@ -137,6 +137,15 @@ const HandymanDashboard = ({ initialTab }) => {
     loadBankDetails();
   }, []);
 
+  // Periodic ticker to auto-expire jobs whose SLA passes while on screen
+  const [, setTicker] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTicker((t) => t + 1);
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Auto-show AI Interview Modal for new Handymen who haven't completed it
   useEffect(() => {
     const isApproved =
@@ -515,6 +524,21 @@ const HandymanDashboard = ({ initialTab }) => {
     user?.verificationStatus === 'verified' ||
     user?.isVerified === true;
 
+  // Helper to determine if a booking's SLA has expired
+  const isJobExpired = (b) => {
+    if (!b) return false;
+    const s = (b.status || '').toLowerCase();
+    if (['sla_breached', 'slabreached', 'expired'].includes(s)) return true;
+    if (b.slaBreached === true) return true;
+    if (b.slaDeadline) {
+      const deadline = new Date(b.slaDeadline).getTime();
+      if (!isNaN(deadline) && deadline < Date.now()) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const incomingBookings = bookings.filter((b) => {
     const s = (b.status || '').toLowerCase();
     return s === 'pending' || s === 'pendingdispatch' || s === 'requested';
@@ -522,7 +546,11 @@ const HandymanDashboard = ({ initialTab }) => {
 
   const activeBookings = bookings.filter((b) => {
     const s = (b.status || '').toLowerCase();
-    return ['accepted', 'confirmed', 'enroute', 'en_route', 'arrived', 'captainarrived', 'inprogress', 'workinprogress'].includes(s);
+    const isActiveStatus = ['accepted', 'confirmed', 'enroute', 'en_route', 'arrived', 'captainarrived', 'inprogress', 'workinprogress'].includes(s);
+    if (!isActiveStatus) return false;
+    // CRITICAL: Remove expired / breached jobs from Active Jobs page
+    if (isJobExpired(b)) return false;
+    return true;
   });
 
   const completedBookings = bookings
@@ -532,10 +560,15 @@ const HandymanDashboard = ({ initialTab }) => {
     })
     .sort((a, b) => new Date(b.completedAt || b.updatedAt || b.createdAt || 0) - new Date(a.completedAt || a.updatedAt || a.createdAt || 0));
 
-  const cancelledBookings = bookings.filter((b) => {
-    const s = (b.status || '').toLowerCase();
-    return ['cancelled', 'declined', 'rejected', 'sla_breached', 'slabreached'].includes(s);
-  });
+  const cancelledBookings = bookings
+    .filter((b) => {
+      const s = (b.status || '').toLowerCase();
+      const isCompleted = ['completed', 'workcompleted', 'paid', 'reviewed'].includes(s);
+      if (isCompleted) return false;
+      const isExplicitCancelled = ['cancelled', 'declined', 'rejected', 'sla_breached', 'slabreached', 'expired'].includes(s);
+      return isExplicitCancelled || isJobExpired(b);
+    })
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
 
   // Financial Stats (90% Base Net Payout + 5% Online Customer Bonus Rewards)
   const baseWorkerPayout = completedBookings.reduce((sum, b) => {
@@ -748,7 +781,7 @@ const HandymanDashboard = ({ initialTab }) => {
               className={`hd-tab-btn ${activeTab === 'cancelled' ? 'active' : ''}`}
               onClick={() => setActiveTab('cancelled')}
             >
-              <XCircle size={16} /> Cancelled / Declined ({cancelledBookings.length})
+              <XCircle size={16} /> Cancelled / Expired ({cancelledBookings.length})
             </button>
             <button
               className={`hd-tab-btn ${activeTab === 'earnings' ? 'active' : ''}`}
@@ -1152,15 +1185,21 @@ const HandymanDashboard = ({ initialTab }) => {
         </div>
       )}
 
-      {/* Tab 4: Cancelled & Declined Jobs */}
+      {/* Tab 4: Cancelled, Declined & Expired Jobs */}
       {activeTab === 'cancelled' && (
         <div className="hd-tab-content">
-          <h2 className="section-title">❌ Cancelled & Declined Repair Requests</h2>
+          <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h2 className="section-title mb-0">❌ Cancelled, Declined &amp; Expired Requests</h2>
+            <span className="badge bg-danger-subtle text-danger fs-6 px-3 py-2 rounded-pill fw-bold border border-danger">
+              ⚠️ {cancelledBookings.length} Expired / Cancelled Orders
+            </span>
+          </div>
+
           {cancelledBookings.length === 0 ? (
             <div className="empty-state-box">
               <XCircle size={48} color="#94a3b8" />
-              <h3>No Cancelled or Declined Requests</h3>
-              <p>Jobs that were declined or cancelled by customer will be logged here for record.</p>
+              <h3>No Cancelled or Expired Requests</h3>
+              <p>Jobs that were declined, cancelled by customer, or expired by SLA guarantee are safely archived here.</p>
             </div>
           ) : (
             <div className="completed-table-wrapper">
@@ -1179,6 +1218,7 @@ const HandymanDashboard = ({ initialTab }) => {
                 <tbody>
                   {cancelledBookings.map((b) => {
                     const bId = b._id || b.id;
+                    const expired = isJobExpired(b);
                     return (
                       <tr key={bId}>
                         <td><strong>#{String(bId).slice(-6)}</strong></td>
@@ -1187,18 +1227,36 @@ const HandymanDashboard = ({ initialTab }) => {
                         <td>{b.address || 'Tamil Nadu'}</td>
                         <td>₹{b.price || 350}</td>
                         <td>
-                          <span className="badge bg-danger text-white fw-bold px-2 py-1 rounded-pill">
-                            ❌ {b.status}
-                          </span>
+                          {expired ? (
+                            <span className="badge bg-danger text-white fw-bold px-2 py-1 rounded-pill">
+                              ⏰ SLA Expired (Breached)
+                            </span>
+                          ) : (
+                            <span className="badge bg-secondary text-white fw-bold px-2 py-1 rounded-pill">
+                              ❌ {b.status}
+                            </span>
+                          )}
                         </td>
                         <td>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-danger fw-bold d-inline-flex align-items-center gap-1 rounded-3"
-                            onClick={() => setDisputeBooking(b)}
-                          >
-                            <AlertTriangle size={14} /> Report Issue
-                          </button>
+                          <div className="d-flex gap-2">
+                            {expired && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-success fw-bold d-inline-flex align-items-center gap-1 rounded-3 shadow-sm"
+                                onClick={() => handleStatusUpdate(bId, 'Completed')}
+                                title="If you finished the work, mark it completed to collect your payout"
+                              >
+                                <CheckCircle size={14} /> Claim Completed
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger fw-bold d-inline-flex align-items-center gap-1 rounded-3"
+                              onClick={() => setDisputeBooking(b)}
+                            >
+                              <AlertTriangle size={14} /> Report Issue
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

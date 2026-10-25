@@ -127,6 +127,18 @@ const CustomerDashboard = () => {
     };
   }, []);
 
+  const isCustomerJobExpired = (b) => {
+    if (!b) return false;
+    const s = (b.status || '').toLowerCase();
+    if (['sla_breached', 'slabreached', 'expired'].includes(s)) return true;
+    if (b.slaBreached === true) return true;
+    if (b.slaDeadline) {
+      const deadline = new Date(b.slaDeadline).getTime();
+      if (!isNaN(deadline) && deadline < Date.now()) return true;
+    }
+    return false;
+  };
+
   // Expanded filter: canonical statuses (EnRoute, Arrived, WorkInProgress) + legacy aliases
   const activeBookings = bookings.filter(
     (b) =>
@@ -143,11 +155,11 @@ const CustomerDashboard = () => {
         b.status === 'Completed' ||
         b.status === 'WorkCompleted' ||
         b.status === 'PaymentPending'
-      ) && b.paymentStatus !== 'Paid'
+      ) && b.paymentStatus !== 'Paid' && !isCustomerJobExpired(b)
   );
   const completedBookings = bookings.filter((b) => (b.status === 'Completed' || b.status === 'WorkCompleted') && b.paymentStatus === 'Paid');
   const cancelledBookings = bookings.filter(
-    (b) => b.status === 'Cancelled' || b.status === 'Declined' || b.status === 'Rejected'
+    (b) => b.status === 'Cancelled' || b.status === 'Declined' || b.status === 'Rejected' || isCustomerJobExpired(b)
   );
 
   const handleCancelBooking = async (bId) => {
