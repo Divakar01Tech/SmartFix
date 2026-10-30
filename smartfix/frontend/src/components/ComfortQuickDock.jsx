@@ -48,16 +48,6 @@ export default function ComfortQuickDock() {
         <span className="comfort-dock-kbd d-none d-md-inline">⌘K</span>
       </button>
 
-      {/* 2. Accessibility & Comfort Settings */}
-      <button
-        type="button"
-        className="comfort-dock-btn"
-        onClick={() => setIsComfortModalOpen(true)}
-        title="Comfort & Text Size Settings (Alt + A)"
-        aria-label="Open Comfort Settings"
-      >
-        <span className="comfort-dock-text-icon">Aa</span>
-      </button>
 
       {/* 3. Saved Specialists */}
       <button

@@ -173,16 +173,6 @@ const Navbar = () => {
             )}
           </button>
 
-          {/* Comfort & Accessibility Button */}
-          <button
-            type="button"
-            className="theme-toggle-btn"
-            onClick={() => setIsComfortModalOpen(true)}
-            title="Text Size & Comfort Settings (Alt+A)"
-            aria-label="Comfort Settings"
-          >
-            <span style={{ fontWeight: 800, fontSize: '0.9rem', fontFamily: 'serif' }}>Aa</span>
-          </button>
 
           <Link to="/browse" className={`nav-link ${location.pathname === '/browse' ? 'active' : ''}`}>
             {t('browse_experts')}

@@ -114,16 +114,6 @@ export default function CustomerNavbar() {
             )}
           </button>
 
-          {/* Accessibility & Comfort Settings */}
-          <button
-            type="button"
-            className="btn btn-sm btn-light border rounded-circle p-2"
-            onClick={() => setIsComfortModalOpen(true)}
-            title="Text Size & Comfort Settings (Alt+A)"
-            aria-label="Comfort Settings"
-          >
-            <span style={{ fontWeight: 800, fontSize: '0.85rem', fontFamily: 'serif' }}>Aa</span>
-          </button>
 
           {/* Language Toggle */}
           <div className="btn-group p-1 bg-light rounded-pill border" role="group">
@@ -204,16 +194,6 @@ export default function CustomerNavbar() {
                     {favoriteWorkers.length > 0 && (
                       <span className="badge bg-danger rounded-pill">{favoriteWorkers.length}</span>
                     )}
-                  </button>
-                  <button
-                    type="button"
-                    className="dropdown-item py-2 d-flex align-items-center gap-2 small"
-                    onClick={() => {
-                      setDropdownOpen(false);
-                      setIsComfortModalOpen(true);
-                    }}
-                  >
-                    <Sliders size={14} className="text-primary" /> Comfort & Text Size
                   </button>
                   <Link
                     to="/customer/wallet"

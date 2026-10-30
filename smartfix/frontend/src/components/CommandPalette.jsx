@@ -43,16 +43,6 @@ export default function CommandPalette() {
   const allCommands = useMemo(() => {
     const list = [];
 
-    // 1. Quick Actions & Comfort Controls
-    list.push({
-      id: 'action-comfort',
-      category: 'Quick Actions',
-      title: 'Comfort & Accessibility Controls',
-      subtitle: 'Adjust text size (A-/A+), high contrast, and reduced motion',
-      icon: <Sliders size={18} className="text-primary" />,
-      badge: 'Alt + A',
-      run: () => setIsComfortModalOpen(true),
-    });
 
     list.push({
       id: 'action-saved',

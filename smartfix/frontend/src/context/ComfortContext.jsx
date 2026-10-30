@@ -129,12 +129,6 @@ export const ComfortProvider = ({ children }) => {
         return;
       }
 
-      // 2. Alt + A -> Comfort & Accessibility Settings Modal
-      if (e.altKey && e.key.toLowerCase() === 'a') {
-        e.preventDefault();
-        setIsComfortModalOpen((prev) => !prev);
-        return;
-      }
 
       // 3. Alt + S -> Saved Workers Modal
       if (e.altKey && e.key.toLowerCase() === 's') {
