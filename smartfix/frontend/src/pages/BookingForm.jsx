@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { apiService } from '../services/api';
 import LocationPickerMap from '../components/LocationPickerMap';
 import NearbyWorkers from '../components/NearbyWorkers';
-import { Wrench, MapPin, Calendar, Clock, AlertCircle, CheckCircle2, ShieldCheck, ArrowLeft, Send } from 'lucide-react';
+import { Wrench, MapPin, Calendar, Clock, AlertCircle, CheckCircle2, ShieldCheck, ArrowLeft, Send, Sparkles, RefreshCw } from 'lucide-react';
 
 export default function BookingForm() {
   const { t } = useTranslation();
@@ -33,6 +33,28 @@ export default function BookingForm() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [geoError, setGeoError] = useState('');
+
+  // AI Quote Estimator State
+  const [aiEstimate, setAiEstimate] = useState(null);
+  const [aiEstimateLoading, setAiEstimateLoading] = useState(false);
+  const [aiEstimateError, setAiEstimateError] = useState('');
+
+  const handleGetAiEstimate = async () => {
+    if (!selectedCategory && !description.trim()) {
+      setAiEstimateError('Please select a service or type a short problem description.');
+      return;
+    }
+    setAiEstimateLoading(true);
+    setAiEstimateError('');
+    try {
+      const data = await apiService.getAiRepairEstimate(selectedCategory, description.trim());
+      setAiEstimate(data);
+    } catch (err) {
+      setAiEstimateError('Could not fetch AI quote estimate. Standard rates will apply.');
+    } finally {
+      setAiEstimateLoading(false);
+    }
+  };
 
   // Load Categories from Database
   useEffect(() => {
@@ -251,6 +273,90 @@ export default function BookingForm() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
+
+                {/* AI Cost & Duration Predictor Trigger */}
+                <div className="mt-2 d-flex align-items-center justify-content-between">
+                  <button
+                    type="button"
+                    onClick={handleGetAiEstimate}
+                    disabled={aiEstimateLoading}
+                    className="btn btn-sm text-primary border border-primary-subtle bg-primary-subtle d-inline-flex align-items-center gap-1 rounded-pill px-3 py-1 fw-semibold shadow-2xs"
+                    style={{ fontSize: '0.8rem' }}
+                  >
+                    <Sparkles size={14} className={aiEstimateLoading ? 'animate-spin' : ''} />
+                    {aiEstimateLoading ? 'Calculating AI Estimate...' : '✨ Get AI Cost & Time Estimate'}
+                  </button>
+                  {aiEstimate && (
+                    <button
+                      type="button"
+                      onClick={() => setAiEstimate(null)}
+                      className="btn btn-sm btn-link text-muted p-0 text-decoration-none"
+                      style={{ fontSize: '0.75rem' }}
+                    >
+                      Hide Estimate
+                    </button>
+                  )}
+                </div>
+
+                {aiEstimateError && (
+                  <div className="text-danger small mt-1" style={{ fontSize: '0.78rem' }}>
+                    {aiEstimateError}
+                  </div>
+                )}
+
+                {/* AI Estimate Result Card */}
+                {aiEstimate && (
+                  <div className="mt-3 p-3 rounded-3 border" style={{ background: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    <div className="d-flex align-items-center justify-content-between pb-2 border-bottom mb-2">
+                      <span className="fw-bold text-dark d-flex align-items-center gap-1" style={{ fontSize: '0.85rem' }}>
+                        <Sparkles size={15} className="text-primary" /> SmartFix AI Repair Estimate
+                      </span>
+                      <span className="badge bg-primary-subtle text-primary border border-primary-subtle">
+                        {aiEstimate.complexity || 'Moderate'} Complexity
+                      </span>
+                    </div>
+
+                    <div className="row g-2 text-center my-1">
+                      <div className="col-6">
+                        <div className="p-2 bg-white rounded-2 border">
+                          <small className="text-muted d-block" style={{ fontSize: '0.72rem' }}>Estimated Cost</small>
+                          <span className="fw-bold text-success fs-6">
+                            ₹{aiEstimate.minCost} - ₹{aiEstimate.maxCost}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="col-6">
+                        <div className="p-2 bg-white rounded-2 border">
+                          <small className="text-muted d-block" style={{ fontSize: '0.72rem' }}>Expected Duration</small>
+                          <span className="fw-bold text-dark fs-6">
+                            {aiEstimate.estimatedDuration}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {aiEstimate.likelyParts && aiEstimate.likelyParts.length > 0 && (
+                      <div className="mt-2 text-start">
+                        <span className="text-muted d-block mb-1" style={{ fontSize: '0.74rem' }}>
+                          📦 Likely Parts / Consumables:
+                        </span>
+                        <div className="d-flex flex-wrap gap-1">
+                          {aiEstimate.likelyParts.map((part, idx) => (
+                            <span key={idx} className="badge bg-white text-secondary border rounded-pill px-2 py-1" style={{ fontSize: '0.7rem' }}>
+                              {part}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {aiEstimate.safetyTip && (
+                      <div className="mt-2 p-2 rounded-2 bg-amber-50 border border-amber-200 text-start" style={{ background: '#fffbeb', borderColor: '#fef3c7', fontSize: '0.76rem', color: '#92400e' }}>
+                        🛡️ <strong>Safety Advice:</strong> {aiEstimate.safetyTip.en || aiEstimate.safetyTip}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Scheduling */}

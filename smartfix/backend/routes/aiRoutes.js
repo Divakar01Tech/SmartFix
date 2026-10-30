@@ -10,6 +10,8 @@ const {
   matchWorkers,
   detectIntentAction,
   getTaxonomy,
+  estimateRepairQuote,
+  getWorkerJobCopilot,
 } = require('../controllers/aiController');
 const { protect } = require('../middleware/authMiddleware');
 const { aiRateLimiter } = require('../services/aiService');
@@ -51,6 +53,8 @@ router.post('/diagnose', protect, aiRateLimiter, upload.single('image'), diagnos
 router.post('/analyze-image', analyzeImage);
 router.post('/create-service-request', protect, createServiceRequestFromAi);
 router.post('/match-workers', matchWorkers);
+router.post('/estimate-quote', optionalAuth, estimateRepairQuote);
+router.post('/worker-copilot', protect, getWorkerJobCopilot);
 router.post('/verify-kyc', protect, require('../controllers/aiController').verifyKycImage);
 
 module.exports = router;

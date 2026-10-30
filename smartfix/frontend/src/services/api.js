@@ -1128,4 +1128,38 @@ export const apiService = {
     if (!res.ok) throw new Error(data.message || 'Failed to update bank details');
     return data;
   },
+
+  // 1. Customer AI Smart Quote & Duration Estimator
+  getAiRepairEstimate: async (trade, problemDescription, language = 'en') => {
+    const res = await fetch(`${API_BASE}/ai/estimate-quote`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ trade, problemDescription, language }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to generate quote estimate');
+    return data.estimate;
+  },
+
+  // 2. Worker AI Job Co-Pilot & Pre-Visit Checklist
+  getWorkerJobCopilot: async (bookingId, trade, problemNotes, language = 'en') => {
+    const res = await fetch(`${API_BASE}/ai/worker-copilot`, {
+      method: 'POST',
+      headers: getHeaders('worker'),
+      body: JSON.stringify({ bookingId, trade, problemNotes, language }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch worker co-pilot');
+    return data.copilot;
+  },
+
+  // 3. Admin AI Operational Anomaly & Fraud Radar
+  getAdminAiRadar: async () => {
+    const res = await fetch(`${API_BASE}/admin/ai-radar`, {
+      headers: getHeaders('admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch AI Operations Radar');
+    return data;
+  },
 };

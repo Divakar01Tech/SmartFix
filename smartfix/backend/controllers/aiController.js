@@ -355,3 +355,210 @@ Respond ONLY in strict JSON format with the following fields:
     res.status(500).json({ message: 'Failed to verify KYC image', error: err.message });
   }
 };
+
+// ==============================================================
+// 5. POST /api/ai/estimate-quote — Customer AI Smart Quote & Duration Estimator
+// ==============================================================
+exports.estimateRepairQuote = async (req, res) => {
+  try {
+    const { trade, problemDescription, language = 'en' } = req.body;
+    if (!trade && !problemDescription) {
+      return res.status(400).json({ success: false, message: 'Trade or problem description is required.' });
+    }
+
+    const { askGroqJSON } = require('../services/aiService');
+
+    const promptSystem = `You are the Expert Estimation AI for SmartFix Home Repair in Tamil Nadu, India (Sivagangai, Karaikudi & Madurai region).
+Analyze the service trade and customer problem description.
+Generate a realistic, transparent pricing range in INR (₹) considering local Indian market labor and spare parts rates.
+Respond strictly in JSON matching this exact structure:
+{
+  "minCost": number,
+  "maxCost": number,
+  "currency": "₹",
+  "estimatedDuration": "string (e.g. 45 - 60 mins)",
+  "complexity": "Low" | "Moderate" | "High",
+  "likelyParts": ["string", "string"],
+  "safetyTip": {
+    "en": "Short practical safety action for the homeowner",
+    "ta": "Tamil translation of the safety tip"
+  },
+  "summary": {
+    "en": "Crisp 1-line summary of the likely problem",
+    "ta": "Tamil 1-line summary"
+  }
+}`;
+
+    const userContent = `Trade: ${trade || 'General Home Repair'}\nCustomer Description: ${problemDescription || 'Inspection and diagnostic check'}\nPreferred Output Language: ${language}`;
+
+    let estimate = null;
+
+    try {
+      estimate = await askGroqJSON({ system: promptSystem, user: userContent, maxTokens: 600 });
+    } catch (err) {
+      console.warn('Groq quote estimation error, trying Gemini fallback:', err.message);
+      try {
+        estimate = await callGeminiJsonApi(userContent, promptSystem);
+      } catch (geminiErr) {
+        console.warn('Gemini quote estimation error, using intelligent fallback:', geminiErr.message);
+      }
+    }
+
+    // Intelligent local fallback if cloud AI fails
+    if (!estimate || !estimate.minCost) {
+      const baseRates = {
+        'Plumbing': { min: 250, max: 550, time: '30 - 60 mins', parts: ['Teflon Tape', 'Washer / Gasket', 'PVC Coupler'] },
+        'Electrical': { min: 250, max: 600, time: '40 - 75 mins', parts: ['Insulation Tape', 'MCB Switch', 'Anchor Wire'] },
+        'AC Repair': { min: 450, max: 1200, time: '60 - 90 mins', parts: ['Capacitor', 'Flare Nut', 'Gas Top-up'] },
+        'Carpentry': { min: 300, max: 700, time: '45 - 90 mins', parts: ['Wood Screws', 'Hinges', 'Fevicol Adhesive'] },
+        'Painting': { min: 400, max: 1000, time: '2 - 4 hours', parts: ['Primer', 'Wall Putty', 'Roller Brush'] },
+        'Appliance Repair': { min: 350, max: 800, time: '45 - 90 mins', parts: ['Capacitor', 'Fuse', 'Wiring Harness'] }
+      };
+
+      const selected = baseRates[trade] || { min: 300, max: 600, time: '45 - 60 mins', parts: ['Standard Fasteners', 'Consumables'] };
+
+      estimate = {
+        minCost: selected.min,
+        maxCost: selected.max,
+        currency: '₹',
+        estimatedDuration: selected.time,
+        complexity: 'Moderate',
+        likelyParts: selected.parts,
+        safetyTip: {
+          en: trade === 'Electrical' ? 'Turn off main MCB switch before inspecting wires.' : 'Turn off main valve or disconnect power before technician arrives.',
+          ta: trade === 'Electrical' ? 'பரிசோதனைக்கு முன் வீட்டின் முதன்மை MCB சுவிட்சை அணைக்கவும்.' : 'தொழில்நுட்ப வல்லுநர் வரும் முன் முதன்மை வால்வை மூடவும்.'
+        },
+        summary: {
+          en: `${trade || 'Home service'} diagnostic & repair work.`,
+          ta: `${trade || 'வீட்டு சேவை'} பழுது கண்டறிதல் மற்றும் சரிசெய்தல்.`
+        }
+      };
+    }
+
+    return res.status(200).json({
+      success: true,
+      estimate
+    });
+  } catch (error) {
+    console.error('Error in estimateRepairQuote:', error);
+    return res.status(500).json({ success: false, message: 'Failed to generate quote estimate: ' + error.message });
+  }
+};
+
+// ==============================================================
+// 6. POST /api/ai/worker-copilot — Worker AI Job Co-Pilot & Pre-Visit Checklist
+// ==============================================================
+exports.getWorkerJobCopilot = async (req, res) => {
+  try {
+    const { bookingId, trade, problemNotes, language = 'en' } = req.body;
+    let actualTrade = trade;
+    let actualNotes = problemNotes;
+
+    if (bookingId) {
+      const booking = await Booking.findById(bookingId).populate('customer', 'name phone address');
+      if (booking) {
+        actualTrade = actualTrade || booking.trade || booking.service;
+        actualNotes = actualNotes || booking.notes || booking.problemDescription || booking.description;
+      }
+    }
+
+    if (!actualTrade && !actualNotes) {
+      return res.status(400).json({ success: false, message: 'Trade or problem description is required for Co-Pilot.' });
+    }
+
+    const { askGroqJSON } = require('../services/aiService');
+
+    const copilotSystemPrompt = `You are the Expert Senior Field Engineer & Technician Co-Pilot for SmartFix service providers in Tamil Nadu, India.
+Analyze the repair trade and customer's problem description.
+Equip the worker before leaving their home/workshop so they don't have to make multiple trips to the hardware store.
+Respond strictly in JSON matching this exact structure:
+{
+  "requiredTools": ["Essential tool 1", "Essential tool 2", "Essential tool 3", "Essential tool 4"],
+  "likelySpareParts": ["Likely spare part 1", "Likely spare part 2", "Consumable / seal"],
+  "hazardSafetyAlert": "Key on-site electrical/chemical/physical hazard caution for the worker",
+  "stepByStepProtocol": [
+    "Step 1: On-site preliminary check",
+    "Step 2: Diagnosis and isolating root cause",
+    "Step 3: Component replacement / repair method",
+    "Step 4: Quality test & customer sign-off verification"
+  ],
+  "quickCustomerReplies": [
+    {
+      "id": "on_the_way",
+      "title": "On the way",
+      "en": "Vanakkam, I have packed the required tools & spare parts and am on my way to your location. Expected arrival: 15-20 mins.",
+      "ta": "வணக்கம், தேவையான அனைத்து உபகரணங்களுடன் உங்கள் முகவரிக்கு கிளம்பிவிட்டேன். 15-20 நிமிடங்களில் வந்தடைவேன்."
+    },
+    {
+      "id": "diagnosing",
+      "title": "Diagnosis Started",
+      "en": "Inspection complete. Diagnosed the root cause and commencing repair now. Estimated completion: 45 minutes.",
+      "ta": "ஆய்வு முடிந்தது. பழுது கண்டறியப்பட்டு சரிசெய்யும் பணி தொடங்கப்பட்டுள்ளது. சுமார் 45 நிமிடங்கள் ஆகும்."
+    },
+    {
+      "id": "parts_needed",
+      "title": "Replacement Part Needed",
+      "en": "A replacement part is required to fix this securely. Genuine bill and warranty will be handed to you.",
+      "ta": "இந்த பழுதுக்கு புதிய உதிரிபாகம் மாற்ற வேண்டும். அதற்கான அசல் ரசீது மற்றும் உத்தரவாதம் வழங்கப்படும்."
+    }
+  ]
+}`;
+
+    const userPrompt = `Service Trade: ${actualTrade || 'General Maintenance'}\nCustomer Issue Description: ${actualNotes || 'Appliance fault / plumbing leakage'}\nPreferred Language: ${language}`;
+
+    let copilotData = null;
+
+    try {
+      copilotData = await askGroqJSON({ system: copilotSystemPrompt, user: userPrompt, maxTokens: 800 });
+    } catch (err) {
+      console.warn('Groq worker copilot error, trying Gemini fallback:', err.message);
+      try {
+        copilotData = await callGeminiJsonApi(userPrompt, copilotSystemPrompt);
+      } catch (geminiErr) {
+        console.warn('Gemini copilot fallback error, using local fallback:', geminiErr.message);
+      }
+    }
+
+    if (!copilotData || !copilotData.requiredTools) {
+      copilotData = {
+        requiredTools: ['Multimeter / Voltage Tester', 'Adjustable Pipe Wrench', 'Insulated Screwdriver Set', 'Utility Flashlight'],
+        likelySpareParts: ['Teflon Thread Seal Tape', 'PVC / Wire Couplers', 'Fastener Screws & Rawl Plugs'],
+        hazardSafetyAlert: 'Ensure main supply (power or water) is completely isolated before dismantling.',
+        stepByStepProtocol: [
+          '1. Inspect power/water mains and isolate circuit.',
+          '2. Test component resistance or check pipe joints for hairline leaks.',
+          '3. Replace damaged parts with standard grade spares.',
+          '4. Run a 5-minute operational test and request customer verification.'
+        ],
+        quickCustomerReplies: [
+          {
+            id: 'on_the_way',
+            title: 'On the way',
+            en: 'Vanakkam, I have gathered the required tools and am heading to your location. ETA: 20 minutes.',
+            ta: 'வணக்கம், தேவையான உபகரணங்களுடன் கிளம்பிவிட்டேன். 20 நிமிடங்களில் வந்தடைவேன்.'
+          },
+          {
+            id: 'diagnosing',
+            title: 'Diagnosis Started',
+            en: 'Inspection complete. Commencing the fix now. Estimated completion: 40 mins.',
+            ta: 'ஆய்வு முடிந்தது. பழுது சரிசெய்யும் பணி தொடங்கப்பட்டுள்ளது. 40 நிமிடங்கள் ஆகும்.'
+          },
+          {
+            id: 'parts_needed',
+            title: 'Replacement Part Needed',
+            en: 'A replacement part is needed for longevity. Genuine bill will be provided.',
+            ta: 'புதிய உதிரிபாகம் மாற்ற வேண்டும். அசல் ரசீது வழங்கப்படும்.'
+          }
+        ]
+      };
+    }
+
+    return res.status(200).json({
+      success: true,
+      copilot: copilotData
+    });
+  } catch (error) {
+    console.error('Error in getWorkerJobCopilot:', error);
+    return res.status(500).json({ success: false, message: 'Failed to generate worker co-pilot: ' + error.message });
+  }
+};

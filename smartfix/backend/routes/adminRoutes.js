@@ -28,6 +28,7 @@ router.get('/workers/:id/review-insights', adminController.getWorkerReviewInsigh
 router.post('/workers/:id/feedback', adminController.sendWorkerFeedback);
 router.get('/workers/:id/feedback', adminController.getWorkerFeedback);
 router.get('/dispatch-stats', adminController.getDispatchStats);
+router.get('/ai-radar', adminController.getAdminAiRadar);
 
 // Worker KYC & AI Recommendation Review Endpoints
 router.get('/workers/review-queue', adminController.getWorkerReviewQueue);

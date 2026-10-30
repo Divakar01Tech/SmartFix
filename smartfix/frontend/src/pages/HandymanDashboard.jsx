@@ -9,6 +9,7 @@ import socket from '../services/socket';
 import LiveTrackerMap from '../components/LiveTrackerMap';
 import SkillInterviewModal from '../components/SkillInterviewModal';
 import WorkerScorecard from '../components/WorkerScorecard';
+import WorkerAiCopilotModal from '../components/WorkerAiCopilotModal';
 import SOSButton from '../components/SOSButton';
 import DisputeModal from '../components/DisputeModal';
 
@@ -32,6 +33,7 @@ const HandymanDashboard = ({ initialTab }) => {
   };
 
   const [activeTab, setActiveTab] = useState(getTabFromPath);
+  const [copilotBooking, setCopilotBooking] = useState(null);
 
   useEffect(() => {
     if (initialTab) {
@@ -866,6 +868,14 @@ const HandymanDashboard = ({ initialTab }) => {
                     <div className="job-card-actions">
                       <button
                         type="button"
+                        className="btn btn-sm fw-bold d-inline-flex align-items-center gap-1 rounded-pill px-3"
+                        onClick={() => setCopilotBooking(b)}
+                        style={{ background: '#fef3c7', border: '1px solid #f59e0b', color: '#b45309', fontSize: '0.8rem' }}
+                      >
+                        <Sparkles size={14} /> ⚡ AI Tools & Parts
+                      </button>
+                      <button
+                        type="button"
                         className="accept-job-btn"
                         onClick={() => handleAcceptDispatch(bId)}
                       >
@@ -964,6 +974,14 @@ const HandymanDashboard = ({ initialTab }) => {
                         <a href={`https://wa.me/${cleanPhone}?text=${waMsg}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline-success btn-sm d-inline-flex align-items-center gap-1">
                           <MessageSquare size={14} /> WhatsApp
                         </a>
+                        <button
+                          type="button"
+                          className="btn btn-warning btn-sm text-dark fw-bold d-inline-flex align-items-center gap-1 shadow-sm px-3"
+                          onClick={() => setCopilotBooking(b)}
+                          title="Open AI Technician Pre-Visit Co-Pilot"
+                        >
+                          <Sparkles size={14} /> ⚡ AI Co-Pilot
+                        </button>
                       </div>
                     </div>
 
@@ -1745,6 +1763,13 @@ const HandymanDashboard = ({ initialTab }) => {
         </div>
       )}
       
+
+      {copilotBooking && (
+        <WorkerAiCopilotModal
+          booking={copilotBooking}
+          onClose={() => setCopilotBooking(null)}
+        />
+      )}
 
     </div>
   );

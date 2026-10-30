@@ -114,6 +114,33 @@ const AdminPanel = ({ initialTab }) => {
   const [aiVisionWorkerId, setAiVisionWorkerId] = useState(null);
   const [aiVisionResultModal, setAiVisionResultModal] = useState(null);
 
+  // AI Operations Radar State
+  const [aiRadarData, setAiRadarData] = useState(null);
+  const [aiRadarLoading, setAiRadarLoading] = useState(false);
+  const [aiRadarError, setAiRadarError] = useState('');
+
+  const loadAiRadar = async () => {
+    setAiRadarLoading(true);
+    setAiRadarError('');
+    try {
+      const res = await apiService.getAdminAiRadar();
+      if (res && res.radar) {
+        setAiRadarData(res);
+      }
+    } catch (err) {
+      console.error('loadAiRadar error:', err);
+      setAiRadarError(err.message || 'Failed to load AI Operations Radar');
+    } finally {
+      setAiRadarLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'ai_radar') {
+      loadAiRadar();
+    }
+  }, [activeTab]);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -533,6 +560,186 @@ const AdminPanel = ({ initialTab }) => {
         </div>
       )}
 
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Real-time SLA Breach Alerts */}
       {slaAlerts.length > 0 && (
         <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -562,6 +769,186 @@ const AdminPanel = ({ initialTab }) => {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -606,6 +993,186 @@ const AdminPanel = ({ initialTab }) => {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -657,6 +1224,186 @@ const AdminPanel = ({ initialTab }) => {
         </div>
       )}
 
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Emergency SOS Alerts Section */}
       {sosAlerts && sosAlerts.filter(a => a.status === 'open').length > 0 && (
         <div style={{ marginBottom: '24px' }}>
@@ -690,6 +1437,186 @@ const AdminPanel = ({ initialTab }) => {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -764,6 +1691,25 @@ const AdminPanel = ({ initialTab }) => {
         >
           <TrendingUp size={18} /> Analytics & Scorecards 📊
         </Link>
+
+        <button
+          onClick={() => setActiveTab('ai_radar')}
+          style={{
+            background: activeTab === 'ai_radar' ? '#4f46e5' : '#ffffff',
+            color: activeTab === 'ai_radar' ? '#ffffff' : '#4338ca',
+            border: activeTab === 'ai_radar' ? '1px solid #4f46e5' : '1px solid #c7d2fe',
+            padding: '10px 20px',
+            borderRadius: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 2px 4px rgba(99, 102, 241, 0.08)',
+          }}
+        >
+          <Sparkles size={18} /> 🧠 AI Operations Radar
+        </button>
 
         <button
           onClick={() => setActiveTab('workers')}
@@ -1049,6 +1995,186 @@ const AdminPanel = ({ initialTab }) => {
         </div>
       )}
 
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* TAB 2: PENDING KYC WORKER QUEUE */}
       {activeTab === 'pending_kyc' && (
         <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
@@ -1239,6 +2365,186 @@ const AdminPanel = ({ initialTab }) => {
                 );
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -1486,6 +2792,186 @@ const AdminPanel = ({ initialTab }) => {
         </div>
       )}
 
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* TAB 4: ALL BOOKINGS */}
       {activeTab === 'bookings' && (
         <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
@@ -1601,6 +3087,186 @@ const AdminPanel = ({ initialTab }) => {
         </div>
       )}
 
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* TAB 5: COMMISSION CONFIG */}
       {activeTab === 'commission' && (
         <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
@@ -1663,6 +3329,186 @@ const AdminPanel = ({ initialTab }) => {
           >
             <CheckCircle2 size={18} /> Save Commission Configuration
           </button>
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1754,6 +3600,186 @@ const AdminPanel = ({ initialTab }) => {
         </div>
       )}
 
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* TAB 7: REVIEW FLAGS */}
       {activeTab === 'review_flags' && (
         <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
@@ -1814,6 +3840,186 @@ const AdminPanel = ({ initialTab }) => {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -1881,6 +4087,186 @@ const AdminPanel = ({ initialTab }) => {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -2068,6 +4454,366 @@ const AdminPanel = ({ initialTab }) => {
         </div>
       )}
 
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: '1px solid ' + (isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: '1px solid ' + (isShortage ? '#fed7aa' : '#e2e8f0')
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Add Worker Modal */}
       {showAddWorkerModal && (
         <AddWorkerModal
@@ -2132,6 +4878,186 @@ const AdminPanel = ({ initialTab }) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -2209,6 +5135,186 @@ const AdminPanel = ({ initialTab }) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -2337,6 +5443,186 @@ const AdminPanel = ({ initialTab }) => {
         </div>
       )}
 
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* AI Review Insights Modal */}
       {aiInsightsWorker && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
@@ -2450,6 +5736,186 @@ const AdminPanel = ({ initialTab }) => {
         </div>
       )}
 
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Mandatory Reason Worker Rejection Modal */}
       {rejectionModalWorker && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
@@ -2519,6 +5985,186 @@ const AdminPanel = ({ initialTab }) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -2699,6 +6345,186 @@ const AdminPanel = ({ initialTab }) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: AI OPERATIONS RADAR */}
+      {activeTab === 'ai_radar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
+          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                <h2 style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={22} color="#4f46e5" /> SmartFix AI Operations & Fraud Radar
+                </h2>
+              </div>
+              <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '0.88rem' }}>
+                Automated platform health diagnostics, Sivagangai district supply-demand gap detection, and fraud anomaly detection powered by Groq & Gemini.
+              </p>
+            </div>
+            <button
+              onClick={loadAiRadar}
+              disabled={aiRadarLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}
+            >
+              <RefreshCw size={15} className={aiRadarLoading ? 'spin' : ''} />
+              {aiRadarLoading ? 'Scanning Platform Telemetry...' : '⚡ Re-Scan Platform Radar'}
+            </button>
+          </div>
+
+          {aiRadarLoading && (
+            <div style={{ background: '#ffffff', padding: '40px', borderRadius: '20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div className="spinner-border text-primary mb-2" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>AI is aggregating live 30-day telemetry, checking worker SLA breaches, and scanning for fraud anomalies...</p>
+            </div>
+          )}
+
+          {aiRadarError && (
+            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #fecaca', fontSize: '0.88rem' }}>
+              ⚠️ {aiRadarError}
+            </div>
+          )}
+
+          {aiRadarData && !aiRadarLoading && (
+            <>
+              {/* Executive Summary Cards */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Executive Daily Briefing (AI Insights)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {aiRadarData.radar?.executiveSummary?.map((point, idx) => (
+                    <div key={idx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>💡</span>
+                      <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, fontWeight: '500' }}>
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anomaly & Fraud Risk Radar */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Anomaly & Fraud Risk Radar
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {aiRadarData.radar?.anomalyAlerts?.length || 0} Alert(s) Detected
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.anomalyAlerts?.map((alert, idx) => {
+                    const isHigh = alert.severity === 'high';
+                    const isMed = alert.severity === 'medium';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: '12px',
+                          background: isHigh ? '#fff1f2' : isMed ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${isHigh ? '#fecdd3' : isMed ? '#fef3c7' : '#bbf7d0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{isHigh ? '🛑' : isMed ? '⚠️' : '✅'}</span>
+                          <div>
+                            <span style={{ fontWeight: '800', fontSize: '0.88rem', color: isHigh ? '#9f1239' : isMed ? '#92400e' : '#166534' }}>
+                              {alert.title}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                              {alert.description}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          textTransform: 'uppercase',
+                          background: isHigh ? '#be123c' : isMed ? '#d97706' : '#15803d',
+                          color: '#ffffff'
+                        }}>
+                          {alert.severity} Risk
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Regional Demand vs Supply Radar (Sivagangai District) */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 Sivagangai District Regional Demand vs. Supply Radar
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  {aiRadarData.radar?.regionalGaps?.map((gap, idx) => {
+                    const isShortage = gap.status === 'Shortage';
+                    const isSurplus = gap.status === 'Surplus';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '16px',
+                          borderRadius: '14px',
+                          border: `1px solid ${isShortage ? '#fed7aa' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.95rem' }}>
+                            {gap.taluk}
+                          </span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: isShortage ? '#ffedd5' : isSurplus ? '#dbeafe' : '#dcfce7',
+                            color: isShortage ? '#c2410c' : isSurplus ? '#1d4ed8' : '#15803d',
+                          }}>
+                            {gap.status}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          Trade: {gap.trade}
+                        </span>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                          {gap.insight}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recommended Strategic Actions */}
+              <div style={{ background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 AI Recommended Operational Actions
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {aiRadarData.radar?.recommendedActions?.map((action, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#22c55e', fontWeight: '800' }}>✓</span>
+                      <span style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
