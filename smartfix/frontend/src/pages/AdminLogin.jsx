@@ -372,7 +372,7 @@ export default function AdminLogin() {
 
             {devOtp && (
               <div style={{ fontSize: '13px', color: '#38bdf8', background: 'rgba(14, 165, 233, 0.1)', border: '1px solid rgba(14, 165, 233, 0.3)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>🔑 <strong>Test Code:</strong> <code style={{ letterSpacing: '2px', fontWeight: 'bold' }}>{devOtp}</code></span>
+                <span>🔑 <strong>Test Code:</strong> <code style={{ letterSpacing: '2px', fontWeight: 'bold', color: '#ff4d6d' }}>{devOtp}</code></span>
                 <button
                   type="button"
                   onClick={() => setOtp(devOtp)}
