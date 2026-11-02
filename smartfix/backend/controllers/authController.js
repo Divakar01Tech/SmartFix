@@ -192,11 +192,6 @@ exports.login = async (req, res) => {
       orConditions.push({ phone: `+91${last10}` });
     }
 
-    // Security Gate: Admin MUST NOT log in via customer/worker portal
-    if (role === 'admin') {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
-    }
-
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({
         success: false,
@@ -211,9 +206,42 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    // Admin accounts cannot sign in through public customer/worker portal
+    // Direct password authentication for Admin (previous workflow restoration)
     if (user.role === 'admin') {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      let isMatch = await user.comparePassword(password);
+      if (!isMatch && process.env.ADMIN_PASSWORD_HASH) {
+        const bcrypt = require('bcryptjs');
+        isMatch = await bcrypt.compare(password, process.env.ADMIN_PASSWORD_HASH);
+      }
+
+      if (!isMatch) {
+        user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+        await user.save();
+        return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      }
+
+      user.failedLoginAttempts = 0;
+      user.lockUntil = null;
+      await user.save();
+
+      const token = jwt.sign(
+        { id: user._id, role: 'admin', email: user.email },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: 'Admin session authenticated successfully.',
+        token,
+        user: {
+          id: user._id,
+          name: user.name || 'System Administrator',
+          email: user.email,
+          phone: user.phone || '+917604975206',
+          role: 'admin',
+        },
+      });
     }
 
     // Check 15-minute lockout

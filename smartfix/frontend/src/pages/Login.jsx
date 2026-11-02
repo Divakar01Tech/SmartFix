@@ -54,6 +54,7 @@ export default function Login({ initialPortal, initialMode }) {
     workerToken,
     adminUser,
     adminToken,
+    adminLogin,
     login,
     setAuthSession,
     googleLogin,
@@ -70,9 +71,9 @@ export default function Login({ initialPortal, initialMode }) {
   const portalParam = queryParams.get('portal');
   const modeParam = queryParams.get('mode');
 
-  // Role: 'customer' or 'worker'
+  // Role: 'customer' or 'worker' or 'admin'
   const [role, setRole] = useState(
-    initialPortal || (portalParam === 'worker' ? 'worker' : 'customer')
+    initialPortal || (portalParam === 'admin' ? 'admin' : (portalParam === 'worker' ? 'worker' : 'customer'))
   );
 
   // Form Fields
@@ -272,6 +273,11 @@ export default function Login({ initialPortal, initialMode }) {
     setSubmitting(true);
 
     try {
+      if (role === 'admin') {
+        await adminLogin(email, password);
+        navigate('/admin/dashboard', { replace: true });
+        return;
+      }
       const authUser = await login(email, password, role);
       handleRedirectAfterLogin(authUser, role === 'worker');
     } catch (err) {
@@ -688,6 +694,21 @@ export default function Login({ initialPortal, initialMode }) {
                 <Wrench size={16} />
                 <span>{t('auth.worker', 'Service provider')}</span>
               </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={role === 'admin'}
+                className={`segmented-btn ${role === 'admin' ? 'active admin' : ''}`}
+                onClick={() => {
+                  setRole('admin');
+                  setRoleMismatchError('');
+                  setGeneralError('');
+                }}
+              >
+                <ShieldCheck size={16} />
+                <span>{t('auth.admin', 'Admin')}</span>
+              </button>
             </div>
 
             {/* Lockout Warning Banner */}
@@ -712,7 +733,19 @@ export default function Login({ initialPortal, initialMode }) {
             {roleMismatchError && (
               <div className="auth-alert auth-alert-warning" role="alert">
                 <AlertCircle size={18} style={{ flexShrink: 0 }} />
-                <div>{roleMismatchError}</div>
+                <div>
+                  {roleMismatchError}
+                  {roleMismatchError.toLowerCase().includes('admin') && (
+                    <Link to="/admin/login" style={{ color: '#0284c7', fontWeight: 600, marginLeft: '6px' }}>
+                      Go to Admin Login &rarr;
+                    </Link>
+                  )}
+                  {roleMismatchError.toLowerCase().includes('worker') && (
+                    <Link to="/worker/login" style={{ color: '#0284c7', fontWeight: 600, marginLeft: '6px' }}>
+                      Go to Technician Login &rarr;
+                    </Link>
+                  )}
+                </div>
               </div>
             )}
 
@@ -724,24 +757,28 @@ export default function Login({ initialPortal, initialMode }) {
               </div>
             )}
 
-            {/* Official Google Button */}
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => setGeneralError('Google sign-in could not be completed. Please try again.')}
-                theme="outline"
-                size="large"
-                shape="rectangular"
-                width="100%"
-                text="continue_with"
-                disabled={submitting || googleLoading || !!lockoutInfo}
-              />
-            </div>
+            {/* Official Google Button (Customer and Worker only) */}
+            {role !== 'admin' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={() => setGeneralError('Google sign-in could not be completed. Please try again.')}
+                    theme="outline"
+                    size="large"
+                    shape="rectangular"
+                    width="100%"
+                    text="continue_with"
+                    disabled={submitting || googleLoading || !!lockoutInfo}
+                  />
+                </div>
 
-            {/* Divider */}
-            <div className="auth-divider">
-              <span className="auth-divider-text">{t('auth.or_sign_in_email', 'or sign in with email')}</span>
-            </div>
+                {/* Divider */}
+                <div className="auth-divider">
+                  <span className="auth-divider-text">{t('auth.or_sign_in_email', 'or sign in with email')}</span>
+                </div>
+              </>
+            )}
 
             {/* Email + Password Form */}
             <form className="auth-form" onSubmit={handleSubmit} noValidate>
@@ -835,7 +872,11 @@ export default function Login({ initialPortal, initialMode }) {
                 {submitting ? (
                   <span>Signing in...</span>
                 ) : (
-                  <span>{t('auth.sign_in', 'Sign in')}</span>
+                  <span>
+                    {role === 'admin'
+                      ? 'Sign in as Administrator'
+                      : t('auth.sign_in', 'Sign in')}
+                  </span>
                 )}
               </button>
             </form>
@@ -843,7 +884,11 @@ export default function Login({ initialPortal, initialMode }) {
             {/* Footer Links & ISO Security Note */}
             <div className="auth-card-footer">
               <div className="auth-footer-prompt">
-                {role === 'customer' ? (
+                {role === 'admin' ? (
+                  <span style={{ fontSize: '13px', color: '#64748b' }}>
+                    SmartFix Central Administration Authority
+                  </span>
+                ) : role === 'customer' ? (
                   <>
                     <span>New to SmartFix? </span>
                     <button

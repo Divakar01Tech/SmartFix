@@ -199,9 +199,12 @@ export const AuthProvider = ({ children }) => {
     return authUser;
   };
 
-  // 3. General Login (routes to customer or worker based on target role)
+  // 3. General Login (routes to customer, worker, or admin based on target role)
   const login = async (email, password, role = 'customer') => {
     const norm = normalizeRole(role);
+    if (norm === 'admin') {
+      return adminLogin(email, password);
+    }
     if (norm === 'worker') {
       return workerLogin(email, password);
     }
@@ -239,7 +242,7 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  // 5. Admin Step 1 Login
+  // 5. Admin Direct Login
   const adminLogin = async (email, password) => {
     const res = await fetch(`${getApiBase()}/admin/auth/login`, {
       method: 'POST',
@@ -258,6 +261,16 @@ export const AuthProvider = ({ children }) => {
       err.remainingMinutes = data.remainingMinutes;
       err.status = res.status;
       throw err;
+    }
+
+    if (data.token && data.user) {
+      const authUser = data.user;
+      setPortalAuth('admin', data.token, authUser);
+      localStorage.setItem('smartfix_token', data.token);
+      setAdminUser(authUser);
+      setAdminToken(data.token);
+      reconnectSocketForRole('admin');
+      return authUser;
     }
 
     return data;

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import OtpInput from '../components/OtpInput';
 import {
   ShieldAlert,
   Lock,
@@ -11,31 +10,20 @@ import {
   EyeOff,
   AlertCircle,
   WifiOff,
-  Clock,
   ArrowLeft,
   KeyRound,
-  CheckCircle,
 } from 'lucide-react';
 import './AdminLogin.css';
 
 export default function AdminLogin() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { adminLogin, adminVerifyOtp } = useAuth();
-
-  // Step 1: 'credentials', Step 2: 'otp'
-  const [step, setStep] = useState(1);
+  const { adminLogin, adminUser, adminToken } = useAuth();
 
   // Form Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [otp, setOtp] = useState('');
-
-  // Challenge Token & State from Step 1
-  const [adminOtpToken, setAdminOtpToken] = useState('');
-  const [maskedEmail, setMaskedEmail] = useState('');
-  const [devOtp, setDevOtp] = useState('');
 
   // UI & Loading States
   const [loading, setLoading] = useState(false);
@@ -47,9 +35,12 @@ export default function AdminLogin() {
   const [lockoutInfo, setLockoutInfo] = useState(null); // { lockUntil, remainingMinutes }
   const [lockoutSecondsLeft, setLockoutSecondsLeft] = useState(0);
 
-  // Step 2 Timers (10 minutes = 600s)
-  const [otpTimer, setOtpTimer] = useState(600);
-  const [resendTimer, setResendTimer] = useState(60); // 60s cooldown
+  // If already authenticated as admin, redirect to admin console
+  useEffect(() => {
+    if (adminUser && adminToken) {
+      navigate('/admin/dashboard', { replace: true });
+    }
+  }, [adminUser, adminToken, navigate]);
 
   // Offline detection listener
   useEffect(() => {
@@ -82,22 +73,10 @@ export default function AdminLogin() {
     return () => clearInterval(interval);
   }, [lockoutInfo]);
 
-  // Step 2 OTP countdown timers
-  useEffect(() => {
-    if (step !== 2) return;
-    const interval = setInterval(() => {
-      setOtpTimer((prev) => Math.max(0, prev - 1));
-      setResendTimer((prev) => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [step]);
-
   // Field blur validation
   const handleEmailBlur = () => {
-    if (!email) {
-      setFieldErrors((prev) => ({ ...prev, email: 'Admin email is required.' }));
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setFieldErrors((prev) => ({ ...prev, email: 'Enter a valid email address.' }));
+    if (!email.trim()) {
+      setFieldErrors((prev) => ({ ...prev, email: 'Admin email or phone is required.' }));
     } else {
       setFieldErrors((prev) => ({ ...prev, email: '' }));
     }
@@ -111,16 +90,14 @@ export default function AdminLogin() {
     }
   };
 
-  // Step 1: Submit Credentials
-  const handleCredentialsSubmit = async (e) => {
+  // Submit Credentials (Single-step direct login)
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setGeneralError('');
 
     const errors = {};
-    if (!email) {
+    if (!email.trim()) {
       errors.email = 'Admin email is required.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      errors.email = 'Enter a valid email address.';
     }
 
     if (!password) {
@@ -135,18 +112,8 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const res = await adminLogin(email, password);
-
-      if (res.step === 'otp_required' && res.adminOtpToken) {
-        setAdminOtpToken(res.adminOtpToken);
-        setMaskedEmail(res.emailMasked || email.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'));
-        if (res.devOtp) setDevOtp(res.devOtp);
-        setStep(2);
-        setOtpTimer(res.expiresInSeconds || 600);
-        setResendTimer(60);
-      } else {
-        setGeneralError('Unexpected response from administration service. Try again.');
-      }
+      await adminLogin(email, password);
+      navigate('/admin/dashboard', { replace: true });
     } catch (err) {
       if (err.locked) {
         setLockoutInfo({
@@ -159,50 +126,6 @@ export default function AdminLogin() {
       } else {
         setGeneralError(err.message || 'Invalid administrator credentials. Verify your email and password.');
       }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Step 2: Submit OTP
-  const handleOtpSubmit = async (e) => {
-    e.preventDefault();
-    setGeneralError('');
-
-    if (!otp || otp.length !== 6) {
-      setGeneralError('Enter all 6 digits of the authentication code.');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      await adminVerifyOtp(otp, adminOtpToken);
-      navigate('/admin/dashboard', { replace: true });
-    } catch (err) {
-      setGeneralError(err.message || 'Authentication code invalid or expired. Try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Step 2: Resend Code
-  const handleResendOtp = async () => {
-    if (resendTimer > 0 || loading) return;
-    setLoading(true);
-    setGeneralError('');
-
-    try {
-      const res = await adminLogin(email, password);
-      if (res.adminOtpToken) {
-        setAdminOtpToken(res.adminOtpToken);
-        if (res.devOtp) setDevOtp(res.devOtp);
-        setOtp('');
-        setOtpTimer(res.expiresInSeconds || 600);
-        setResendTimer(60);
-      }
-    } catch (err) {
-      setGeneralError(err.message || 'Unable to dispatch a new verification code. Try again shortly.');
     } finally {
       setLoading(false);
     }
@@ -249,14 +172,10 @@ export default function AdminLogin() {
             <span>SmartFix Central Authority</span>
           </div>
           <h1 id="admin-title" className="admin-card-title">
-            {step === 1
-              ? t('auth.admin_login_title', 'Admin Control Portal')
-              : t('auth.admin_step2_title', 'Two-Factor Verification')}
+            {t('auth.admin_login_title', 'Admin Control Portal')}
           </h1>
           <p className="admin-card-subtitle">
-            {step === 1
-              ? t('auth.admin_subtitle', 'Restricted access for SmartFix administrative personnel only')
-              : t('auth.admin_step2_desc', 'Enter the 6-digit code sent to your registered admin email.')}
+            {t('auth.admin_subtitle', 'Restricted access for SmartFix administrative personnel only')}
           </p>
         </header>
 
@@ -268,182 +187,101 @@ export default function AdminLogin() {
           </div>
         )}
 
-        {/* STEP 1: CREDENTIALS FORM */}
-        {step === 1 && (
-          <form onSubmit={handleCredentialsSubmit} noValidate>
-            <div className="admin-form-group">
-              <label htmlFor="admin-email">
-                {t('auth.email_label', 'Admin email address')}
-              </label>
-              <div className="admin-input-wrapper">
-                <span className="admin-input-icon"><Mail size={16} /></span>
-                <input
-                  id="admin-email"
-                  type="email"
-                  className={`admin-input ${fieldErrors.email ? 'has-error' : ''}`}
-                  placeholder="admin@smartfix.com"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: '' }));
-                  }}
-                  onBlur={handleEmailBlur}
-                  disabled={loading || (lockoutInfo && lockoutSecondsLeft > 0)}
-                  autoComplete="email"
-                  autoFocus
-                  required
-                />
-              </div>
-              {fieldErrors.email && (
-                <span className="admin-field-error" role="alert">
-                  {fieldErrors.email}
-                </span>
-              )}
+        {/* CREDENTIALS FORM */}
+        <form onSubmit={handleSubmit} noValidate>
+          <div className="admin-form-group">
+            <label htmlFor="admin-email">
+              {t('auth.email_label', 'Admin email address')}
+            </label>
+            <div className="admin-input-wrapper">
+              <span className="admin-input-icon"><Mail size={16} /></span>
+              <input
+                id="admin-email"
+                type="text"
+                className={`admin-input ${fieldErrors.email ? 'has-error' : ''}`}
+                placeholder="admin@smartfix.com"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: '' }));
+                }}
+                onBlur={handleEmailBlur}
+                disabled={loading || (lockoutInfo && lockoutSecondsLeft > 0)}
+                autoComplete="email"
+                autoFocus
+                required
+              />
             </div>
-
-            <div className="admin-form-group">
-              <label htmlFor="admin-password">
-                {t('auth.password_label', 'Password')}
-              </label>
-              <div className="admin-input-wrapper">
-                <span className="admin-input-icon"><Lock size={16} /></span>
-                <input
-                  id="admin-password"
-                  type={showPassword ? 'text' : 'password'}
-                  className={`admin-input ${fieldErrors.password ? 'has-error' : ''}`}
-                  placeholder="••••••••••••"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }));
-                  }}
-                  onBlur={handlePasswordBlur}
-                  disabled={loading || (lockoutInfo && lockoutSecondsLeft > 0)}
-                  autoComplete="current-password"
-                  required
-                />
-                <button
-                  type="button"
-                  className="admin-input-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  tabIndex="-1"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              {fieldErrors.password && (
-                <span className="admin-field-error" role="alert">
-                  {fieldErrors.password}
-                </span>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              className="admin-btn-primary"
-              disabled={loading || (lockoutInfo && lockoutSecondsLeft > 0)}
-            >
-              {loading ? (
-                <>
-                  <span className="admin-spinner" aria-hidden="true"></span>
-                  <span>Verifying credentials...</span>
-                </>
-              ) : (
-                <>
-                  <KeyRound size={16} />
-                  <span>{t('auth.admin_step1_btn', 'Authenticate Credentials')}</span>
-                </>
-              )}
-            </button>
-          </form>
-        )}
-
-        {/* STEP 2: EMAIL OTP VERIFICATION */}
-        {step === 2 && (
-          <form onSubmit={handleOtpSubmit} className="admin-otp-section" noValidate>
-            <p className="admin-otp-instruction">
-              Authentication code dispatched to <strong>{maskedEmail}</strong>. Code valid for 10 minutes.
-            </p>
-
-            <div style={{ fontSize: '12px', color: '#94a3b8', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid #334155', borderRadius: '6px', padding: '8px 12px', marginBottom: '16px', textAlign: 'left', lineHeight: '1.4' }}>
-              <span>ℹ️ <strong>Email delivery note:</strong> In Gmail, also check your <strong>All Mail</strong>, <strong>Updates</strong>, or <strong>Spam</strong> folder if the notification is delayed.</span>
-            </div>
-
-            {devOtp && (
-              <div style={{ fontSize: '13px', color: '#38bdf8', background: 'rgba(14, 165, 233, 0.1)', border: '1px solid rgba(14, 165, 233, 0.3)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>🔑 <strong>Test Code:</strong> <code style={{ letterSpacing: '2px', fontWeight: 'bold', color: '#ff4d6d' }}>{devOtp}</code></span>
-                <button
-                  type="button"
-                  onClick={() => setOtp(devOtp)}
-                  style={{ background: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 10px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  Auto-fill
-                </button>
-              </div>
-            )}
-
-            <OtpInput
-              value={otp}
-              onChange={(val) => {
-                setOtp(val);
-                if (generalError) setGeneralError('');
-              }}
-              disabled={loading}
-              theme="dark"
-              autoFocus
-            />
-
-            <div className="admin-otp-meta">
-              <span className="admin-otp-timer">
-                <Clock size={14} />
-                <span>Expires in <strong>{formatTime(otpTimer)}</strong></span>
+            {fieldErrors.email && (
+              <span className="admin-field-error" role="alert">
+                {fieldErrors.email}
               </span>
+            )}
+          </div>
 
+          <div className="admin-form-group">
+            <label htmlFor="admin-password">
+              {t('auth.password_label', 'Password')}
+            </label>
+            <div className="admin-input-wrapper">
+              <span className="admin-input-icon"><Lock size={16} /></span>
+              <input
+                id="admin-password"
+                type={showPassword ? 'text' : 'password'}
+                className={`admin-input ${fieldErrors.password ? 'has-error' : ''}`}
+                placeholder="••••••••••••"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }));
+                }}
+                onBlur={handlePasswordBlur}
+                disabled={loading || (lockoutInfo && lockoutSecondsLeft > 0)}
+                autoComplete="current-password"
+                required
+              />
               <button
                 type="button"
-                className="admin-resend-btn"
-                onClick={handleResendOtp}
-                disabled={resendTimer > 0 || loading}
+                className="admin-input-toggle"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                tabIndex="-1"
               >
-                {resendTimer > 0
-                  ? `Resend in ${resendTimer}s`
-                  : t('auth.resend_otp', 'Resend code')}
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
+            {fieldErrors.password && (
+              <span className="admin-field-error" role="alert">
+                {fieldErrors.password}
+              </span>
+            )}
+          </div>
 
-            <button
-              type="submit"
-              className="admin-btn-primary"
-              disabled={loading || otp.length !== 6}
-            >
-              {loading ? (
-                <>
-                  <span className="admin-spinner" aria-hidden="true"></span>
-                  <span>Authenticating session...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle size={16} />
-                  <span>{t('auth.admin_verify_btn', 'Verify & Enter Admin Console')}</span>
-                </>
-              )}
-            </button>
+          <button
+            type="submit"
+            className="admin-btn-primary"
+            disabled={loading || (lockoutInfo && lockoutSecondsLeft > 0)}
+          >
+            {loading ? (
+              <>
+                <span className="admin-spinner" aria-hidden="true"></span>
+                <span>Authenticating session...</span>
+              </>
+            ) : (
+              <>
+                <KeyRound size={16} />
+                <span>Sign In to Admin Console</span>
+              </>
+            )}
+          </button>
 
-            <button
-              type="button"
-              className="admin-back-btn"
-              onClick={() => {
-                setStep(1);
-                setOtp('');
-                setGeneralError('');
-              }}
-            >
+          <div style={{ textAlign: 'center', marginTop: '16px' }}>
+            <Link to="/" className="admin-back-btn">
               <ArrowLeft size={14} />
-              <span>Back to credentials</span>
-            </button>
-          </form>
-        )}
+              <span>Back to SmartFix Home</span>
+            </Link>
+          </div>
+        </form>
 
         <footer className="admin-card-footer">
           <p className="admin-footer-text">

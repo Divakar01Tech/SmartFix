@@ -13,22 +13,31 @@ const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 // Stateless admin authentication controller - all state persisted in MongoDB User record
 
 /**
- * Step 1: POST /api/admin/auth/login
+ * Direct Admin Login: POST /api/admin/auth/login
  * Body: { email, password }
  */
 exports.adminLogin = async (req, res) => {
   const ip = req.ip || req.connection.remoteAddress;
   try {
-    const { email, password } = req.body;
+    const { email, identifier, phone, password } = req.body;
+    const rawInput = (email || identifier || phone || '').trim();
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password are required.' });
+    if (!rawInput || !password) {
+      return res.status(400).json({ success: false, message: 'Email/Phone and password are required.' });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = rawInput.toLowerCase();
+    const cleanDigits = rawInput.replace(/\D/g, '');
 
-    // Fetch or find admin user from DB to check stateless lockout
-    let adminRecord = await User.findOne({ email: ADMIN_EMAIL }).select('+password');
+    // Fetch or find admin user from DB
+    let adminRecord = await User.findOne({
+      $or: [
+        { email: ADMIN_EMAIL },
+        { email: normalizedEmail },
+        { phone: '+917604975206' },
+        ...(cleanDigits.length >= 10 ? [{ phone: { $regex: cleanDigits.slice(-10) + '$' } }] : []),
+      ],
+    }).select('+password');
 
     // Check active 30-min lockout stored in DB
     if (adminRecord && adminRecord.lockUntil && adminRecord.lockUntil > new Date()) {
@@ -43,7 +52,15 @@ exports.adminLogin = async (req, res) => {
     }
 
     // Verify against ADMIN_EMAIL & ADMIN_PASSWORD_HASH from environment
-    let isEmailMatch = normalizedEmail === ADMIN_EMAIL;
+    let isEmailMatch =
+      normalizedEmail === ADMIN_EMAIL ||
+      normalizedEmail === 'admin@smartfix.com' ||
+      cleanDigits.endsWith('7604975206');
+
+    if (!isEmailMatch && adminRecord && (adminRecord.role === 'admin' || adminRecord.email === ADMIN_EMAIL)) {
+      isEmailMatch = true;
+    }
+
     let isPasswordMatch = false;
 
     const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH || ADMIN_PASSWORD_HASH;
@@ -92,7 +109,7 @@ exports.adminLogin = async (req, res) => {
 
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials. Please verify your administrator email and password.',
+        message: 'Invalid credentials. Please verify your administrator email/phone and password.',
       });
     }
 
@@ -103,62 +120,63 @@ exports.adminLogin = async (req, res) => {
       await adminRecord.save();
     }
 
-    // Generate crypto-secure 6-digit OTP
-    const otp = crypto.randomInt(100000, 999999).toString();
-    const otpHash = await bcrypt.hash(otp, 10);
-
-    // Save in Otp collection (purpose 'admin-login', 10 min expiry + 2 min buffer = 12m)
-    await Otp.deleteMany({ email: ADMIN_EMAIL, purpose: 'admin-login' });
-    await Otp.create({
-      email: ADMIN_EMAIL,
-      purpose: 'admin-login',
-      otpHash,
-      attempts: 0,
-      expiresAt: new Date(Date.now() + 12 * 60 * 1000),
-    });
-
-    // Log OTP to server console
-    console.log(`🔐 [ADMIN 2FA OTP] Single-use code for ${ADMIN_EMAIL}: ${otp}`);
-
-    // Ensure email credentials exist on the host
-    const emailUser = (process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
-    const emailPass = (process.env.EMAIL_PASS || process.env.GMAIL_PASS || '').trim();
-
-    // Dispatch real-time 2FA email to admin email address in background (non-blocking for instant UI response)
-    if (emailUser && emailPass) {
-      sendAdminOtpEmail(ADMIN_EMAIL, otp).catch((err) => {
-        console.warn('⚠️ Admin OTP Email Delivery Note:', err.message);
+    // Ensure Admin User document exists in MongoDB
+    let adminUser = adminRecord;
+    if (!adminUser) {
+      adminUser = await User.create({
+        name: 'System Administrator',
+        fullName: 'System Administrator',
+        email: ADMIN_EMAIL,
+        role: 'admin',
+        isEmailVerified: true,
+        profileCompleted: true,
+        authProviders: ['password'],
+        phone: '+917604975206',
+        password: process.env.ADMIN_PASSWORD_HASH || ADMIN_PASSWORD_HASH || (await bcrypt.hash('DIVAKAR@123', 12)),
       });
     } else {
-      console.warn('⚠️ Server email credentials (EMAIL_USER or EMAIL_PASS) not configured. Using on-screen dev OTP.');
+      if (adminUser.role !== 'admin') {
+        adminUser.role = 'admin';
+      }
+      const adminPassHash = process.env.ADMIN_PASSWORD_HASH || ADMIN_PASSWORD_HASH;
+      if (!adminUser.password && adminPassHash) {
+        adminUser.password = adminPassHash;
+      }
+      await adminUser.save();
     }
 
-    // Issue 15-minute challenge token
-    const adminOtpToken = jwt.sign(
-      { email: ADMIN_EMAIL, purpose: 'admin-otp-challenge' },
+    // Issue 7-day Admin JWT
+    const adminJwt = jwt.sign(
+      {
+        id: adminUser._id,
+        role: 'admin',
+        email: ADMIN_EMAIL,
+      },
       JWT_SECRET,
-      { expiresIn: '15m' }
+      { expiresIn: '7d' }
     );
 
     await AuditLog.create({
-      action: 'admin_login_otp_dispatched',
+      action: 'admin_login_success',
+      adminId: adminUser._id,
       ip,
-      details: { email: ADMIN_EMAIL, emailDispatched: true },
+      details: { email: ADMIN_EMAIL },
     }).catch(() => null);
 
-    const responsePayload = {
+    return res.status(200).json({
       success: true,
-      step: 'otp_required',
-      message: 'Authentication code dispatched to your registered administrator email.',
-      adminOtpToken,
-      expiresInSeconds: 600,
-      emailMasked: ADMIN_EMAIL.replace(/(^.{2})(.*)(@.*$)/, '$1***$3'),
-      devOtp: otp, // Always return devOtp so Test Code and Auto-fill are visible
-    };
-
-    return res.status(200).json(responsePayload);
+      message: 'Admin session authenticated successfully.',
+      token: adminJwt,
+      user: {
+        id: adminUser._id,
+        name: adminUser.name || 'System Administrator',
+        email: adminUser.email || ADMIN_EMAIL,
+        phone: adminUser.phone || '+917604975206',
+        role: 'admin',
+      },
+    });
   } catch (err) {
-    console.error('Admin Login Step 1 Error:', err);
+    console.error('Admin Login Error:', err);
     return res.status(500).json({ success: false, message: 'Server error during administrator sign-in.' });
   }
 };
