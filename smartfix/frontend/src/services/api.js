@@ -951,7 +951,7 @@ export const apiService = {
 
   workerLogout: async () => {
     try {
-      const token = localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+      const token = getPortalToken('worker') || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
       await fetch(`${API_BASE}/worker/auth/logout`, {
         method: 'POST',
         headers: { 'Authorization': token ? `Bearer ${token}` : '' },
@@ -960,7 +960,7 @@ export const apiService = {
   },
 
   workerGetMe: async (token) => {
-    const authToken = token || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const authToken = token || getPortalToken('worker') || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
     const res = await fetch(`${API_BASE}/worker/me`, {
       headers: { 'Authorization': `Bearer ${authToken}` },
     });
@@ -970,7 +970,7 @@ export const apiService = {
   },
 
   workerUploadKyc: async (formData, token) => {
-    const authToken = token || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const authToken = token || getPortalToken('worker') || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
     const res = await fetch(`${API_BASE}/worker/kyc/upload`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${authToken}` },
@@ -982,14 +982,25 @@ export const apiService = {
   },
 
   workerInterviewStart: async (category, language, token) => {
-    const authToken = token || sessionStorage.getItem('worker_signup_token') || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const authToken =
+      token ||
+      sessionStorage.getItem('worker_signup_token') ||
+      localStorage.getItem('worker_signup_token') ||
+      getPortalToken('worker') ||
+      localStorage.getItem('smartfix_worker_token') ||
+      localStorage.getItem('smartfix_token');
+
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    if (authToken && authToken !== 'null' && authToken !== 'undefined') {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
     const res = await fetch(`${API_BASE}/worker/interview/start`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({ category, language }),
+      headers,
+      body: JSON.stringify({ category, language, signupToken: authToken }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to start interview.');
@@ -997,14 +1008,25 @@ export const apiService = {
   },
 
   workerInterviewAnswer: async (sessionId, answerText, language, token) => {
-    const authToken = token || sessionStorage.getItem('worker_signup_token') || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const authToken =
+      token ||
+      sessionStorage.getItem('worker_signup_token') ||
+      localStorage.getItem('worker_signup_token') ||
+      getPortalToken('worker') ||
+      localStorage.getItem('smartfix_worker_token') ||
+      localStorage.getItem('smartfix_token');
+
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    if (authToken && authToken !== 'null' && authToken !== 'undefined') {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
     const res = await fetch(`${API_BASE}/worker/interview/answer`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({ sessionId, answerText, language }),
+      headers,
+      body: JSON.stringify({ sessionId, answerText, language, signupToken: authToken }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to submit interview answer.');
@@ -1012,7 +1034,7 @@ export const apiService = {
   },
 
   workerToggleAvailability: async (availability, token) => {
-    const authToken = token || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const authToken = token || getPortalToken('worker') || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
     const res = await fetch(`${API_BASE}/worker/availability`, {
       method: 'PATCH',
       headers: {
@@ -1027,7 +1049,7 @@ export const apiService = {
   },
 
   workerGetEarnings: async (token) => {
-    const authToken = token || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
+    const authToken = token || getPortalToken('worker') || localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token');
     const res = await fetch(`${API_BASE}/worker/earnings`, {
       headers: { 'Authorization': `Bearer ${authToken}` },
     });

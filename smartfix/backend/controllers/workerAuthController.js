@@ -252,7 +252,7 @@ exports.registerWorker = async (req, res) => {
       token = req.body.signupToken;
     }
 
-    if (!token) {
+    if (!token || token === 'undefined' || token === 'null') {
       return res.status(401).json({ success: false, message: 'Valid signup token is required to register.' });
     }
 
@@ -513,26 +513,41 @@ exports.registerWorker = async (req, res) => {
 exports.loginWorker = async (req, res) => {
   try {
     const { identifier, email, password } = req.body;
-    const rawEmail = email || identifier;
+    const rawInput = (email || identifier || '').toString().trim();
 
-    if (!rawEmail || !password) {
-      return res.status(400).json({ success: false, message: 'Please provide your registered email and password.' });
+    if (!rawInput || !password) {
+      return res.status(400).json({ success: false, message: 'Please provide your registered email or phone number and password.' });
     }
 
-    const cleanEmail = rawEmail.toString().trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
+    const cleanInput = rawInput.toLowerCase();
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanInput);
+    const formattedPhone = formatPhoneE164(rawInput);
+    const cleanDigits = rawInput.replace(/\D/g, '').slice(-10);
+
+    if (!isEmail && !formattedPhone && cleanDigits.length < 10) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid email address or 10-digit mobile number.' });
     }
 
-    // Role Enforcement & Generic error: Look up exclusively by email among worker roles
+    const query = isEmail
+      ? { email: cleanInput }
+      : {
+          $or: [
+            { phone: formattedPhone },
+            { phone: cleanDigits },
+            { phone: rawInput },
+            { phone: `+91${cleanDigits}` },
+          ].filter((cond) => Object.values(cond)[0]),
+        };
+
+    // Role Enforcement & Generic error: Look up exclusively by email or phone among worker roles
     const worker = await User.findOne({
-      email: cleanEmail,
+      ...query,
       role: { $in: ['worker', 'handyman'] },
     }).select('+password');
 
     // 1. Role mismatch check or generic credential check
     if (!worker) {
-      const anyUser = await User.findOne({ email: cleanEmail });
+      const anyUser = await User.findOne(query);
       if (anyUser) {
         if (anyUser.role === 'customer') {
           return res.status(403).json({

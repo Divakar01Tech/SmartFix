@@ -172,12 +172,17 @@ export const AuthProvider = ({ children }) => {
     return authUser;
   };
 
-  // 2. Worker Login (Email + Password)
-  const workerLogin = async (email, password) => {
+  // 2. Worker Login (Email or Phone + Password)
+  const workerLogin = async (identifier, password) => {
+    const cleanId = (identifier || '').toString().trim();
     const res = await fetch(`${getApiBase()}/worker/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      body: JSON.stringify({
+        email: cleanId,
+        identifier: cleanId,
+        password,
+      }),
     });
 
     const data = await res.json();

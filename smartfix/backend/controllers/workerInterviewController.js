@@ -18,7 +18,9 @@ const extractUserOrEmailFromToken = (req) => {
     token = req.body.token || req.body.signupToken;
   }
 
-  if (!token) return { error: 'Authentication token is required for interview.' };
+  if (!token || token === 'undefined' || token === 'null') {
+    return { error: 'Authentication token is required for interview.' };
+  }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);

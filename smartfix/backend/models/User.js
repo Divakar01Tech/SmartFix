@@ -533,6 +533,7 @@ userSchema.methods.toSafeWorker = function () {
     categories: catList,
     trade: this.trade || catList[0] || '',
     verificationStatus: this.verificationStatus || 'pending_verification',
+    isApproved: !!this.isApproved || this.verificationStatus === 'approved' || this.verificationStatus === 'Verified' || this.verificationStatus === 'verified',
     rejectionReason: this.rejectionReason || '',
     isEmailVerified: !!this.isEmailVerified,
     profileCompleted: !!this.profileCompleted,

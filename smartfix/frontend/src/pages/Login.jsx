@@ -221,7 +221,18 @@ export default function Login({ initialPortal, initialMode }) {
 
   const handleEmailBlur = () => {
     if (!email) {
-      setErrors((prev) => ({ ...prev, email: 'Email address is required.' }));
+      setErrors((prev) => ({
+        ...prev,
+        email: role === 'worker' ? 'Email or mobile number is required.' : 'Email address is required.',
+      }));
+    } else if (role === 'worker') {
+      const cleanDigits = email.trim().replace(/\D/g, '');
+      const isPhone = /^[6-9]\d{9}$/.test(cleanDigits);
+      if (!isPhone && !validateEmailFormat(email.trim())) {
+        setErrors((prev) => ({ ...prev, email: 'Please enter a valid email or 10-digit mobile number.' }));
+      } else {
+        setErrors((prev) => ({ ...prev, email: '' }));
+      }
     } else if (!validateEmailFormat(email)) {
       setErrors((prev) => ({ ...prev, email: 'Please enter a valid email address.' }));
     } else {
@@ -241,7 +252,7 @@ export default function Login({ initialPortal, initialMode }) {
   const handleRedirectAfterLogin = (authUser, isWorker = false) => {
     if (isWorker) {
       const status = (authUser.verificationStatus || '').toLowerCase();
-      if (status === 'approved' || status === 'verified') {
+      if (status === 'approved' || status === 'verified' || authUser.isApproved === true) {
         navigate('/worker/dashboard');
       } else if (status === 'rejected') {
         navigate('/worker/rejected');
@@ -260,8 +271,17 @@ export default function Login({ initialPortal, initialMode }) {
     setRoleMismatchError('');
 
     const newErrors = {};
-    if (!email) newErrors.email = 'Email address is required.';
-    else if (!validateEmailFormat(email)) newErrors.email = 'Please enter a valid email address.';
+    if (!email) {
+      newErrors.email = role === 'worker' ? 'Email or mobile number is required.' : 'Email address is required.';
+    } else if (role === 'worker') {
+      const cleanDigits = email.trim().replace(/\D/g, '');
+      const isPhone = /^[6-9]\d{9}$/.test(cleanDigits);
+      if (!isPhone && !validateEmailFormat(email.trim())) {
+        newErrors.email = 'Please enter a valid email or 10-digit mobile number.';
+      }
+    } else if (!validateEmailFormat(email)) {
+      newErrors.email = 'Please enter a valid email address.';
+    }
 
     if (!password) newErrors.password = 'Password is required.';
 
@@ -785,17 +805,21 @@ export default function Login({ initialPortal, initialMode }) {
               {/* Email Field */}
               <div className="auth-form-group">
                 <label htmlFor="login-email" className="auth-label">
-                  {t('auth.email_label', 'Email address')}
+                  {role === 'worker' ? 'Email or Mobile Number' : t('auth.email_label', 'Email address')}
                 </label>
                 <div className="auth-input-wrapper">
                   <input
                     id="login-email"
-                    type="email"
-                    autoComplete="email"
+                    type={role === 'worker' ? 'text' : 'email'}
+                    autoComplete="username"
                     className={`auth-input ${role === 'worker' ? 'worker' : ''} ${
                       errors.email ? 'is-invalid' : ''
                     }`}
-                    placeholder="name@example.com"
+                    placeholder={
+                      role === 'worker'
+                        ? 'email@example.com or 10-digit mobile'
+                        : 'name@example.com'
+                    }
                     value={email}
                     onChange={(e) => {
                       setEmail(e.target.value);

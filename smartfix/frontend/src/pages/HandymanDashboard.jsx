@@ -616,7 +616,7 @@ const HandymanDashboard = ({ initialTab }) => {
               type="button"
               className="toggle-switch-btn"
               onClick={() => {
-                if (user?.verificationStatus !== 'Verified') {
+                if (!isApprovedWorker) {
                   setToastMessage('⚠️ You cannot go online until your account is approved by Admin.');
                   return;
                 }
@@ -652,7 +652,7 @@ const HandymanDashboard = ({ initialTab }) => {
       )}
 
       {/* KYC Verification Pending or Rejected Banner */}
-      {user?.verificationStatus === 'Pending' && (
+      {!isApprovedWorker && (user?.verificationStatus?.toLowerCase() === 'pending' || user?.verificationStatus?.toLowerCase() === 'pending_verification') && (
         <div className="alert alert-warning d-flex align-items-center justify-content-between p-3 rounded-4 shadow-sm border-0 mb-4" style={{ background: '#fff7ed', borderLeft: '6px solid #d97706' }}>
           <div className="d-flex align-items-center gap-3">
             <Clock size={28} color="#d97706" />
@@ -680,7 +680,7 @@ const HandymanDashboard = ({ initialTab }) => {
         </div>
       )}
 
-      {user?.verificationStatus === 'Rejected' && (
+      {!isApprovedWorker && user?.verificationStatus?.toLowerCase() === 'rejected' && (
         <div className="alert alert-danger d-flex align-items-center justify-content-between p-3 rounded-4 shadow-sm border-0 mb-4" style={{ background: '#fef2f2', borderLeft: '6px solid #dc2626' }}>
           <div className="d-flex align-items-center gap-3">
             <AlertTriangle size={28} color="#dc2626" />

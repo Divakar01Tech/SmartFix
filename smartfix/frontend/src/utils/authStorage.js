@@ -35,7 +35,15 @@ export const normalizeRole = (role) => {
  */
 export const getPortalToken = (role) => {
   const norm = normalizeRole(role);
-  return localStorage.getItem(STORAGE_KEYS[norm].token) || null;
+  let token = localStorage.getItem(STORAGE_KEYS[norm]?.token);
+  if (!token && norm === 'worker') {
+    token = localStorage.getItem('smartfix_worker_token') || localStorage.getItem('smartfix_token') || localStorage.getItem('token');
+  } else if (!token && norm === 'customer') {
+    token = localStorage.getItem('smartfix_customer_token') || localStorage.getItem('smartfix_token') || localStorage.getItem('token');
+  } else if (!token && norm === 'admin') {
+    token = localStorage.getItem('smartfix_admin_token') || localStorage.getItem('smartfix_token') || localStorage.getItem('token');
+  }
+  return token || null;
 };
 
 /**
@@ -44,7 +52,14 @@ export const getPortalToken = (role) => {
 export const getPortalUser = (role) => {
   const norm = normalizeRole(role);
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS[norm].user);
+    let raw = localStorage.getItem(STORAGE_KEYS[norm]?.user);
+    if (!raw && norm === 'worker') {
+      raw = localStorage.getItem('smartfix_worker') || localStorage.getItem('smartfix_user') || localStorage.getItem('user');
+    } else if (!raw && norm === 'customer') {
+      raw = localStorage.getItem('smartfix_customer') || localStorage.getItem('smartfix_user') || localStorage.getItem('user');
+    } else if (!raw && norm === 'admin') {
+      raw = localStorage.getItem('smartfix_admin') || localStorage.getItem('smartfix_user') || localStorage.getItem('user');
+    }
     return raw ? JSON.parse(raw) : null;
   } catch (err) {
     return null;
@@ -58,9 +73,30 @@ export const setPortalAuth = (role, token, user) => {
   const norm = normalizeRole(role);
   if (token) {
     localStorage.setItem(STORAGE_KEYS[norm].token, token);
+    if (norm === 'worker') {
+      localStorage.setItem('smartfix_worker_token', token);
+      localStorage.setItem('smartfix_token', token);
+    } else if (norm === 'customer') {
+      localStorage.setItem('smartfix_customer_token', token);
+      localStorage.setItem('smartfix_token', token);
+    } else if (norm === 'admin') {
+      localStorage.setItem('smartfix_admin_token', token);
+      localStorage.setItem('smartfix_token', token);
+    }
   }
   if (user) {
-    localStorage.setItem(STORAGE_KEYS[norm].user, JSON.stringify(user));
+    const userStr = typeof user === 'string' ? user : JSON.stringify(user);
+    localStorage.setItem(STORAGE_KEYS[norm].user, userStr);
+    if (norm === 'worker') {
+      localStorage.setItem('smartfix_worker', userStr);
+      localStorage.setItem('smartfix_user', userStr);
+    } else if (norm === 'customer') {
+      localStorage.setItem('smartfix_customer', userStr);
+      localStorage.setItem('smartfix_user', userStr);
+    } else if (norm === 'admin') {
+      localStorage.setItem('smartfix_admin', userStr);
+      localStorage.setItem('smartfix_user', userStr);
+    }
   }
 };
 
@@ -71,6 +107,29 @@ export const clearPortalAuth = (role) => {
   const norm = normalizeRole(role);
   localStorage.removeItem(STORAGE_KEYS[norm].token);
   localStorage.removeItem(STORAGE_KEYS[norm].user);
+  if (norm === 'worker') {
+    localStorage.removeItem('smartfix_worker_token');
+    localStorage.removeItem('smartfix_worker');
+    localStorage.removeItem('smartfix_token');
+    localStorage.removeItem('smartfix_user');
+    localStorage.removeItem('worker_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  } else if (norm === 'customer') {
+    localStorage.removeItem('smartfix_customer_token');
+    localStorage.removeItem('smartfix_customer');
+    localStorage.removeItem('smartfix_token');
+    localStorage.removeItem('smartfix_user');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  } else if (norm === 'admin') {
+    localStorage.removeItem('smartfix_admin_token');
+    localStorage.removeItem('smartfix_admin');
+    localStorage.removeItem('smartfix_token');
+    localStorage.removeItem('smartfix_user');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  }
 };
 
 /**

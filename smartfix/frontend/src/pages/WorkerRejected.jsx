@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { apiService } from '../services/api';
+import { getPortalUser, setPortalAuth, clearPortalAuth } from '../utils/authStorage';
 import './WorkerRejected.css';
 
 const WorkerRejected = () => {
@@ -10,8 +11,7 @@ const WorkerRejected = () => {
 
   const [worker, setWorker] = useState(() => {
     try {
-      const stored = localStorage.getItem('smartfix_worker');
-      return stored ? JSON.parse(stored) : null;
+      return getPortalUser('worker') || null;
     } catch (e) {
       return null;
     }
@@ -41,9 +41,9 @@ const WorkerRejected = () => {
         const fresh = await apiService.workerGetMe();
         if (fresh) {
           setWorker(fresh);
-          localStorage.setItem('smartfix_worker', JSON.stringify(fresh));
+          setPortalAuth('worker', null, fresh);
           const st = (fresh.verificationStatus || '').toLowerCase();
-          if (st === 'approved') {
+          if (st === 'approved' || st === 'verified' || fresh.isApproved === true) {
             navigate('/worker/dashboard');
           } else if (st === 'pending_verification' || st === 'pending') {
             navigate('/worker/pending');
@@ -182,13 +182,10 @@ const WorkerRejected = () => {
   };
 
   const handleLogout = async () => {
-    await apiService.workerLogout();
-    localStorage.removeItem('smartfix_worker_token');
-    localStorage.removeItem('smartfix_worker');
-    localStorage.removeItem('smartfix_token');
-    localStorage.removeItem('smartfix_user');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    try {
+      await apiService.workerLogout();
+    } catch (e) {}
+    clearPortalAuth('worker');
     navigate('/worker/login');
   };
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { apiService } from '../services/api';
+import { setPortalAuth, getPortalToken } from '../utils/authStorage';
 import tamilNaduLocations from '../data/tamilnadu-locations.json';
 import {
   Wrench,
@@ -447,6 +448,8 @@ const WorkerSignup = () => {
         );
       }
 
+      payload.append('signupToken', signupToken);
+
       console.log('Submitting worker registration payload to backend...');
       const res = await apiService.workerRegister(payload, signupToken);
       console.log('Worker registration success response:', res);
@@ -455,9 +458,14 @@ const WorkerSignup = () => {
       sessionStorage.removeItem('worker_signup_token');
       localStorage.removeItem('worker_signup_token');
 
-      // Save worker JWT and safe object
-      if (res.token) localStorage.setItem('smartfix_worker_token', res.token);
-      if (res.worker) localStorage.setItem('smartfix_worker', JSON.stringify(res.worker));
+      // Save worker JWT and safe object across isolated portal keys and legacy storage
+      if (res.token) {
+        setPortalAuth('worker', res.token, res.worker);
+        localStorage.setItem('smartfix_worker_token', res.token);
+      }
+      if (res.worker) {
+        localStorage.setItem('smartfix_worker', JSON.stringify(res.worker));
+      }
 
       // Transition to dedicated Welcome & Worker Satisfaction state
       const safeWorker = res.worker || {

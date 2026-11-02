@@ -228,6 +228,7 @@ exports.toSafeWorker = (worker) => {
     categories: catList,
     trade: w.trade || catList[0] || '',
     verificationStatus: w.verificationStatus || 'pending_verification',
+    isApproved: !!w.isApproved || w.verificationStatus === 'approved' || w.verificationStatus === 'Verified' || w.verificationStatus === 'verified',
     rejectionReason: w.rejectionReason || '',
     isEmailVerified: !!w.isEmailVerified,
     kyc: {

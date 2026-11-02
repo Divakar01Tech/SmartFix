@@ -106,7 +106,7 @@ const ProfileSettings = () => {
         location: form.location,
         preferredLanguage: form.preferredLanguage,
         theme: form.theme,
-        ...(user?.role === 'handyman' && {
+        ...(isWorker && {
           trade: form.trade,
           subServices: form.subServices,
           ratePerHour: Number(form.ratePerHour),
@@ -154,6 +154,7 @@ const ProfileSettings = () => {
   };
 
   const selectedCategoryObj = HOME_SERVICES.find((s) => s.name === form.trade) || HOME_SERVICES[0];
+  const isWorker = user?.role === 'handyman' || user?.role === 'worker';
 
   return (
     <div className="container profile-settings-page">
@@ -161,7 +162,7 @@ const ProfileSettings = () => {
       <div className="profile-header-banner">
         <div className="user-profile-header-left">
           <div className="profile-avatar-circle">
-            {user?.role === 'handyman' ? '👨‍🔧' : user?.role === 'admin' ? '🛡️' : '👤'}
+            {isWorker ? '👨‍🔧' : user?.role === 'admin' ? '🛡️' : '👤'}
           </div>
           <div>
             <h1>{user?.name || 'User Profile'}</h1>
@@ -175,7 +176,7 @@ const ProfileSettings = () => {
         </div>
 
         <div className="user-role-badge-large">
-          <ShieldCheck size={18} /> {user?.role === 'handyman' ? '🛠️ Handyman Pro' : user?.role === 'admin' ? '⚡ Platform Administrator' : '👤 Customer Account'}
+          <ShieldCheck size={18} /> {isWorker ? '🛠️ Handyman Pro' : user?.role === 'admin' ? '⚡ Platform Administrator' : '👤 Customer Account'}
         </div>
       </div>
 
@@ -199,7 +200,7 @@ const ProfileSettings = () => {
             <User size={18} /> General Details
           </button>
 
-          {user?.role === 'handyman' && (
+          {isWorker && (
             <>
               <button
                 type="button"
@@ -326,7 +327,7 @@ const ProfileSettings = () => {
             )}
 
             {/* HANDYMAN TRADE & SKILLS TAB */}
-            {activeTab === 'handyman' && user?.role === 'handyman' && (
+            {activeTab === 'handyman' && isWorker && (
               <div className="tab-pane">
                 <h3 className="tab-pane-title"><Wrench size={20} /> Trade Category & Service Rates</h3>
                 <p className="tab-pane-desc">Customize your handyman trade specialization, rates, and availability.</p>
@@ -425,12 +426,12 @@ const ProfileSettings = () => {
             )}
 
             {/* HANDYMAN DOCS TAB */}
-            {activeTab === 'kyc' && user?.role === 'handyman' && (
+            {activeTab === 'kyc' && isWorker && (
               <div className="tab-pane">
                 <h3 className="tab-pane-title"><ShieldCheck size={20} /> Document & Identity Verification</h3>
                 <p className="tab-pane-desc">Upload required government ID, license, and service registration to go live.</p>
 
-                {user?.verificationStatus === 'Verified' ? (
+                {user?.verificationStatus === 'Verified' || user?.verificationStatus === 'approved' || user?.verificationStatus === 'verified' || user?.isApproved === true ? (
                   <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '14px', borderRadius: '12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <ShieldCheck size={24} color="#059669" />
                     <div>
@@ -438,7 +439,7 @@ const ProfileSettings = () => {
                       <p style={{ margin: 0, fontSize: '0.83rem', color: '#15803d' }}>All documents are active and approved for service dispatch requests.</p>
                     </div>
                   </div>
-                ) : user?.verificationStatus === 'Rejected' ? (
+                ) : user?.verificationStatus === 'Rejected' || user?.verificationStatus === 'rejected' ? (
                   <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '14px', borderRadius: '12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <ShieldCheck size={24} color="#dc2626" />
                     <div>
@@ -658,7 +659,7 @@ const ProfileSettings = () => {
                   <div className="danger-card-header">
                     <Trash2 size={26} color="#dc2626" />
                     <div>
-                      <h4>Delete Account ({user?.role === 'handyman' ? 'Handyman Pro' : 'Customer Account'})</h4>
+                      <h4>Delete Account ({isWorker ? 'Handyman Pro' : 'Customer Account'})</h4>
                       <p>
                         Once deleted, your account cannot be recovered. You will be logged out immediately.
                       </p>
