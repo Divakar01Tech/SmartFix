@@ -9,16 +9,16 @@ const otpSendRateLimiter = (req, res, next) => next();
 // 3. OTP Verification Attempt Limiter — Disabled as per user request
 const otpVerifyRateLimiter = (req, res, next) => next();
 
-// Email OTP Limiters
+// Email OTP Limiters (relaxed in development for local testing)
 const emailOtpSendLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: process.env.NODE_ENV === 'production' ? 5 : 60,
   message: { message: 'Too many OTP requests from this IP, please try again after 15 minutes.' }
 });
 
 const emailOtpVerifyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: process.env.NODE_ENV === 'production' ? 10 : 100,
   message: { message: 'Too many OTP verification attempts, please try again after 15 minutes.' }
 });
 

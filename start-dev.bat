@@ -18,3 +18,4 @@ echo   Both servers launched!
 echo   Frontend: http://localhost:5173
 echo   Backend:  http://localhost:5000
 echo ============================================================
+
