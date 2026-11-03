@@ -17,16 +17,9 @@ const WorkerRejected = () => {
     }
   });
 
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'reupload' | 'retake_interview'
-  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'retake_interview'
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-
-  // KYC re-upload state
-  const [aadhaarFront, setAadhaarFront] = useState(null);
-  const [aadhaarBack, setAadhaarBack] = useState(null);
-  const [secondIdType, setSecondIdType] = useState('driving_license');
-  const [secondIdFile, setSecondIdFile] = useState(null);
 
   // Interview state for retake
   const [interviewSession, setInterviewSession] = useState(null);
@@ -54,61 +47,6 @@ const WorkerRejected = () => {
     fetchStatus();
   }, [navigate]);
 
-  const validateFile = (file) => {
-    if (!file) return 'File is required.';
-    const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
-    if (!validTypes.includes(file.type)) {
-      return 'Only JPG, PNG, or PDF files are accepted.';
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      return 'File size exceeds maximum limit of 5 MB.';
-    }
-    return null;
-  };
-
-  const handleKycSubmit = async (e) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    if (!aadhaarFront || !aadhaarBack || !secondIdFile) {
-      setErrorMessage(t('worker.rejected.all_docs_required', 'Please select Aadhaar Front, Aadhaar Back, and Secondary ID files.'));
-      return;
-    }
-
-    const frontErr = validateFile(aadhaarFront);
-    if (frontErr) return setErrorMessage(`Aadhaar Front: ${frontErr}`);
-
-    const backErr = validateFile(aadhaarBack);
-    if (backErr) return setErrorMessage(`Aadhaar Back: ${backErr}`);
-
-    const secondErr = validateFile(secondIdFile);
-    if (secondErr) return setErrorMessage(`Secondary ID: ${secondErr}`);
-
-    setLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('aadhaarFront', aadhaarFront);
-      formData.append('aadhaarBack', aadhaarBack);
-      formData.append('secondId', secondIdFile);
-      formData.append('secondIdType', secondIdType);
-
-      const res = await apiService.workerUploadKyc(formData);
-      if (res.success && res.worker) {
-        setWorker(res.worker);
-        localStorage.setItem('smartfix_worker', JSON.stringify(res.worker));
-        setSuccessMessage(t('worker.rejected.kyc_resubmitted', 'KYC documents successfully re-submitted. Your status is now Pending Review.'));
-        setTimeout(() => {
-          navigate('/worker/pending');
-        }, 1500);
-      }
-    } catch (err) {
-      setErrorMessage(err.message || 'Failed to re-upload KYC documents.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Start Interview Retake
   const startRetakeInterview = async () => {
     setInterviewLoading(true);
@@ -127,9 +65,11 @@ const WorkerRejected = () => {
           },
         ]);
         setActiveTab('retake_interview');
+      } else {
+        setErrorMessage(res.message || 'Unable to initialize interview.');
       }
     } catch (err) {
-      setErrorMessage(err.message || 'Failed to initialize AI interview.');
+      setErrorMessage(err.message || 'Failed to start interview.');
     } finally {
       setInterviewLoading(false);
     }
@@ -225,13 +165,7 @@ const WorkerRejected = () => {
             className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
             onClick={() => setActiveTab('overview')}
           >
-            📋 {t('worker.rejected.tab_actions', 'Remediation Steps')}
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'reupload' ? 'active' : ''}`}
-            onClick={() => setActiveTab('reupload')}
-          >
-            📤 {t('worker.rejected.tab_reupload', 'Re-Upload KYC')}
+            📋 {t('worker.rejected.tab_actions', 'Status Overview')}
           </button>
           <button
             className={`tab-btn ${activeTab === 'retake_interview' ? 'active' : ''}`}
@@ -240,7 +174,7 @@ const WorkerRejected = () => {
               else setActiveTab('retake_interview');
             }}
           >
-            🤖 {t('worker.rejected.tab_interview', 'Retake AI Interview')}
+            🤖 {t('worker.rejected.tab_interview', 'Retake Skill Interview')}
           </button>
         </div>
 
@@ -259,116 +193,48 @@ const WorkerRejected = () => {
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (
           <div className="overview-content">
+            {/* Notice: KYC Process Closed for Rejected Workers */}
+            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '14px', padding: '16px 20px', marginBottom: '20px', color: '#fca5a5' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <span style={{ fontSize: '1.3rem' }}>🚫</span>
+                <strong style={{ color: '#f87171', fontSize: '1rem' }}>
+                  {t('worker.rejected.kyc_closed_title', 'KYC Document Submission Closed')}
+                </strong>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#cbd5e1', lineHeight: '1.5' }}>
+                {t(
+                  'worker.rejected.kyc_closed_desc',
+                  'Because your profile was not approved by SmartFix Compliance, identity document upload privileges are permanently removed for this application. Unapproved or unskilled applicants are not eligible for KYC document verification.'
+                )}
+              </p>
+            </div>
+
             <p className="tab-lead">
               {t(
                 'worker.rejected.how_to_fix',
-                'You have the opportunity to update your records and resubmit your profile without registering from scratch:'
+                'If you wish to demonstrate that you are a certified and skilled technician, you may retake the technical skill assessment:'
               )}
             </p>
 
             <div className="action-cards-grid">
-              <div className="action-card" onClick={() => setActiveTab('reupload')}>
-                <div className="action-icon">📄</div>
-                <h3>{t('worker.rejected.fix_kyc_title', 'Update KYC Documents')}</h3>
-                <p>
-                  {t(
-                    'worker.rejected.fix_kyc_desc',
-                    'Upload clearer, government-issued photo identification (Aadhaar, DL, Voter ID, or PAN) in high resolution.'
-                  )}
-                </p>
-                <button className="btn btn-sm btn-outline-warning">
-                  {t('worker.rejected.reupload_btn', 'Re-Upload Files →')}
-                </button>
-              </div>
-
-              <div className="action-card" onClick={startRetakeInterview}>
+              <div className="action-card" onClick={startRetakeInterview} style={{ gridColumn: '1 / -1' }}>
                 <div className="action-icon">🧠</div>
-                <h3>{t('worker.rejected.fix_interview_title', 'Retake Skill Interview')}</h3>
+                <h3>{t('worker.rejected.fix_interview_title', 'Retake Practical Skill Assessment')}</h3>
                 <p>
                   {t(
                     'worker.rejected.fix_interview_desc',
-                    'Answer 5 technical questions demonstrating your safety awareness, tool knowledge, and troubleshooting logic.'
+                    'Answer 5 trade scenario questions to prove your technical diagnosis, practical tools knowledge, and safety awareness.'
                   )}
                 </p>
                 <button className="btn btn-sm btn-outline-warning">
-                  {t('worker.rejected.start_interview_btn', 'Start Interview →')}
+                  {t('worker.rejected.start_interview_btn', 'Start Skill Assessment →')}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* TAB 2: RE-UPLOAD KYC */}
-        {activeTab === 'reupload' && (
-          <form onSubmit={handleKycSubmit} className="reupload-form">
-            <h3 className="section-title">{t('worker.rejected.reupload_heading', 'Submit Updated Identity Documents')}</h3>
-            <p className="text-muted small mb-3">
-              {t('worker.rejected.file_spec', 'Maximum file size: 5 MB each. Supported formats: JPG, PNG, PDF.')}
-            </p>
-
-            <div className="upload-field-group mb-3">
-              <label>1. {t('worker.rejected.aadhaar_front', 'Aadhaar Card (Front Side)')} *</label>
-              <input
-                type="file"
-                className="form-control"
-                accept="image/jpeg,image/png,application/pdf"
-                onChange={(e) => setAadhaarFront(e.target.files[0] || null)}
-                required
-              />
-              {aadhaarFront && <small className="file-preview-label">📎 {aadhaarFront.name}</small>}
-            </div>
-
-            <div className="upload-field-group mb-3">
-              <label>2. {t('worker.rejected.aadhaar_back', 'Aadhaar Card (Back Side with Address)')} *</label>
-              <input
-                type="file"
-                className="form-control"
-                accept="image/jpeg,image/png,application/pdf"
-                onChange={(e) => setAadhaarBack(e.target.files[0] || null)}
-                required
-              />
-              {aadhaarBack && <small className="file-preview-label">📎 {aadhaarBack.name}</small>}
-            </div>
-
-            <div className="upload-field-group mb-3">
-              <label>3. {t('worker.rejected.second_id_type', 'Secondary Photo ID Type')} *</label>
-              <select
-                className="form-select mb-2"
-                value={secondIdType}
-                onChange={(e) => setSecondIdType(e.target.value)}
-              >
-                <option value="driving_license">Driving License</option>
-                <option value="voter_id">Voter ID</option>
-                <option value="pan_card">PAN Card</option>
-              </select>
-              <input
-                type="file"
-                className="form-control"
-                accept="image/jpeg,image/png,application/pdf"
-                onChange={(e) => setSecondIdFile(e.target.files[0] || null)}
-                required
-              />
-              {secondIdFile && <small className="file-preview-label">📎 {secondIdFile.name}</small>}
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-warning w-100 py-2 font-weight-bold"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-2" role="status"></span>
-                  {t('worker.rejected.uploading', 'Uploading securely...')}
-                </>
-              ) : (
-                `📤 ${t('worker.rejected.submit_kyc_btn', 'Submit Documents for Re-Evaluation')}`
-              )}
-            </button>
-          </form>
-        )}
-
-        {/* TAB 3: RETAKE INTERVIEW */}
+        {/* TAB 2: RETAKE INTERVIEW */}
         {activeTab === 'retake_interview' && (
           <div className="interview-retake-container">
             <h3 className="section-title">

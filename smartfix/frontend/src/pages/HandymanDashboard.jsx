@@ -685,16 +685,16 @@ const HandymanDashboard = ({ initialTab }) => {
           <div className="d-flex align-items-center gap-3">
             <AlertTriangle size={28} color="#dc2626" />
             <div>
-              <h6 className="fw-extrabold text-danger mb-0">❌ VERIFICATION REJECTED</h6>
-              <small className="text-danger-emphasis">Reason: <strong>{user?.rejectionReason || 'Documents could not be verified. Please re-upload clear ID proofs.'}</strong></small>
+              <h6 className="fw-extrabold text-danger mb-0">❌ APPLICATION REJECTED</h6>
+              <small className="text-danger-emphasis">Reason: <strong>{user?.rejectionReason || 'Your application was rejected by administration. KYC process is closed.'}</strong></small>
             </div>
           </div>
           <button
             type="button"
             className="btn btn-danger btn-sm fw-bold rounded-3 px-3 shadow-xs"
-            onClick={() => setActiveTab('documents')}
+            onClick={() => navigate('/worker/rejected')}
           >
-            Review Vault 🛡️
+            Rejection Notice 📄
           </button>
         </div>
       )}
@@ -1436,7 +1436,7 @@ const HandymanDashboard = ({ initialTab }) => {
                 {user?.verificationStatus === 'Pending'
                   ? 'Your Mobile Number and ID proof documents are under review by SmartFix Admin. Verification usually takes less than 24 hours.'
                   : user?.verificationStatus === 'Rejected'
-                  ? `Rejection reason: ${user?.rejectionReason || 'Please contact support or re-upload clear document proofs.'}`
+                  ? `Rejection reason: ${user?.rejectionReason || 'Your application was rejected by SmartFix Admin. KYC document submissions are closed for rejected accounts.'}`
                   : 'Your Mobile Number and Email are verified for instant customer dispatch.'}
               </p>
             </div>

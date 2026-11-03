@@ -33,13 +33,47 @@ const FIXED_CATEGORIES = [
   { id: 'Water Purifier Service', label: 'Water Purifier Service', taLabel: 'வாட்டர் பியூரிஃபையர் சர்வீஸ்', icon: '💧' },
 ];
 
+const getIsSkilled = (rubric) => {
+  if (!rubric) return false;
+  const verdict = (rubric.verdict || rubric.aiVerdict || '').toLowerCase();
+  const scores = rubric.scores || {};
+  const total =
+    (scores.practicalSpecificity || 0) +
+    (scores.safetyAwareness || 0) +
+    (scores.diagnosisLogic || 0) +
+    (scores.communicationClarity || 0);
+  const conf = rubric.confidenceScore !== undefined ? rubric.confidenceScore : total;
+  if (verdict === 'fail') return false;
+  if (verdict === 'pass') return true;
+  return conf >= 60;
+};
+
+const getRubricTotalScore = (rubric) => {
+  if (!rubric) return 0;
+  const scores = rubric.scores || {};
+  const total =
+    (scores.practicalSpecificity || 0) +
+    (scores.safetyAwareness || 0) +
+    (scores.diagnosisLogic || 0) +
+    (scores.communicationClarity || 0);
+  return rubric.confidenceScore !== undefined ? Math.round(rubric.confidenceScore) : total;
+};
+
 const WorkerSignup = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const isTamil = i18n.language === 'ta';
 
-  // Step 1: Email OTP | Step 2: Basic Details | Step 3: KYC Upload | Step 4: AI Interview
+  // Step 1: Email OTP | Step 2: Basic Details | Step 3: AI Skill Interview | Step 4: KYC Upload (Skilled only)
   const [currentStep, setCurrentStep] = useState(1);
+  const isSkilled = getIsSkilled(aiRubric);
+
+  // Guard: Step 4 is ONLY accessible if the worker is assessed and skilled
+  useEffect(() => {
+    if (currentStep === 4 && (!aiRubric || !isSkilled)) {
+      setCurrentStep(3);
+    }
+  }, [currentStep, aiRubric, isSkilled]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -259,6 +293,19 @@ const WorkerSignup = () => {
     }
 
     setCurrentStep(3);
+    if (!interviewSessionId) {
+      startAiInterview();
+    }
+  };
+
+  const handleRetakeInterview = () => {
+    setInterviewFinished(false);
+    setAiRubric(null);
+    setChatMessages([]);
+    setCurrentAnswer('');
+    setInterviewSessionId(null);
+    setErrorMessage('');
+    startAiInterview();
   };
 
   // --------------------------------------------------------------------------
@@ -291,9 +338,18 @@ const WorkerSignup = () => {
     }
   };
 
-  const handleKycStepSubmit = (e) => {
+  const handleKycStepSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+
+    if (!isSkilled) {
+      setErrorMessage(
+        isTamil
+          ? 'தொழில்நுட்பத் திறன் தேர்வில் தேர்ச்சி பெற்றவர்கள் மட்டுமே KYC சமர்ப்பிக்க முடியும்.'
+          : 'Only skilled workers who passed the practical assessment can submit KYC.'
+      );
+      return;
+    }
 
     if (!aadhaarNumber.trim() || aadhaarNumber.replace(/\D/g, '').length < 12) {
       setErrorMessage(isTamil ? '12-இலக்க ஆதார் எண்ணை உள்ளிடவும்.' : 'Please enter your complete 12-digit Aadhaar number.');
@@ -306,13 +362,16 @@ const WorkerSignup = () => {
     }
 
     if (!aadhaarFrontFile || !aadhaarBackFile || !secondIdFile) {
-      setErrorMessage(isTamil ? 'ஆதார் முன், பின் மற்றும் இரண்டாவது அடையாள அட்டை ஆகிய மூன்றையும் பதிவேற்றவும்.' : 'Please upload all 3 required KYC document files.');
+      setErrorMessage(
+        isTamil
+          ? 'ஆதார் முன், பின் மற்றும் இரண்டாவது அடையாள அட்டை ஆகிய மூன்றையும் பதிவேற்றவும்.'
+          : 'Please upload all 3 required KYC document files.'
+      );
       return;
     }
 
-    // Advance to Step 4 and start AI interview
-    setCurrentStep(4);
-    startAiInterview();
+    // Submit full application with verified KYC documents and assessment results
+    await handleFinalWorkerRegistration();
   };
 
   // --------------------------------------------------------------------------
@@ -797,8 +856,8 @@ const WorkerSignup = () => {
           {[
             { num: 1, title: isTamil ? 'மின்னஞ்சல்' : 'Email' },
             { num: 2, title: isTamil ? 'விவரங்கள்' : 'Details' },
-            { num: 3, title: isTamil ? 'KYC ஆவணங்கள்' : 'KYC Docs' },
-            { num: 4, title: isTamil ? 'AI நேர்காணல்' : 'AI Interview' },
+            { num: 3, title: isTamil ? 'திறன் தேர்வு' : 'Skill Test' },
+            { num: 4, title: isTamil ? 'KYC ஆவணங்கள்' : 'KYC Docs' },
           ].map((s) => (
             <div
               key={s.num}
@@ -1119,25 +1178,25 @@ const WorkerSignup = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '30px' }}>
-              <button type="submit" className="btn-worker-primary" style={{ minWidth: '220px' }}>
-                {isTamil ? 'அடுத்து: KYC பதிவேற்றம்' : 'Next: Upload KYC Documents'} <ArrowRight size={18} />
+              <button type="submit" className="btn-worker-primary" style={{ minWidth: '240px' }}>
+                {isTamil ? 'அடுத்து: செயல்முறைத் திறன் தேர்வு' : 'Next: Technical Skill Assessment'} <Sparkles size={18} />
               </button>
             </div>
           </form>
         )}
 
         {/* ================================================================== */}
-        {/* STEP 3: KYC UPLOAD                                                 */}
+        {/* STEP 3: AI PRACTICAL SKILL ASSESSMENT (MUST PASS TO UNLOCK KYC)    */}
         {/* ================================================================== */}
         {currentStep === 3 && (
-          <form onSubmit={handleKycStepSubmit}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
-                <h3 style={{ fontSize: '1.25rem', color: '#f8fafc', fontWeight: '800', margin: '0 0 4px 0' }}>
-                  {isTamil ? 'படி 3: KYC ஆவணப் பதிவேற்றம்' : 'Step 3: KYC Document Verification'}
+                <h3 style={{ fontSize: '1.25rem', color: '#f8fafc', fontWeight: '800', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Bot size={22} color="#f59e0b" /> {isTamil ? 'படி 3: AI செயல்முறைத் திறன் தேர்வு' : 'Step 3: AI Practical Skill Assessment'}
                 </h3>
                 <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: 0 }}>
-                  {isTamil ? 'ஆதார் மற்றும் இரண்டாவது அடையாள ஆவணங்களைப் பாதுகாப்பாகப் பதிவேற்றவும் (அதிகபட்சம் 5 MB).' : 'Upload Aadhaar front/back and a second official ID (Max 5MB each, JPG/PNG/PDF).'}
+                  {isTamil ? `${formData.categories[0]} பணிக்கான செயல்முறை சூழ்நிலைக் கேள்விகள் (5 கேள்விகள்)` : `Live interactive scenario chatbot for ${formData.categories[0]} (5 practical questions)`}
                 </p>
               </div>
               <button
@@ -1150,9 +1209,240 @@ const WorkerSignup = () => {
               </button>
             </div>
 
+            {/* Chat Box */}
+            <div className="ai-interview-box">
+              <div className="ai-chat-messages">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`chat-bubble ${msg.role === 'assistant' ? 'ai' : 'worker'}`}>
+                    {msg.role === 'assistant' && (
+                      <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: '800', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Bot size={14} /> SmartFix AI Evaluator
+                      </div>
+                    )}
+                    <div>{msg.text}</div>
+                  </div>
+                ))}
+
+                {isAiTyping && (
+                  <div className="chat-bubble ai">
+                    <div className="typing-dots">
+                      <div className="typing-dot" />
+                      <div className="typing-dot" />
+                      <div className="typing-dot" />
+                    </div>
+                  </div>
+                )}
+                <div ref={chatBottomRef} />
+              </div>
+
+              {/* Chat Input Controls */}
+              {!interviewFinished ? (
+                <form
+                  onSubmit={handleSendInterviewAnswer}
+                  style={{ display: 'flex', gap: '10px', padding: '16px', background: '#111e33', borderTop: '1px solid #1e293b' }}
+                >
+                  <input
+                    type="text"
+                    className="worker-input"
+                    placeholder={isTamil ? 'உங்கள் செயல்முறைப் பதிலை உள்ளிடவும் அல்லது பேசவும்...' : 'Type your practical response or click microphone to speak...'}
+                    value={currentAnswer}
+                    onChange={(e) => setCurrentAnswer(e.target.value)}
+                    disabled={isAiTyping}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={toggleSpeechRecognition}
+                    className="btn-worker-secondary"
+                    title="Toggle Speech Recognition"
+                    style={{ padding: '0 16px', background: isListening ? '#dc2626' : '#1e293b' }}
+                  >
+                    {isListening ? <MicOff size={20} color="#ffffff" /> : <Mic size={20} color="#f59e0b" />}
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={!currentAnswer.trim() || isAiTyping}
+                    className="btn-worker-primary"
+                    style={{ padding: '0 20px' }}
+                  >
+                    <Send size={18} />
+                  </button>
+                </form>
+              ) : (
+                <div style={{ padding: '16px', background: '#111e33', textAlign: 'center', color: '#10b981', fontWeight: '700' }}>
+                  ✅ {isTamil ? 'நேர்காணல் வெற்றிகரமாக முடிந்தது!' : 'All 5 practical questions completed!'}
+                </div>
+              )}
+            </div>
+
+            {/* Rubric Evaluation Results Card when finished */}
+            {interviewFinished && aiRubric && (
+              <div style={{ marginTop: '20px', background: '#1e293b', border: '1px solid #334155', borderRadius: '16px', padding: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h4 style={{ color: '#f8fafc', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Sparkles size={20} color="#f59e0b" /> {isTamil ? 'AI பரிந்துரை & மதிப்பீட்டு முடிவுகள்' : 'AI Recommendation & Rubric Scores'}
+                  </h4>
+                  <span
+                    style={{
+                      background: isSkilled ? '#166534' : '#991b1b',
+                      color: '#ffffff',
+                      fontWeight: '800',
+                      padding: '6px 14px',
+                      borderRadius: '20px',
+                      fontSize: '0.85rem',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {isSkilled ? 'Passed / Skilled' : 'Benchmark Not Met'}
+                  </span>
+                </div>
+
+                <div className="row g-2 mb-3">
+                  <div className="col-md-3">
+                    <div style={{ background: '#0f172a', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Practical Specificity</span>
+                      <strong style={{ fontSize: '1.2rem', color: '#f59e0b' }}>{aiRubric.scores?.practicalSpecificity || 0}/25</strong>
+                    </div>
+                  </div>
+                  <div className="col-md-3">
+                    <div style={{ background: '#0f172a', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Safety Awareness</span>
+                      <strong style={{ fontSize: '1.2rem', color: '#f59e0b' }}>{aiRubric.scores?.safetyAwareness || 0}/25</strong>
+                    </div>
+                  </div>
+                  <div className="col-md-3">
+                    <div style={{ background: '#0f172a', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Diagnosis Logic</span>
+                      <strong style={{ fontSize: '1.2rem', color: '#f59e0b' }}>{aiRubric.scores?.diagnosisLogic || 0}/25</strong>
+                    </div>
+                  </div>
+                  <div className="col-md-3">
+                    <div style={{ background: '#0f172a', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Communication Clarity</span>
+                      <strong style={{ fontSize: '1.2rem', color: '#f59e0b' }}>{aiRubric.scores?.communicationClarity || 0}/25</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ background: '#0f172a', padding: '14px', borderRadius: '10px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
+                    <strong>{isTamil ? 'மொத்த திறன் மதிப்பெண்:' : 'Total Assessment Score:'}</strong> {getRubricTotalScore(aiRubric)}/100 (Pass Benchmark: 60/100)
+                  </span>
+                  <span style={{ fontWeight: '800', color: isSkilled ? '#22c55e' : '#ef4444', fontSize: '1rem' }}>
+                    {isSkilled ? (isTamil ? 'தேர்ச்சி பெற்றது' : 'QUALIFIED') : (isTamil ? 'தேர்ச்சி பெறவில்லை' : 'DISQUALIFIED')}
+                  </span>
+                </div>
+
+                <p style={{ color: '#cbd5e1', fontSize: '0.9rem', fontStyle: 'italic', margin: '0 0 16px 0' }}>
+                  "{aiRubric.transcriptSummary}"
+                </p>
+
+                {/* Conditional Next Action based on isSkilled */}
+                {isSkilled ? (
+                  <div style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: '12px', padding: '16px', marginTop: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#4ade80', fontWeight: '800', fontSize: '1rem', marginBottom: '6px' }}>
+                      <CheckCircle2 size={22} color="#4ade80" />
+                      {isTamil ? '🎉 வாழ்த்துகள்! திறன் தேர்வில் தேர்ச்சி பெற்றுள்ளீர்கள்' : '🎉 Congratulations! Practical Skill Assessment Cleared'}
+                    </div>
+                    <p style={{ color: '#cbd5e1', fontSize: '0.88rem', margin: 0 }}>
+                      {isTamil
+                        ? `நீங்கள் ${formData.categories[0]} பணிக்கான தொழில்முறைத் திறனை நிரூபித்துள்ளீர்கள். உங்கள் அடையாளத்தை உறுதிப்படுத்த படி 4-ல் KYC ஆவணங்களைப் பதிவேற்றலாம்.`
+                        : `You have demonstrated verified competency for ${formData.categories[0]}. You are qualified to proceed to Step 4 and upload your official government KYC identification.`}
+                    </p>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorMessage('');
+                          setCurrentStep(4);
+                        }}
+                        className="btn-worker-primary"
+                        style={{ minWidth: '260px', padding: '14px' }}
+                      >
+                        <ShieldCheck size={20} />
+                        {isTamil ? 'படி 4: KYC ஆவணங்கள்' : 'Proceed to Step 4: Upload KYC'} <ArrowRight size={18} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', padding: '16px', marginTop: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#f87171', fontWeight: '800', fontSize: '1rem', marginBottom: '6px' }}>
+                      <AlertCircle size={22} color="#f87171" />
+                      {isTamil ? '❌ திறன் தகுதி பெறவில்லை - KYC செயல்முறை நீக்கப்பட்டுள்ளது' : '❌ Skill Benchmark Not Met - KYC Verification Closed'}
+                    </div>
+                    <p style={{ color: '#cbd5e1', fontSize: '0.88rem', margin: 0 }}>
+                      {isTamil
+                        ? 'ஸ்மார்ட்ஃபிக்ஸ் தளத்தில் வாடிக்கையாளர்களுக்கு சிறந்த மற்றும் பாதுகாப்பான சேவையை வழங்க தகுதி வாய்ந்த வல்லுநர்களை மட்டுமே இணைக்கிறோம். உங்கள் திறன் மதிப்பெண் போதுமானதாக இல்லாததால் KYC ஆவணச் செயல்முறை தங்களுக்குக் கிடைக்காது.'
+                        : 'SmartFix strictly onboards certified and proficient technicians to guarantee customer safety. Because you did not clear the practical technical threshold, the KYC verification process is closed and withheld for this profile.'}
+                    </p>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                      <button
+                        type="button"
+                        onClick={handleRetakeInterview}
+                        className="btn-worker-secondary"
+                        style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}
+                      >
+                        <Sparkles size={18} color="#f59e0b" />
+                        {isTamil ? 'திறன் தேர்வை மீண்டும் எடுக்கவும்' : 'Retake Skill Assessment'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => navigate('/')}
+                        className="btn-worker-secondary"
+                        style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}
+                      >
+                        {isTamil ? 'முகப்புக்குத் திரும்பு' : 'Back to Home'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================================================================== */}
+        {/* STEP 4: KYC UPLOAD (STRICTLY SKILLED TECHNICIANS ONLY)             */}
+        {/* ================================================================== */}
+        {currentStep === 4 && isSkilled && (
+          <form onSubmit={handleKycStepSubmit}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', color: '#f8fafc', fontWeight: '800', margin: '0 0 4px 0' }}>
+                  {isTamil ? 'படி 4: KYC ஆவணப் பதிவேற்றம் (தகுதி வாய்ந்த வல்லுநர்கள்)' : 'Step 4: KYC Document Verification (Qualified Technicians)'}
+                </h3>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: 0 }}>
+                  {isTamil ? 'ஆதார் மற்றும் இரண்டாவது அடையாள ஆவணங்களைப் பாதுகாப்பாகப் பதிவேற்றவும் (அதிகபட்சம் 5 MB).' : 'Upload Aadhaar front/back and a second official ID (Max 5MB each, JPG/PNG/PDF).'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentStep(3)}
+                className="btn-worker-secondary"
+                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+              >
+                <ArrowLeft size={14} className="me-1" /> {isTamil ? 'பின்னே (திறன் தேர்வு)' : 'Back to Skill Test'}
+              </button>
+            </div>
+
+            {/* Qualified Skill Badge */}
+            <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.88rem', color: '#4ade80' }}>
+              <CheckCircle2 size={24} color="#22c55e" style={{ flexShrink: 0 }} />
+              <span>
+                <strong>{isTamil ? 'தகுதி உறுதி செய்யப்பட்டது:' : 'Skill Assessment Cleared:'}</strong>{' '}
+                {isTamil
+                  ? `${formData.categories[0]} பிரிவில் தகுதி பெறப்பட்டது (மதிப்பெண்: ${getRubricTotalScore(aiRubric)}/100). உங்கள் அரசு அடையாள அட்டைகளைப் பதிவேற்றவும்.`
+                  : `Demonstrated technical qualification in ${formData.categories[0]} (Score: ${getRubricTotalScore(aiRubric)}/100). Please upload your KYC documents.`}
+              </span>
+            </div>
+
             {/* Privacy notice banner */}
             <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', padding: '12px 16px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem', color: '#34d399' }}>
-              <ShieldCheck size={24} />
+              <ShieldCheck size={24} style={{ flexShrink: 0 }} />
               <span>
                 <strong>{isTamil ? 'பாதுகாப்பு உறுதி:' : 'Privacy Protection:'}</strong> {isTamil ? 'உங்கள் முழு அடையாள எண்கள் ஒருபோதும் சேமிக்கப்படாது. கடைசி 4 இலக்கங்கள் மட்டுமே மறைக்கப்பட்டு வைக்கப்படும்.' : 'Your full ID numbers are never stored in plain text. Only the last 4 digits are masked at storage time.'}
               </span>
@@ -1279,156 +1569,6 @@ const WorkerSignup = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '30px' }}>
-              <button type="submit" className="btn-worker-primary" style={{ minWidth: '240px' }}>
-                {isTamil ? 'அடுத்து: AI நேர்காணல்' : 'Next: AI Skill Interview'} <Sparkles size={18} />
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* ================================================================== */}
-        {/* STEP 4: AI SKILL INTERVIEW                                         */}
-        {/* ================================================================== */}
-        {currentStep === 4 && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div>
-                <h3 style={{ fontSize: '1.25rem', color: '#f8fafc', fontWeight: '800', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Bot size={22} color="#f59e0b" /> {isTamil ? 'படி 4: AI செயல்முறைத் திறன் நேர்காணல்' : 'Step 4: AI Practical Skill Interview'}
-                </h3>
-                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: 0 }}>
-                  {isTamil ? `${formData.categories[0]} பணிக்கான செயல்முறை சூழ்நிலைக் கேள்விகள் (5 கேள்விகள்)` : `Live interactive scenario chatbot for ${formData.categories[0]} (5 practical questions)`}
-                </p>
-              </div>
-            </div>
-
-            {/* Chat Box */}
-            <div className="ai-interview-box">
-              <div className="ai-chat-messages">
-                {chatMessages.map((msg, i) => (
-                  <div key={i} className={`chat-bubble ${msg.role === 'assistant' ? 'ai' : 'worker'}`}>
-                    {msg.role === 'assistant' && (
-                      <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: '800', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Bot size={14} /> SmartFix AI Evaluator
-                      </div>
-                    )}
-                    <div>{msg.text}</div>
-                  </div>
-                ))}
-
-                {isAiTyping && (
-                  <div className="chat-bubble ai">
-                    <div className="typing-dots">
-                      <div className="typing-dot" />
-                      <div className="typing-dot" />
-                      <div className="typing-dot" />
-                    </div>
-                  </div>
-                )}
-                <div ref={chatBottomRef} />
-              </div>
-
-              {/* Chat Input Controls */}
-              {!interviewFinished ? (
-                <form
-                  onSubmit={handleSendInterviewAnswer}
-                  style={{ display: 'flex', gap: '10px', padding: '16px', background: '#111e33', borderTop: '1px solid #1e293b' }}
-                >
-                  <input
-                    type="text"
-                    className="worker-input"
-                    placeholder={isTamil ? 'உங்கள் செயல்முறைப் பதிலை உள்ளிடவும் அல்லது பேசவும்...' : 'Type your practical response or click microphone to speak...'}
-                    value={currentAnswer}
-                    onChange={(e) => setCurrentAnswer(e.target.value)}
-                    disabled={isAiTyping}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={toggleSpeechRecognition}
-                    className="btn-worker-secondary"
-                    title="Toggle Speech Recognition"
-                    style={{ padding: '0 16px', background: isListening ? '#dc2626' : '#1e293b' }}
-                  >
-                    {isListening ? <MicOff size={20} color="#ffffff" /> : <Mic size={20} color="#f59e0b" />}
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={!currentAnswer.trim() || isAiTyping}
-                    className="btn-worker-primary"
-                    style={{ padding: '0 20px' }}
-                  >
-                    <Send size={18} />
-                  </button>
-                </form>
-              ) : (
-                <div style={{ padding: '16px', background: '#111e33', textAlign: 'center', color: '#10b981', fontWeight: '700' }}>
-                  ✅ {isTamil ? 'நேர்காணல் வெற்றிகரமாக முடிந்தது!' : 'All 5 practical questions completed!'}
-                </div>
-              )}
-            </div>
-
-            {/* Rubric Evaluation Results Card when finished */}
-            {interviewFinished && aiRubric && (
-              <div style={{ marginTop: '20px', background: '#1e293b', border: '1px solid #334155', borderRadius: '16px', padding: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <h4 style={{ color: '#f8fafc', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Sparkles size={20} color="#f59e0b" /> {isTamil ? 'AI பரிந்துரை & மதிப்பீட்டு முடிவுகள்' : 'AI Recommendation & Rubric Scores'}
-                  </h4>
-                  <span
-                    style={{
-                      background: aiRubric.verdict === 'pass' ? '#166534' : aiRubric.verdict === 'fail' ? '#991b1b' : '#92400e',
-                      color: '#ffffff',
-                      fontWeight: '800',
-                      padding: '6px 14px',
-                      borderRadius: '20px',
-                      fontSize: '0.85rem',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Recommendation: {aiRubric.verdict}
-                  </span>
-                </div>
-
-                <div className="row g-2 mb-3">
-                  <div className="col-md-3">
-                    <div style={{ background: '#0f172a', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Practical Specificity</span>
-                      <strong style={{ fontSize: '1.2rem', color: '#f59e0b' }}>{aiRubric.scores?.practicalSpecificity || 0}/25</strong>
-                    </div>
-                  </div>
-                  <div className="col-md-3">
-                    <div style={{ background: '#0f172a', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Safety Awareness</span>
-                      <strong style={{ fontSize: '1.2rem', color: '#f59e0b' }}>{aiRubric.scores?.safetyAwareness || 0}/25</strong>
-                    </div>
-                  </div>
-                  <div className="col-md-3">
-                    <div style={{ background: '#0f172a', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Diagnosis Logic</span>
-                      <strong style={{ fontSize: '1.2rem', color: '#f59e0b' }}>{aiRubric.scores?.diagnosisLogic || 0}/25</strong>
-                    </div>
-                  </div>
-                  <div className="col-md-3">
-                    <div style={{ background: '#0f172a', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Communication Clarity</span>
-                      <strong style={{ fontSize: '1.2rem', color: '#f59e0b' }}>{aiRubric.scores?.communicationClarity || 0}/25</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <p style={{ color: '#cbd5e1', fontSize: '0.9rem', fontStyle: 'italic', margin: '0 0 16px 0' }}>
-                  "{aiRubric.transcriptSummary}"
-                </p>
-
-                <div style={{ fontSize: '0.8rem', color: '#94a3b8', borderTop: '1px solid #334155', paddingTop: '12px' }}>
-                  ℹ️ <strong>Note:</strong> The AI assessment is advisory. Your KYC documents and interview results will be reviewed by the SmartFix Admin Team for final account approval.
-                </div>
-              </div>
-            )}
-
             {/* Submission Error Notification if any */}
             {errorMessage && (
               <div
@@ -1453,12 +1593,10 @@ const WorkerSignup = () => {
               </div>
             )}
 
-            {/* Final Submission Button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '30px' }}>
               <button
-                type="button"
-                onClick={handleFinalWorkerRegistration}
-                disabled={loading || !interviewFinished}
+                type="submit"
+                disabled={loading}
                 className="btn-worker-primary"
                 style={{ minWidth: '280px', padding: '16px' }}
               >
@@ -1475,7 +1613,7 @@ const WorkerSignup = () => {
                 )}
               </button>
             </div>
-          </div>
+          </form>
         )}
       </div>
     </div>

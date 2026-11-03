@@ -398,12 +398,34 @@ exports.registerWorker = async (req, res) => {
       } catch (e) {}
     }
 
+    // Verify worker is skilled: reject if failed AI skill assessment or score below passing threshold
+    const interviewScoreSum = (parsedInterview.scores?.practicalSpecificity || 0) +
+      (parsedInterview.scores?.safetyAwareness || 0) +
+      (parsedInterview.scores?.diagnosisLogic || 0) +
+      (parsedInterview.scores?.communicationClarity || 0);
+
+    if (
+      parsedInterview.aiVerdict === 'fail' ||
+      (parsedInterview.aiVerdict && parsedInterview.aiVerdict !== 'pass' && interviewScoreSum > 0 && interviewScoreSum < 60)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Applicant did not clear the practical technical skill assessment. KYC documents cannot be accepted for unqualified candidates.',
+      });
+    }
+
     let workerDoc;
     if (existingUser) {
       if (existingUser.role === 'customer') {
         return res.status(409).json({
           success: false,
           message: 'An existing customer account uses this email. Please use a distinct email address for your technician partner account.',
+        });
+      }
+      if (existingUser.verificationStatus === 'rejected') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your technician account was rejected by administration. Registration and KYC submission are closed for rejected profiles.',
         });
       }
       if (existingUser.verificationStatus === 'approved' || existingUser.verificationStatus === 'Verified') {
@@ -853,6 +875,14 @@ exports.uploadKyc = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Worker profile not found.' });
     }
 
+    // Block rejected workers from uploading KYC documents
+    if (worker.verificationStatus === 'rejected') {
+      return res.status(403).json({
+        success: false,
+        message: 'This account was rejected by Admin. KYC document uploads are disabled.',
+      });
+    }
+
     const { aadhaarNumber, secondIdType, secondIdNumber } = req.body;
 
     if (aadhaarNumber) {
@@ -873,12 +903,6 @@ exports.uploadKyc = async (req, res) => {
     }
     if (req.files?.secondId?.[0]) {
       worker.kyc.secondIdPath = req.files.secondId[0].path;
-    }
-
-    // Reset status to pending_verification if previously rejected
-    if (worker.verificationStatus === 'rejected') {
-      worker.verificationStatus = 'pending_verification';
-      worker.rejectionReason = '';
     }
 
     await worker.save();
