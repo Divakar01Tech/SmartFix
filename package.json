@@ -1,0 +1,10 @@
+{
+  "name": "smartfix-full-project",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd smartfix/frontend && npm install && npm run build",
+    "dev": "npm --prefix smartfix/frontend run dev",
+    "start": "npm --prefix smartfix/backend run start"
+  }
+}

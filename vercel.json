@@ -1,4 +1,7 @@
 {
+  "buildCommand": "cd smartfix/frontend && npm install && npm run build",
+  "outputDirectory": "smartfix/frontend/dist",
+  "framework": "vite",
   "rewrites": [
     {
       "source": "/(.*)",
