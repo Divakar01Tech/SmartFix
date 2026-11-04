@@ -66,14 +66,6 @@ const WorkerSignup = () => {
 
   // Step 1: Email OTP | Step 2: Basic Details | Step 3: AI Skill Interview | Step 4: KYC Upload (Skilled only)
   const [currentStep, setCurrentStep] = useState(1);
-  const isSkilled = getIsSkilled(aiRubric);
-
-  // Guard: Step 4 is ONLY accessible if the worker is assessed and skilled
-  useEffect(() => {
-    if (currentStep === 4 && (!aiRubric || !isSkilled)) {
-      setCurrentStep(3);
-    }
-  }, [currentStep, aiRubric, isSkilled]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -102,16 +94,7 @@ const WorkerSignup = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Step 3: KYC Upload State
-  const [aadhaarNumber, setAadhaarNumber] = useState('');
-  const [secondIdType, setSecondIdType] = useState('driving_license');
-  const [secondIdNumber, setSecondIdNumber] = useState('');
-  const [aadhaarFrontFile, setAadhaarFrontFile] = useState(null);
-  const [aadhaarBackFile, setAadhaarBackFile] = useState(null);
-  const [secondIdFile, setSecondIdFile] = useState(null);
-  const [previews, setPreviews] = useState({ aadhaarFront: '', aadhaarBack: '', secondId: '' });
-
-  // Step 4: AI Interview State
+  // Step 3: AI Interview State (Skill-First Assessment)
   const [interviewSessionId, setInterviewSessionId] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [currentAnswer, setCurrentAnswer] = useState('');
@@ -120,6 +103,25 @@ const WorkerSignup = () => {
   const [aiRubric, setAiRubric] = useState(null);
   const [isListening, setIsListening] = useState(false);
   const chatBottomRef = useRef(null);
+
+  // Step 4: KYC Upload State (Gated to Skilled Applicants only)
+  const [aadhaarNumber, setAadhaarNumber] = useState('');
+  const [secondIdType, setSecondIdType] = useState('driving_license');
+  const [secondIdNumber, setSecondIdNumber] = useState('');
+  const [aadhaarFrontFile, setAadhaarFrontFile] = useState(null);
+  const [aadhaarBackFile, setAadhaarBackFile] = useState(null);
+  const [secondIdFile, setSecondIdFile] = useState(null);
+  const [previews, setPreviews] = useState({ aadhaarFront: '', aadhaarBack: '', secondId: '' });
+
+  // Skill verification evaluation
+  const isSkilled = getIsSkilled(aiRubric);
+
+  // Guard: Step 4 is ONLY accessible if the worker is assessed and skilled
+  useEffect(() => {
+    if (currentStep === 4 && (!aiRubric || !isSkilled)) {
+      setCurrentStep(3);
+    }
+  }, [currentStep, aiRubric, isSkilled]);
 
   // Success State upon submission
   const [isSubmitted, setIsSubmitted] = useState(false);

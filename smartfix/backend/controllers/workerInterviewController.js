@@ -48,7 +48,7 @@ exports.startWorkerInterview = async (req, res) => {
     }
 
     const { category, language } = req.body;
-    const selectedCategory = category || 'Plumbing';
+    const selectedCategory = skillInterviewService.normalizeCategory(category || 'Plumbing');
     const lang = language === 'ta' ? 'ta' : 'en';
 
     // Temporary or real workerId
@@ -73,10 +73,11 @@ exports.startWorkerInterview = async (req, res) => {
     return res.status(200).json({
       success: true,
       sessionId: session._id,
-      category: selectedCategory,
+      category: session.category || selectedCategory,
       questionsAsked: session.questionsAsked,
       totalQuestions: 5,
       questionText: firstMsg ? firstMsg.text : 'Welcome to your practical skill interview.',
+      openingQuestion: firstMsg ? firstMsg.text : 'Welcome to your practical skill interview.',
       messages: session.messages,
     });
   } catch (err) {

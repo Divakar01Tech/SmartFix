@@ -213,8 +213,11 @@ function App() {
           {/* 3. WORKER / SERVICE PROVIDER NAMESPACE (/worker/*)          */}
           {/* ============================================================ */}
           <Route path="/worker/login" element={<WorkerLogin />} />
+          <Route path="/worker/signin" element={<Navigate to="/worker/login" replace />} />
+          <Route path="/worker/sign-in" element={<Navigate to="/worker/login" replace />} />
           <Route path="/worker/register" element={<WorkerSignup />} />
           <Route path="/worker/signup" element={<WorkerSignup />} />
+          <Route path="/worker/sign-up" element={<Navigate to="/worker/register" replace />} />
           <Route path="/worker/pending" element={<WorkerPending />} />
           <Route path="/worker/rejected" element={<WorkerRejected />} />
           <Route path="/worker/forgot-password" element={<WorkerForgotPassword />} />
