@@ -11,6 +11,11 @@ const {
   resetPassword,
   getMe,
 } = require('../controllers/customerAuthController');
+const {
+  sendEmailOtp,
+  verifyEmailOtp,
+  emailRegister,
+} = require('../controllers/emailAuthController');
 const { protect, requireCustomer } = require('../middleware/authMiddleware');
 
 // Input validation middleware
@@ -51,6 +56,11 @@ const otpLimiter = rateLimit({
 });
 
 // Routes
+router.post('/email/send-otp', otpLimiter, sendEmailOtp);
+router.post('/email/verify-otp', verifyEmailOtp);
+router.post('/email/register', emailRegister);
+router.post('/register', emailRegister);
+
 router.post(
   '/login',
   loginLimiter,

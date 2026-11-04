@@ -149,6 +149,7 @@ app.use('/api/worker', require('./routes/workerRoutes'));
 
 // Customer Auth Routes
 app.use('/api/customer/auth', require('./routes/customerAuthRoutes'));
+app.use('/api/customer', require('./routes/customerAuthRoutes'));
 
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
