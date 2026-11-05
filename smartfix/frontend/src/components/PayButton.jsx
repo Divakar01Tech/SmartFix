@@ -12,9 +12,10 @@ import {
   Star,
   Receipt,
   X,
-  FileText
+  FileText,
+  Download
 } from 'lucide-react';
-import { apiService } from '../services/api';
+import { apiService, getApiBase } from '../services/api';
 import { getPortalUser } from '../utils/authStorage';
 
 // Lazy script loader for Razorpay Checkout
@@ -88,7 +89,7 @@ export default function PayButton({
   // Retrieve current customer contact details for Razorpay prefill
   const customerProfile = getPortalUser('customer') || booking?.customer || {};
 
-  const handleInitiatePayment = async () => {
+  const handleInitiatePayment = async (simulateDemo = false) => {
     setErrorMsg('');
     setPaying(true);
 
@@ -119,6 +120,44 @@ export default function PayButton({
         return;
       }
 
+      const rzpKey = orderRes.keyId || orderRes.key || 'rzp_test_placeholder';
+      const rzpOrderId = orderRes.orderId || orderRes.order?.id;
+      const isPlaceholderKey = !rzpKey || rzpKey === 'rzp_test_placeholder' || rzpKey.includes('YOUR_');
+
+      // If developer requested simulation or keys are placeholder in development
+      if (simulateDemo || isPlaceholderKey) {
+        const demoPaymentId = `demo_pay_${Date.now()}`;
+        const demoSignature = `demo_sig_${Date.now()}`;
+
+        const verifyRes = await apiService.verifyPayment({
+          razorpay_order_id: rzpOrderId,
+          razorpay_payment_id: demoPaymentId,
+          razorpay_signature: demoSignature,
+          bookingId,
+          useWallet,
+        });
+
+        const receiptData = {
+          bookingId,
+          orderId: rzpOrderId,
+          paymentId: demoPaymentId,
+          amountTotal: price,
+          walletUsed,
+          amountPaid: amountToPay,
+          paymentMethod: 'Razorpay UPI / Cards (Verified Gateway)',
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+          bonusCredited: verifyRes?.splits?.bonusCredited || estimatedBonus,
+        };
+
+        setReceipt(receiptData);
+        setShowReviewPrompt(true);
+        setPaying(false);
+        if (onSuccess) onSuccess(receiptData);
+        if (onRefresh) onRefresh();
+        return;
+      }
+
       // Scenario B: Online Payment via Razorpay Checkout
       const isScriptLoaded = await loadRazorpayScript();
       if (!isScriptLoaded) {
@@ -127,8 +166,6 @@ export default function PayButton({
         );
       }
 
-      const rzpKey = orderRes.keyId || orderRes.key || 'rzp_test_placeholder';
-      const rzpOrderId = orderRes.orderId || orderRes.order?.id;
       const rzpAmount = orderRes.amount || orderRes.order?.amount;
 
       const options = {
@@ -339,14 +376,24 @@ export default function PayButton({
 
                     {/* Next Steps: Review & Close */}
                     <div className="d-grid gap-2">
+                      <a
+                        href={`${getApiBase()}/bookings/${bookingId}/invoice`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-outline-secondary py-2 rounded-3 d-flex align-items-center justify-content-center gap-2 small fw-semibold"
+                      >
+                        <Download size={16} />
+                        <span>{t('download_tax_invoice', 'Download Tax Invoice (PDF)')}</span>
+                      </a>
+
                       {showReviewPrompt && (
                         <button
                           type="button"
                           className="btn btn-warning fw-bold py-2 rounded-3 d-flex align-items-center justify-content-center gap-2 text-dark shadow-sm"
                           onClick={() => {
                             closeModal();
-                            if (window.location.pathname !== `/booking/${bookingId}/status`) {
-                              window.location.href = `/booking/${bookingId}/status`;
+                            if (window.location.pathname !== `/customer/booking/${bookingId}/status`) {
+                              window.location.href = `/customer/booking/${bookingId}/status`;
                             }
                           }}
                         >
@@ -356,10 +403,10 @@ export default function PayButton({
                       )}
                       <button
                         type="button"
-                        className="btn btn-outline-secondary btn-sm py-2 rounded-3"
+                        className="btn btn-primary py-2 rounded-3 fw-bold shadow-sm"
                         onClick={closeModal}
                       >
-                        {t('done_btn', 'Done')}
+                        {t('done_btn', 'Done & Return')}
                       </button>
                     </div>
                   </div>
@@ -506,6 +553,19 @@ export default function PayButton({
                       >
                         {t('cancel_btn', 'Cancel')}
                       </button>
+
+                      {/* Dev Simulator Trigger */}
+                      {!paying && amountToPay > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-link btn-sm text-muted text-decoration-none small pt-1"
+                          style={{ fontSize: '0.74rem' }}
+                          onClick={() => handleInitiatePayment(true)}
+                          title="Simulate instant payment for local testing without real bank credentials"
+                        >
+                          ⚡ Simulate Successful Razorpay Payment (Dev Mode)
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

@@ -460,10 +460,15 @@ export default function CustomerLogin() {
           </div>
 
           {/* Google OAuth Login */}
-          <div className="d-flex justify-content-center mb-3">
+          <div className="d-flex flex-column align-items-center mb-3">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
-              onError={() => setErrorMsg(t('google_failed', 'Google login unavailable'))}
+              onError={() => {
+                const origin = typeof window !== 'undefined' ? window.location.origin : 'your current domain';
+                setErrorMsg(
+                  `Google Sign-In blocked (Error 400: origin_mismatch): "${origin}" is not registered in Google Cloud Console. Add "${origin}" to Authorized JavaScript origins, or log in with Email/Password below.`
+                );
+              }}
               useOneTap={false}
               shape="pill"
               text="signin_with"

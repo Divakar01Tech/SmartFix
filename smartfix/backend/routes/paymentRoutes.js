@@ -5,6 +5,8 @@ const { paymentRateLimiter } = require('../middleware/rateLimiter');
 const {
   createOrder,
   verifyPayment,
+  payCod,
+  payRazorpayMe,
   getAllPayments,
   getPaymentByBooking,
   getMyPayments,
@@ -16,6 +18,12 @@ router.post('/create-order', paymentRateLimiter, protect, createOrder);
 
 // Verify payment signature after Razorpay checkout (Rate-limited, Customer authenticated)
 router.post('/verify', paymentRateLimiter, protect, verifyPayment);
+
+// Customer settles Cash on Delivery payment directly with technician
+router.post('/pay-cod', paymentRateLimiter, protect, payCod);
+
+// Customer settles via direct Razorpay.me link
+router.post('/pay-razorpay-me', paymentRateLimiter, protect, payRazorpayMe);
 
 // Customer payment history
 router.get('/my', protect, getMyPayments);

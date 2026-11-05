@@ -187,6 +187,28 @@ export const apiService = {
     return data;
   },
 
+  payCod: async (bookingId) => {
+    const res = await fetch(`${API_BASE}/payments/pay-cod`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ bookingId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to record Cash on Delivery payment');
+    return data;
+  },
+
+  payRazorpayMe: async (bookingId, utrNumber, paymentId) => {
+    const res = await fetch(`${API_BASE}/payments/pay-razorpay-me`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ bookingId, utrNumber, paymentId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to record Razorpay.me payment');
+    return data;
+  },
+
   // Wallet
   getWallet: async () => {
     const res = await fetch(`${API_BASE}/wallet`, {

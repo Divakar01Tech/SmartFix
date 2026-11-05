@@ -377,6 +377,8 @@ function App() {
           <Route path="/browse" element={<Navigate to="/customer/experts" replace />} />
           <Route path="/book" element={<Navigate to="/customer/book" replace />} />
           <Route path="/booking" element={<Navigate to="/customer/book" replace />} />
+          <Route path="/booking/:bookingId/status" element={<CustomerRoute><CustomerLayout><BookingStatus /></CustomerLayout></CustomerRoute>} />
+          <Route path="/payment/:bookingId" element={<CustomerRoute><CustomerLayout><PaymentPage /></CustomerLayout></CustomerRoute>} />
           <Route path="/booking/:workerId" element={<Navigate to="/customer/book" replace />} />
           <Route path="/my-bookings" element={<Navigate to="/customer/bookings" replace />} />
           <Route path="/wallet" element={<Navigate to="/customer/wallet" replace />} />

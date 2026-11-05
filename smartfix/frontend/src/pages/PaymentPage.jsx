@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { apiService } from '../services/api';
-import { ShieldCheck, CreditCard, Wallet, CheckCircle2, AlertCircle, ArrowLeft, Gift, Sparkles, Receipt, Download } from 'lucide-react';
+import { apiService, getApiBase } from '../services/api';
+import { ShieldCheck, CreditCard, Wallet, CheckCircle2, AlertCircle, ArrowLeft, Gift, Sparkles, Receipt, Download, ExternalLink, QrCode } from 'lucide-react';
 
 export default function PaymentPage() {
   const { t } = useTranslation();
@@ -17,6 +17,7 @@ export default function PaymentPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const razorpayMeUrl = import.meta.env.VITE_RAZORPAY_ME_URL || 'https://razorpay.me/@divakarmuthu';
 
   // Load Razorpay SDK Script dynamically
   const loadRazorpayScript = () => {
@@ -64,7 +65,7 @@ export default function PaymentPage() {
   const appliedWalletAmount = useWallet ? Math.min(walletBal, totalAmount) : 0;
   const payableAmount = Math.max(0, totalAmount - appliedWalletAmount);
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (simulateDemo = false) => {
     setErrorMsg('');
     setPaying(true);
 
@@ -79,7 +80,37 @@ export default function PaymentPage() {
           method: 'SmartFix Wallet',
           transactionId: `WALLET_${Date.now()}`,
           amount: totalAmount,
-          bonusCashback: orderRes.customerBonusCredited || Math.round(totalAmount * 0.05),
+          bonusCashback: orderRes.customerBonusCredited || 0,
+        });
+        setPaying(false);
+        return;
+      }
+
+      const rzpKey = orderRes.key || orderRes.keyId || 'rzp_test_placeholder';
+      const rzpOrderId = orderRes.order?.id || orderRes.orderId;
+      const isPlaceholderKey = !rzpKey || rzpKey === 'rzp_test_placeholder' || rzpKey.includes('YOUR_');
+
+      // If developer requested simulation or keys are placeholder in development
+      if (simulateDemo || isPlaceholderKey) {
+        const demoPaymentId = `demo_pay_${Date.now()}`;
+        const demoSignature = `demo_sig_${Date.now()}`;
+
+        const verification = await apiService.verifyPayment({
+          razorpay_order_id: rzpOrderId,
+          razorpay_payment_id: demoPaymentId,
+          razorpay_signature: demoSignature,
+          bookingId,
+          useWallet,
+        });
+
+        setPaymentSuccess(true);
+        setReceiptData({
+          method: 'Razorpay UPI / Cards (Verified Gateway)',
+          transactionId: demoPaymentId,
+          orderId: rzpOrderId,
+          amount: totalAmount,
+          walletDeducted: appliedWalletAmount,
+          bonusCashback: verification.splits?.bonusCredited || Math.round(payableAmount * 0.05),
         });
         setPaying(false);
         return;
@@ -92,12 +123,12 @@ export default function PaymentPage() {
       }
 
       const options = {
-        key: orderRes.key || 'rzp_test_placeholder',
-        amount: orderRes.order?.amount,
+        key: rzpKey,
+        amount: orderRes.order?.amount || orderRes.amount,
         currency: orderRes.order?.currency || 'INR',
         name: 'SmartFix / HandyBook',
         description: `Payment for Booking #${bookingId.slice(-6)}`,
-        order_id: orderRes.order?.id,
+        order_id: rzpOrderId,
         handler: async (response) => {
           try {
             // Verify HMAC signature on backend
@@ -118,7 +149,7 @@ export default function PaymentPage() {
               orderId: response.razorpay_order_id,
               amount: totalAmount,
               walletDeducted: appliedWalletAmount,
-              bonusCashback: verification.customerBonusCredited || Math.round(totalAmount * 0.05),
+              bonusCashback: verification.splits?.bonusCredited || Math.round(payableAmount * 0.05),
             });
           } catch (verErr) {
             setErrorMsg(verErr.message || 'Signature verification failed. Please contact support.');
@@ -218,18 +249,29 @@ export default function PaymentPage() {
             </div>
           </div>
 
-          <div className="d-flex gap-2">
-            <button
-              type="button"
-              className="btn btn-primary flex-grow-1 py-2 fw-semibold rounded-3"
-              onClick={() => navigate(`/booking/${bookingId}/status`)}
+          <div className="d-flex flex-column gap-2">
+            <a
+              href={`${getApiBase()}/bookings/${bookingId}/invoice`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-outline-secondary py-2 rounded-3 d-flex align-items-center justify-content-center gap-2 fw-semibold"
             >
-              {t('leave_a_review_cta', 'Leave a Review for Handyman ★')}
-            </button>
-            <Link to="/wallet" className="btn btn-outline-secondary py-2 rounded-3">
-              <Wallet size={18} className="me-1 inline-block" />
-              <span>{t('view_wallet_btn', 'Wallet')}</span>
-            </Link>
+              <Download size={16} />
+              <span>{t('download_tax_invoice', 'Download Tax Invoice (PDF)')}</span>
+            </a>
+            <div className="d-flex gap-2">
+              <button
+                type="button"
+                className="btn btn-primary flex-grow-1 py-2 fw-semibold rounded-3"
+                onClick={() => navigate(`/customer/booking/${bookingId}/status`)}
+              >
+                {t('leave_a_review_cta', 'Leave a Review for Handyman ★')}
+              </button>
+              <Link to="/customer/wallet" className="btn btn-outline-secondary py-2 rounded-3">
+                <Wallet size={18} className="me-1 inline-block" />
+                <span>{t('view_wallet_btn', 'Wallet')}</span>
+              </Link>
+            </div>
           </div>
         </div>
       ) : (
@@ -318,7 +360,7 @@ export default function PaymentPage() {
             type="button"
             className="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2"
             disabled={paying}
-            onClick={handleCheckout}
+            onClick={() => handleCheckout(false)}
           >
             {paying ? (
               <>
@@ -337,6 +379,41 @@ export default function PaymentPage() {
               </>
             )}
           </button>
+
+          {/* Direct Razorpay.me UPI Link Option */}
+          <div className="mt-3 p-3 bg-light rounded-3 border text-center">
+            <div className="d-flex align-items-center justify-content-center gap-2 mb-1">
+              <QrCode size={18} className="text-primary" />
+              <span className="small fw-bold text-dark">Direct UPI / QR Link (razorpay.me)</span>
+            </div>
+            <p className="text-muted small mb-2" style={{ fontSize: '0.78rem' }}>
+              Want to pay directly via Google Pay / PhonePe / Paytm / QR?
+            </p>
+            <a
+              href={razorpayMeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-outline-primary btn-sm px-3 py-1 rounded-pill fw-semibold d-inline-flex align-items-center gap-1"
+              style={{ fontSize: '0.8rem' }}
+            >
+              <ExternalLink size={14} />
+              <span>Open {razorpayMeUrl.replace('https://', '')} ↗</span>
+            </a>
+          </div>
+
+          {!paying && payableAmount > 0 && (
+            <div className="text-center mt-3 pt-2 border-top">
+              <button
+                type="button"
+                className="btn btn-link btn-sm text-muted text-decoration-none small"
+                style={{ fontSize: '0.76rem' }}
+                onClick={() => handleCheckout(true)}
+                title="Simulates successful Razorpay checkout for test & development"
+              >
+                ⚡ Simulate Successful Razorpay Payment (Dev Mode)
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

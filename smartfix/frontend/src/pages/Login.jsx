@@ -780,10 +780,15 @@ export default function Login({ initialPortal, initialMode }) {
             {/* Official Google Button (Customer and Worker only) */}
             {role !== 'admin' && (
               <>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '8px' }}>
                   <GoogleLogin
                     onSuccess={handleGoogleSuccess}
-                    onError={() => setGeneralError('Google sign-in could not be completed. Please try again.')}
+                    onError={() => {
+                      const origin = typeof window !== 'undefined' ? window.location.origin : 'your current domain';
+                      setGeneralError(
+                        `Google Sign-In blocked (Error 400: origin_mismatch): "${origin}" is not registered in Google Cloud Console. Please add "${origin}" to Authorized JavaScript origins under your OAuth Client ID, or sign in below using Email & Password or Email OTP.`
+                      );
+                    }}
                     theme="outline"
                     size="large"
                     shape="rectangular"

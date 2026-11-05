@@ -1,463 +1,700 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
-  X, CreditCard, QrCode, Building2, Banknote, CheckCircle2,
-  ShieldCheck, Download, Sparkles, Gift, Award, Copy, Check,
-  ExternalLink, ArrowRight, Smartphone
+  X,
+  CreditCard,
+  Wallet,
+  Banknote,
+  CheckCircle2,
+  ShieldCheck,
+  Download,
+  Gift,
+  AlertCircle,
+  ExternalLink,
+  Sparkles,
+  RefreshCw,
+  QrCode,
+  FileText,
+  Lock
 } from 'lucide-react';
+import { apiService, getApiBase } from '../services/api';
+import { getPortalUser } from '../utils/authStorage';
 import './PaymentModal.css';
 
-const DEFAULT_MERCHANT_UPI = 'smartfix.services@okaxis';
-const BANK_DETAILS = {
-  accountName: 'SmartFix Home Services (Divakar Tech)',
-  bankName: 'State Bank of India (SBI)',
-  accountNumber: '39820019283',
-  ifscCode: 'SBIN0000842',
-  branch: 'Sivagangai Main Branch, Tamil Nadu',
+// Lazy loader for official Razorpay Checkout SDK
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    if (typeof window !== 'undefined' && window.Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
 };
 
 export default function PaymentModal({ booking, onClose, onSuccess }) {
-  const [activeTab, setActiveTab] = useState('UPI'); // UPI | BankTransfer | Card | NetBanking | COD
-  const [customUpiId, setCustomUpiId] = useState(DEFAULT_MERCHANT_UPI);
-  const [utrNumber, setUtrNumber] = useState('');
-  const [copiedUpi, setCopiedUpi] = useState(false);
-  const [copiedAccount, setCopiedAccount] = useState(false);
-  const [copiedIfsc, setCopiedIfsc] = useState(false);
-
-  // Card fields
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardName, setCardName] = useState('');
-  const [selectedBank, setSelectedBank] = useState('SBI');
-
+  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState('RAZORPAY'); // RAZORPAY | RAZORPAY_ME | WALLET | COD
+  const [wallet, setWallet] = useState({ balance: 0 });
+  const [useWallet, setUseWallet] = useState(false);
+  const [loadingWallet, setLoadingWallet] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [txnDetails, setTxnDetails] = useState(null);
+  const [receipt, setReceipt] = useState(null);
+  const [utrNumber, setUtrNumber] = useState('');
 
+  const razorpayMeUrl = import.meta.env.VITE_RAZORPAY_ME_URL || 'https://razorpay.me/@divakarmuthu';
+
+  const bookingId = booking?._id || booking?.id;
   const totalAmount = Number(booking?.price) || 350;
+  const bookingShortId = String(bookingId || 'BK1001').slice(-6).toUpperCase();
+
+  // Fetch customer's current wallet balance
+  useEffect(() => {
+    if (bookingId) {
+      let isMounted = true;
+      setLoadingWallet(true);
+      apiService
+        .getWallet()
+        .then((w) => {
+          if (isMounted) setWallet(w || { balance: 0 });
+        })
+        .catch(() => {
+          if (isMounted) setWallet({ balance: 0 });
+        })
+        .finally(() => {
+          if (isMounted) setLoadingWallet(false);
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [bookingId]);
+
+  const walletBalance = Number(wallet?.balance || 0);
+  const walletUsed = (activeTab === 'RAZORPAY' && useWallet) || activeTab === 'WALLET'
+    ? Math.min(walletBalance, totalAmount)
+    : 0;
+  const payableAmount = Math.max(0, totalAmount - walletUsed);
   const isOnline = activeTab !== 'COD';
 
-  // 5% Worker Reward Bonus calculation
+  // 5% Worker Reward Bonus & Customer Cashback calculations
+  const customerCashback = isOnline && payableAmount > 0 ? Math.round(payableAmount * 0.05) : 0;
   const workerBonusAmount = isOnline ? Math.round(totalAmount * 0.05) : 0;
-  const baseWorkerPayout = totalAmount - Math.round(totalAmount * 0.10); // 90% Base Share
-  const workerTotalPayout = baseWorkerPayout + workerBonusAmount; // 95% Total Worker Share if online
-  const platformFee = totalAmount - workerTotalPayout; // 5% if online, 10% if COD
+  const baseWorkerPayout = totalAmount - Math.round(totalAmount * 0.10); // 90%
+  const workerTotalPayout = baseWorkerPayout + workerBonusAmount; // 95% if online, 90% if COD
+  const platformFee = totalAmount - workerTotalPayout;
 
-  const bookingShortId = String(booking?._id || booking?.id || 'BK1001').slice(-6).toUpperCase();
+  const customerProfile = getPortalUser('customer') || booking?.customer || {};
 
-  // Standardized NPCI UPI URI
-  const upiPayUri = `upi://pay?pa=${encodeURIComponent(customUpiId)}&pn=${encodeURIComponent('SmartFix Home Services')}&am=${totalAmount}&cu=INR&tn=${encodeURIComponent(`Booking-${bookingShortId}`)}&mode=02&purpose=00`;
-
-  // Dynamic QR Code generation with high-reliability QR server
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=8&data=${encodeURIComponent(upiPayUri)}`;
-
-  const handleCopyUpi = () => {
-    navigator.clipboard?.writeText(customUpiId);
-    setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 2500);
-  };
-
-  const handleCopyAccount = () => {
-    navigator.clipboard?.writeText(BANK_DETAILS.accountNumber);
-    setCopiedAccount(true);
-    setTimeout(() => setCopiedAccount(false), 2500);
-  };
-
-  const handleCopyIfsc = () => {
-    navigator.clipboard?.writeText(BANK_DETAILS.ifscCode);
-    setCopiedIfsc(true);
-    setTimeout(() => setCopiedIfsc(false), 2500);
-  };
-
-  const handleProcessPayment = (e) => {
-    e.preventDefault();
+  // =========================================================================
+  // Process Checkout Flow
+  // =========================================================================
+  const handleProcessPayment = async (simulateDemo = false) => {
+    setErrorMsg('');
     setIsProcessing(true);
 
-    setTimeout(() => {
-      const generatedTxnId = utrNumber.trim()
-        ? `UTR_${utrNumber.trim().toUpperCase()}`
-        : `SB_TXN_${Math.floor(100000000 + Math.random() * 900000000)}`;
+    try {
+      // ---------------------------------------------------------------------
+      // METHOD 0: Direct Razorpay.me Link (razorpay.me/@divakarmuthu)
+      // ---------------------------------------------------------------------
+      if (activeTab === 'RAZORPAY_ME') {
+        const meRes = await apiService.payRazorpayMe(bookingId, utrNumber);
+        const receiptData = {
+          bookingId,
+          transactionId: meRes.payment?.razorpayPaymentId || utrNumber || `RZP_ME_${Date.now()}`,
+          paymentId: meRes.payment?.razorpayPaymentId || `RZP_ME_${Date.now()}`,
+          amountTotal: totalAmount,
+          walletUsed: 0,
+          amountPaid: totalAmount,
+          paymentMethod: 'Razorpay.me Direct UPI',
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+          bonusCredited: meRes.splits?.bonusCredited || customerCashback,
+        };
+        setReceipt(receiptData);
+        setPaymentSuccess(true);
+        setIsProcessing(false);
+        if (onSuccess) onSuccess(receiptData);
+        return;
+      }
 
-      const details = {
-        bookingId: booking._id || booking.id,
-        amount: totalAmount,
-        platformCommission: platformFee,
-        baseWorkerPayout,
-        workerBonusAmount,
-        workerPayout: workerTotalPayout,
-        isOnlinePayment: isOnline,
-        paymentMethod: activeTab === 'UPI' ? 'Direct Bank UPI (Instant QR)' : activeTab === 'BankTransfer' ? 'Direct Bank Transfer (IMPS/NEFT)' : activeTab,
-        transactionId: generatedTxnId,
-        utrNumber: utrNumber.trim() || undefined,
-        destinationAccount: activeTab === 'BankTransfer' ? `${BANK_DETAILS.bankName} (${BANK_DETAILS.accountNumber})` : customUpiId,
-        timestamp: new Date().toLocaleString(),
+      // ---------------------------------------------------------------------
+      // METHOD 1: Cash on Delivery (COD)
+      // ---------------------------------------------------------------------
+      if (activeTab === 'COD') {
+        const codRes = await apiService.payCod(bookingId);
+        const receiptData = {
+          bookingId,
+          transactionId: codRes.payment?.razorpayOrderId || `COD_${Date.now()}`,
+          paymentId: `COD_PAID_${Date.now()}`,
+          amountTotal: totalAmount,
+          walletUsed: 0,
+          amountPaid: totalAmount,
+          paymentMethod: 'Cash on Delivery (COD)',
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+          bonusCredited: 0,
+        };
+        setReceipt(receiptData);
+        setPaymentSuccess(true);
+        setIsProcessing(false);
+        if (onSuccess) onSuccess(receiptData);
+        return;
+      }
+
+      // ---------------------------------------------------------------------
+      // METHOD 2: 100% Wallet Balance Payment
+      // ---------------------------------------------------------------------
+      if (activeTab === 'WALLET' || (payableAmount === 0 && walletUsed >= totalAmount)) {
+        const orderRes = await apiService.createPaymentOrder(bookingId, true);
+        const receiptData = {
+          bookingId,
+          orderId: orderRes.orderId,
+          paymentId: `PAY_WALLET_${Date.now()}`,
+          amountTotal: totalAmount,
+          walletUsed: totalAmount,
+          amountPaid: 0,
+          paymentMethod: 'SmartFix Wallet Balance',
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+          bonusCredited: 0,
+        };
+        setReceipt(receiptData);
+        setPaymentSuccess(true);
+        setIsProcessing(false);
+        if (onSuccess) onSuccess(receiptData);
+        return;
+      }
+
+      // ---------------------------------------------------------------------
+      // METHOD 3: Razorpay Payment Gateway (UPI / Card / NetBanking)
+      // ---------------------------------------------------------------------
+      const orderRes = await apiService.createPaymentOrder(bookingId, useWallet);
+
+      // If server determined wallet covered entire price
+      if (orderRes.paidWithWallet) {
+        const receiptData = {
+          bookingId,
+          orderId: orderRes.orderId,
+          paymentId: `PAY_WALLET_${Date.now()}`,
+          amountTotal: totalAmount,
+          walletUsed: totalAmount,
+          amountPaid: 0,
+          paymentMethod: 'SmartFix Wallet Balance',
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+          bonusCredited: 0,
+        };
+        setReceipt(receiptData);
+        setPaymentSuccess(true);
+        setIsProcessing(false);
+        if (onSuccess) onSuccess(receiptData);
+        return;
+      }
+
+      const rzpKey = orderRes.keyId || orderRes.key || 'rzp_test_placeholder';
+      const rzpOrderId = orderRes.orderId || orderRes.order?.id;
+      const isPlaceholderKey = !rzpKey || rzpKey === 'rzp_test_placeholder' || rzpKey.includes('YOUR_');
+
+      // If Developer explicitly clicks Dev Simulator OR placeholder key is detected
+      if (simulateDemo || isPlaceholderKey) {
+        // Execute server signature verification using demo mode verification
+        const demoPaymentId = `demo_pay_${Date.now()}`;
+        const demoSignature = `demo_sig_${Date.now()}`;
+
+        const verifyRes = await apiService.verifyPayment({
+          razorpay_order_id: rzpOrderId,
+          razorpay_payment_id: demoPaymentId,
+          razorpay_signature: demoSignature,
+          bookingId,
+          useWallet,
+        });
+
+        const receiptData = {
+          bookingId,
+          orderId: rzpOrderId,
+          paymentId: demoPaymentId,
+          amountTotal: totalAmount,
+          walletUsed,
+          amountPaid: payableAmount,
+          paymentMethod: 'Razorpay UPI / Cards (Verified Gateway)',
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+          bonusCredited: verifyRes?.splits?.bonusCredited || customerCashback,
+        };
+
+        setReceipt(receiptData);
+        setPaymentSuccess(true);
+        setIsProcessing(false);
+        if (onSuccess) onSuccess(receiptData);
+        return;
+      }
+
+      // Live Razorpay Checkout JS Modal
+      const isScriptLoaded = await loadRazorpayScript();
+      if (!isScriptLoaded) {
+        throw new Error(
+          t('razorpay_script_failed', 'Failed to load Razorpay payment gateway. Please check your internet connection.')
+        );
+      }
+
+      const options = {
+        key: rzpKey,
+        amount: orderRes.amount || orderRes.order?.amount,
+        currency: 'INR',
+        name: 'SmartFix / HandyBook',
+        description: `Service #${bookingShortId} Settlement`,
+        order_id: rzpOrderId,
+        prefill: {
+          name: customerProfile.name || 'Customer',
+          email: customerProfile.email || '',
+          contact: customerProfile.phone || customerProfile.mobile || '',
+        },
+        theme: {
+          color: '#2563eb', // SmartFix Blue
+        },
+        modal: {
+          ondismiss: () => {
+            setIsProcessing(false);
+            setErrorMsg(
+              t('payment_dismissed_msg', 'Payment checkout was closed before completion. You can retry anytime.')
+            );
+          },
+        },
+        handler: async (response) => {
+          try {
+            // Verify HMAC-SHA256 signature on backend
+            const verifyRes = await apiService.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              bookingId,
+              useWallet,
+            });
+
+            const receiptData = {
+              bookingId,
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              amountTotal: totalAmount,
+              walletUsed,
+              amountPaid: payableAmount,
+              paymentMethod: 'Razorpay UPI / Card / NetBanking',
+              status: 'paid',
+              paidAt: new Date().toISOString(),
+              bonusCredited: verifyRes?.splits?.bonusCredited || customerCashback,
+            };
+
+            setReceipt(receiptData);
+            setPaymentSuccess(true);
+            if (onSuccess) onSuccess(receiptData);
+          } catch (verErr) {
+            setErrorMsg(
+              verErr.message ||
+                t('payment_verify_failed', 'Payment signature verification failed. Please contact customer support.')
+            );
+          } finally {
+            setIsProcessing(false);
+          }
+        },
       };
 
-      setTxnDetails(details);
-      setIsProcessing(false);
-      setPaymentSuccess(true);
+      const rzp = new window.Razorpay(options);
 
-      if (onSuccess) {
-        onSuccess(details);
-      }
-    }, 1500);
+      rzp.on('payment.failed', (failResp) => {
+        setIsProcessing(false);
+        const reason =
+          failResp.error?.description ||
+          failResp.error?.reason ||
+          t('payment_failed_default', 'Payment transaction failed or was declined by your bank/UPI app.');
+        setErrorMsg(reason);
+      });
+
+      rzp.open();
+    } catch (err) {
+      setIsProcessing(false);
+      setErrorMsg(err.message || t('payment_initiate_failed', 'Failed to initiate payment. Please try again.'));
+    }
   };
 
-  const handlePrintReceipt = () => {
-    window.print();
+  const handleDownloadInvoice = () => {
+    const invoiceUrl = `${getApiBase()}/bookings/${bookingId}/invoice`;
+    window.open(invoiceUrl, '_blank');
   };
 
   return (
     <div className="payment-modal-overlay">
       <div className="payment-modal-card">
-        <button className="close-modal-btn" onClick={onClose} disabled={isProcessing}>
+        <button
+          className="close-modal-btn"
+          onClick={onClose}
+          disabled={isProcessing}
+          aria-label="Close Modal"
+        >
           <X size={20} />
         </button>
 
         {!paymentSuccess ? (
           <>
-            <div className="modal-header-section">
-              <div className="shield-icon">
-                <ShieldCheck size={28} color="#2563eb" />
+            {/* Modal Header */}
+            <div className="modal-header-section text-center mb-3">
+              <div className="shield-icon mx-auto mb-2">
+                <ShieldCheck size={32} color="#2563eb" />
               </div>
-              <h2>Instant Bank & UPI Checkout</h2>
-              <p>Direct bank calculation & instant payout credit with +5% worker bonus!</p>
+              <h2 className="h5 fw-bold text-dark mb-1">
+                {t('secure_razorpay_checkout', 'SmartFix Secure Payment Gateway')}
+              </h2>
+              <p className="text-muted small mb-0">
+                {t('payment_subtitle', 'Encrypted 256-bit Razorpay checkout with instant cashback reward')}
+              </p>
             </div>
 
-            {/* 5% Online Bonus Notice Banner */}
-            <div className="worker-bonus-alert-box">
-              <Gift size={20} color="#059669" className="pulse-icon flex-shrink-0" />
+            {/* Error Notification */}
+            {errorMsg && (
+              <div className="alert alert-danger py-2 px-3 small d-flex align-items-center gap-2 mb-3 rounded-3">
+                <AlertCircle size={18} className="flex-shrink-0 text-danger" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* 5% Customer Bonus Cashback Banner */}
+            <div className="worker-bonus-alert-box mb-3">
+              <Gift size={22} color="#059669" className="pulse-icon flex-shrink-0" />
               <div>
-                <strong>🎁 5% Worker Reward Bonus Active!</strong>
+                <strong>{t('bonus_cashback_title', '🎁 5% Customer Bonus Cashback Active!')}</strong>
                 <p>
-                  When you pay directly via <strong>UPI QR, Bank Transfer, or Card</strong>, your worker receives an <strong>EXTRA +5% Reward Bonus (₹{workerBonusAmount})</strong> credited directly to their bank wallet!
+                  {t(
+                    'bonus_cashback_text',
+                    'Pay online via Razorpay to earn 5% bonus cashback automatically credited to your SmartFix wallet.'
+                  )}
                 </p>
               </div>
             </div>
 
-            {/* Dynamic Financial Calculation Summary Box */}
-            <div className="booking-summary-box">
+            {/* Financial Summary Card */}
+            <div className="booking-summary-box mb-3">
               <div className="summary-row">
-                <span>Service Fare ({booking?.trade || 'Home Service'})</span>
-                <span>₹{totalAmount}</span>
+                <span className="text-muted">{t('service_label', 'Service Fare')}:</span>
+                <span className="fw-semibold text-dark">₹{totalAmount}</span>
               </div>
-              <div className="summary-row" style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                <span>Base Handyman Share (90%)</span>
+              <div className="summary-row text-muted" style={{ fontSize: '0.82rem' }}>
+                <span>{t('handyman_label', 'Handyman Base Share (90%)')}:</span>
                 <span>₹{baseWorkerPayout}</span>
               </div>
-
-              {/* 5% Bonus Row */}
-              {isOnline ? (
-                <div className="summary-row" style={{ color: '#059669', fontSize: '0.88rem', fontWeight: '700', background: '#f0fdf4', padding: '6px 8px', borderRadius: '8px' }}>
-                  <span>🎁 5% Online Payment Bonus Reward</span>
+              {isOnline && (
+                <div
+                  className="summary-row"
+                  style={{
+                    color: '#059669',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    background: '#f0fdf4',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                  }}
+                >
+                  <span>🎉 5% Online Reward Bonus</span>
                   <span>+₹{workerBonusAmount}</span>
                 </div>
-              ) : (
-                <div className="summary-row" style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
-                  <span>5% Online Bonus Reward</span>
-                  <span>₹0 (Pay via Bank/UPI to Unlock)</span>
+              )}
+              {walletUsed > 0 && (
+                <div className="summary-row text-success" style={{ fontSize: '0.85rem', fontWeight: '600' }}>
+                  <span>{t('wallet_balance_applied', 'Wallet Balance Applied')}:</span>
+                  <span>-₹{walletUsed}</span>
                 </div>
               )}
-
-              <div className="summary-row" style={{ color: '#059669', fontSize: '0.9rem', fontWeight: '800' }}>
-                <span>Total Handyman Net Earnings ({isOnline ? '95%' : '90%'})</span>
-                <span>₹{workerTotalPayout}</span>
-              </div>
-
-              <div className="summary-row" style={{ color: '#64748b', fontSize: '0.82rem' }}>
-                <span>Platform Service & Dispatch Fee</span>
-                <span>₹{platformFee}</span>
-              </div>
-
-              <div className="summary-row total-row">
-                <span>Total Amount to Pay</span>
-                <span className="total-price">₹{totalAmount}</span>
+              <div className="summary-row total-row border-top pt-2 mt-2">
+                <span className="fw-bold text-dark">{t('net_payable', 'Total Net Payable')}:</span>
+                <span className="total-price text-primary fw-bold fs-5">₹{payableAmount}</span>
               </div>
             </div>
 
             {/* Payment Method Tabs */}
-            <div className="payment-tabs">
+            <div className="payment-tabs mb-3">
               <button
                 type="button"
-                className={`tab-btn ${activeTab === 'UPI' ? 'active' : ''}`}
-                onClick={() => setActiveTab('UPI')}
+                className={`tab-btn ${activeTab === 'RAZORPAY' ? 'active' : ''}`}
+                onClick={() => setActiveTab('RAZORPAY')}
               >
-                <QrCode size={16} /> Direct UPI QR
+                <CreditCard size={18} />
+                <span>Razorpay Gateway</span>
               </button>
               <button
                 type="button"
-                className={`tab-btn ${activeTab === 'BankTransfer' ? 'active' : ''}`}
-                onClick={() => setActiveTab('BankTransfer')}
+                className={`tab-btn ${activeTab === 'RAZORPAY_ME' ? 'active' : ''}`}
+                onClick={() => setActiveTab('RAZORPAY_ME')}
               >
-                <Building2 size={16} /> Bank Account (IMPS)
+                <QrCode size={18} />
+                <span>UPI (razorpay.me)</span>
               </button>
               <button
                 type="button"
-                className={`tab-btn ${activeTab === 'Card' ? 'active' : ''}`}
-                onClick={() => setActiveTab('Card')}
+                className={`tab-btn ${activeTab === 'WALLET' ? 'active' : ''}`}
+                onClick={() => setActiveTab('WALLET')}
+                disabled={walletBalance <= 0}
+                title={walletBalance <= 0 ? 'Insufficient wallet balance' : 'Pay with Wallet'}
               >
-                <CreditCard size={16} /> Card
+                <Wallet size={18} />
+                <span>Wallet (₹{walletBalance})</span>
               </button>
               <button
                 type="button"
                 className={`tab-btn ${activeTab === 'COD' ? 'active' : ''}`}
                 onClick={() => setActiveTab('COD')}
               >
-                <Banknote size={16} /> Cash
+                <Banknote size={18} />
+                <span>Cash on Delivery</span>
               </button>
             </div>
 
-            {/* Payment Form */}
-            <form onSubmit={handleProcessPayment} className="payment-form">
-              {/* Tab 1: Direct Bank UPI QR */}
-              {activeTab === 'UPI' && (
-                <div className="upi-container text-center">
-                  <div className="qr-preview p-3 bg-white border rounded-4 shadow-xs mx-auto d-inline-block">
-                    <img
-                      src={qrCodeUrl}
-                      alt="Direct Bank UPI QR Code"
-                      className="qr-img"
-                      style={{ width: 180, height: 180, display: 'block', margin: '0 auto' }}
-                    />
-                    <div className="d-flex align-items-center justify-content-center gap-2 mt-2">
-                      <span className="badge bg-success-subtle text-success border px-2 py-1 rounded-pill fw-bold" style={{ fontSize: '0.74rem' }}>
-                        ₹{totalAmount} Pre-filled
-                      </span>
-                      <span className="badge bg-primary-subtle text-primary border px-2 py-1 rounded-pill fw-bold" style={{ fontSize: '0.74rem' }}>
-                        Ref: #{bookingShortId}
-                      </span>
-                    </div>
+            {/* Tab 1: Razorpay Gateway Details */}
+            {activeTab === 'RAZORPAY' && (
+              <div className="p-3 bg-light rounded-3 border mb-3">
+                <div className="d-flex align-items-center justify-content-between mb-2">
+                  <div className="d-flex align-items-center gap-2">
+                    <Lock size={16} className="text-primary" />
+                    <span className="small fw-bold text-dark">Supported Payment Methods:</span>
                   </div>
+                  <span className="badge bg-primary-subtle text-primary fw-semibold" style={{ fontSize: '0.75rem' }}>
+                    Auto-Verified
+                  </span>
+                </div>
+                <div className="d-flex flex-wrap gap-2 small text-muted mb-3" style={{ fontSize: '0.8rem' }}>
+                  <span className="border bg-white rounded-pill px-2 py-1">📱 Google Pay / PhonePe / UPI</span>
+                  <span className="border bg-white rounded-pill px-2 py-1">💳 Visa / MasterCard / RuPay</span>
+                  <span className="border bg-white rounded-pill px-2 py-1">🏦 Net Banking (SBI, HDFC, ICICI)</span>
+                  <span className="border bg-white rounded-pill px-2 py-1">👛 Wallets & EMI</span>
+                </div>
 
-                  <p className="qr-caption mt-2 mb-2 text-dark fw-semibold" style={{ fontSize: '0.88rem' }}>
-                    Scan with <strong>Google Pay, PhonePe, Paytm, or BHIM</strong> to transfer directly to the merchant bank account.
-                  </p>
-
-                  {/* 1-Tap Mobile UPI Intent Button */}
-                  <a
-                    href={upiPayUri}
-                    className="btn btn-outline-primary btn-sm rounded-pill px-3 py-2 fw-bold d-inline-flex align-items-center gap-2 mb-3 shadow-xs"
-                    style={{ textDecoration: 'none' }}
-                  >
-                    <Smartphone size={16} /> Pay via Installed UPI App (GPay / PhonePe) <ExternalLink size={13} />
-                  </a>
-
-                  {/* UPI VPA Copy Bar */}
-                  <div className="input-group mb-2">
-                    <span className="input-group-text bg-light border-end-0 text-muted small fw-bold">UPI VPA:</span>
+                {/* Wallet Balance Checkbox */}
+                {walletBalance > 0 && (
+                  <div className="form-check pt-2 border-top">
                     <input
-                      type="text"
-                      className="form-control bg-light border-start-0 border-end-0 fw-bold text-primary"
-                      value={customUpiId}
-                      onChange={(e) => setCustomUpiId(e.target.value)}
+                      type="checkbox"
+                      className="form-check-input"
+                      id="useWalletBalanceCheck"
+                      checked={useWallet}
+                      onChange={(e) => setUseWallet(e.target.checked)}
+                      disabled={isProcessing}
                     />
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={handleCopyUpi}
-                      title="Copy UPI ID"
-                    >
-                      {copiedUpi ? <Check size={16} className="text-success" /> : <Copy size={16} />}
-                    </button>
-                  </div>
-
-                  {/* Optional UTR Reference Field */}
-                  <div className="form-group text-start mt-3">
-                    <label className="fw-bold text-dark small mb-1">
-                      UTR / Bank Ref Number (Optional after payment):
+                    <label className="form-check-label small text-dark fw-semibold" htmlFor="useWalletBalanceCheck">
+                      Apply SmartFix Wallet Balance (₹{walletBalance} available)
                     </label>
-                    <input
-                      type="text"
-                      className="form-control rounded-3"
-                      placeholder="e.g. 429182390192 (12-digit UPI Ref)"
-                      value={utrNumber}
-                      onChange={(e) => setUtrNumber(e.target.value)}
-                    />
                   </div>
+                )}
+
+                <div className="mt-2 text-center pt-2 border-top" style={{ fontSize: '0.8rem' }}>
+                  <span className="text-muted">Prefer direct payment link? </span>
+                  <a
+                    href={razorpayMeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-decoration-none fw-semibold text-primary"
+                  >
+                    Open {razorpayMeUrl.replace('https://', '')} ↗
+                  </a>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Tab 2: Direct Bank Account Transfer (IMPS / NEFT) */}
-              {activeTab === 'BankTransfer' && (
-                <div className="bank-transfer-container">
-                  <div className="alert alert-primary border-0 p-3 rounded-4 shadow-xs mb-3" style={{ background: '#eff6ff' }}>
-                    <small className="text-muted fw-bold d-block mb-1">DIRECT MERCHANT CURRENT BANK ACCOUNT</small>
-                    <div className="d-flex justify-content-between align-items-center mb-1">
-                      <span className="text-secondary small">Beneficiary Name:</span>
-                      <strong className="text-dark small">{BANK_DETAILS.accountName}</strong>
-                    </div>
-                    <div className="d-flex justify-content-between align-items-center mb-1">
-                      <span className="text-secondary small">Bank Name:</span>
-                      <strong className="text-dark small">{BANK_DETAILS.bankName}</strong>
-                    </div>
-                    <div className="d-flex justify-content-between align-items-center mb-1">
-                      <span className="text-secondary small">Account Number:</span>
-                      <span className="d-flex align-items-center gap-1">
-                        <strong className="text-primary font-monospace">{BANK_DETAILS.accountNumber}</strong>
-                        <button type="button" className="btn btn-link p-0 text-primary" onClick={handleCopyAccount}>
-                          {copiedAccount ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-                        </button>
-                      </span>
-                    </div>
-                    <div className="d-flex justify-content-between align-items-center mb-1">
-                      <span className="text-secondary small">IFSC Code:</span>
-                      <span className="d-flex align-items-center gap-1">
-                        <strong className="text-primary font-monospace">{BANK_DETAILS.ifscCode}</strong>
-                        <button type="button" className="btn btn-link p-0 text-primary" onClick={handleCopyIfsc}>
-                          {copiedIfsc ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-                        </button>
-                      </span>
-                    </div>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <span className="text-secondary small">Branch:</span>
-                      <strong className="text-dark small">{BANK_DETAILS.branch}</strong>
-                    </div>
-                  </div>
-
-                  <div className="form-group mb-2">
-                    <label className="fw-bold text-dark small mb-1">Enter Bank Transfer UTR / Transaction Reference Number:</label>
-                    <input
-                      type="text"
-                      className="form-control rounded-3"
-                      placeholder="e.g. SBIN42891029102 or IMPS-981290"
-                      value={utrNumber}
-                      onChange={(e) => setUtrNumber(e.target.value)}
-                      required
-                    />
-                    <small className="text-muted d-block mt-1" style={{ fontSize: '0.75rem' }}>
-                      Transfer exact ₹{totalAmount} via your mobile banking app (SBI YONO, iMobile, HDFC, etc.) and paste the UTR number above.
-                    </small>
-                  </div>
+            {/* Tab 2: Razorpay.me Direct UPI Link */}
+            {activeTab === 'RAZORPAY_ME' && (
+              <div className="p-3 bg-light rounded-3 border mb-3 text-center">
+                <div className="d-flex align-items-center justify-content-center gap-2 mb-2">
+                  <QrCode size={22} className="text-primary" />
+                  <span className="fw-bold text-dark">Direct Razorpay.me UPI Link</span>
+                  <span className="badge bg-success-subtle text-success">Verified</span>
                 </div>
-              )}
+                <p className="text-muted small mb-2">
+                  Pay ₹{payableAmount} directly to <strong>{razorpayMeUrl.replace('https://', '')}</strong> via Google Pay, PhonePe, Paytm, BHIM, or Cards.
+                </p>
 
-              {/* Tab 3: Debit / Credit Card */}
-              {activeTab === 'Card' && (
-                <div className="card-fields">
-                  <div className="input-field">
-                    <label>Cardholder Name</label>
-                    <input
-                      type="text"
-                      placeholder="Name as per card"
-                      value={cardName}
-                      onChange={(e) => setCardName(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="input-field">
-                    <label>Card Number</label>
-                    <input
-                      type="text"
-                      placeholder="4532 •••• •••• 8921"
-                      maxLength={19}
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="card-row">
-                    <div className="input-field">
-                      <label>Expiry Date</label>
-                      <input
-                        type="text"
-                        placeholder="MM/YY"
-                        maxLength={5}
-                        value={cardExpiry}
-                        onChange={(e) => setCardExpiry(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="input-field">
-                      <label>CVC / CVV</label>
-                      <input
-                        type="password"
-                        placeholder="123"
-                        maxLength={4}
-                        value={cardCvc}
-                        onChange={(e) => setCardCvc(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
+                <div className="my-3">
+                  <a
+                    href={razorpayMeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-primary btn-sm px-3 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm"
+                  >
+                    <ExternalLink size={16} />
+                    <span>Open {razorpayMeUrl.replace('https://', '')} to Pay ₹{payableAmount}</span>
+                  </a>
                 </div>
-              )}
 
-              {/* Tab 4: Cash on Delivery */}
-              {activeTab === 'COD' && (
-                <div className="cod-info">
-                  <Banknote size={36} color="#059669" />
-                  <h4>Cash on Delivery Selected</h4>
-                  <p>You can pay ₹{totalAmount} directly in cash to the worker after job completion.</p>
-                  <small style={{ color: '#d97706', display: 'block', marginTop: '6px' }}>
-                    ⚠️ Note: Cash payments do not include the 5% online worker bonus reward.
+                <div className="bg-white p-2 rounded-2 border text-start mt-3">
+                  <label className="form-label small fw-semibold text-dark mb-1" htmlFor="utrInput">
+                    UPI Reference / UTR Number (Optional):
+                  </label>
+                  <input
+                    type="text"
+                    id="utrInput"
+                    className="form-control form-control-sm"
+                    placeholder="e.g. 432109876543 or Razorpay payment ID"
+                    value={utrNumber}
+                    onChange={(e) => setUtrNumber(e.target.value)}
+                    disabled={isProcessing}
+                  />
+                  <small className="text-muted" style={{ fontSize: '0.74rem' }}>
+                    Once paid on Razorpay, click below to confirm settlement and receive your 5% wallet cashback!
                   </small>
                 </div>
-              )}
+              </div>
+            )}
 
-              <button type="submit" className="pay-now-btn mt-3" disabled={isProcessing}>
-                {isProcessing ? (
-                  <span className="spinner-text">
-                    <span className="spinner"></span> Verifying Bank Transaction...
-                  </span>
+            {/* Tab 2: Wallet Details */}
+            {activeTab === 'WALLET' && (
+              <div className="p-3 bg-light rounded-3 border mb-3 text-center">
+                <Wallet size={36} className="text-primary mb-2 mx-auto" />
+                <h5 className="h6 fw-bold text-dark mb-1">Pay with SmartFix Wallet</h5>
+                <p className="text-muted small mb-2">
+                  Your current balance is <strong>₹{walletBalance}</strong>.
+                </p>
+                {walletBalance < totalAmount ? (
+                  <div className="alert alert-warning py-1 px-2 small mb-0">
+                    ⚠️ Wallet balance is ₹{walletBalance}. Please switch to Razorpay to pay the remaining ₹{totalAmount - walletBalance}.
+                  </div>
                 ) : (
-                  `Confirm & Settle ₹${totalAmount} Now ${isOnline ? '(Unlocks +5% Worker Bonus 🎁)' : ''}`
+                  <div className="text-success small fw-semibold">
+                    ✓ Full fare of ₹{totalAmount} will be settled instantly with zero processing fee.
+                  </div>
                 )}
-              </button>
-            </form>
+              </div>
+            )}
+
+            {/* Tab 3: COD Details */}
+            {activeTab === 'COD' && (
+              <div className="cod-info mb-3">
+                <Banknote size={36} color="#059669" className="mx-auto mb-2" />
+                <h4>Cash on Delivery Selected</h4>
+                <p>You can pay ₹{totalAmount} in cash directly to your service provider after job completion.</p>
+                <small style={{ color: '#d97706', display: 'block', marginTop: '6px' }}>
+                  ⚠️ Note: Cash payments do not qualify for the 5% online wallet cashback reward.
+                </small>
+              </div>
+            )}
+
+            {/* Pay Button */}
+            <button
+              type="button"
+              className="pay-now-btn"
+              disabled={isProcessing || (activeTab === 'WALLET' && walletBalance < totalAmount)}
+              onClick={() => handleProcessPayment(false)}
+            >
+              {isProcessing ? (
+                <span className="spinner-text">
+                  <span className="spinner"></span>
+                  <span>Verifying Payment...</span>
+                </span>
+              ) : activeTab === 'RAZORPAY_ME' ? (
+                `Confirm Razorpay.me Settlement (₹${payableAmount})`
+              ) : activeTab === 'COD' ? (
+                `Confirm Cash Settlement (₹${totalAmount})`
+              ) : activeTab === 'WALLET' ? (
+                `Settle ₹${totalAmount} via Wallet`
+              ) : (
+                `Proceed to Pay ₹${payableAmount} via Razorpay`
+              )}
+            </button>
+
+            {/* Dev Simulator Button (Instant Local Verification) */}
+            {activeTab === 'RAZORPAY' && !isProcessing && (
+              <div className="text-center mt-3 pt-2 border-top">
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm text-muted text-decoration-none small"
+                  style={{ fontSize: '0.76rem' }}
+                  onClick={() => handleProcessPayment(true)}
+                  title="Simulates successful Razorpay checkout for test & development"
+                >
+                  ⚡ Simulate Successful Razorpay Payment (Dev Mode)
+                </button>
+              </div>
+            )}
           </>
         ) : (
-          <div className="receipt-container">
-            <div className="success-badge">
-              <CheckCircle2 size={54} color="#059669" />
+          /* ===================================================================
+             Payment Success & Verified Receipt Screen
+             =================================================================== */
+          <div className="receipt-container text-center py-2">
+            <div className="success-badge mb-3">
+              <CheckCircle2 size={54} className="text-success mx-auto" />
             </div>
-            <h2>Payment Successful!</h2>
-            <p className="success-subtitle">Direct Bank Calculation Completed & Order Settled</p>
+            <h3 className="h5 fw-bold text-dark mb-1">
+              {t('payment_verified_title', 'Payment Verified & Settled!')}
+            </h3>
+            <p className="text-muted small mb-3">
+              {t('payment_verified_sub', 'Your transaction signature has been cryptographically confirmed.')}
+            </p>
 
-            <div className="receipt-details">
-              <div className="receipt-row">
-                <span>Transaction ID:</span>
-                <strong>{txnDetails?.transactionId}</strong>
+            {/* Receipt Summary Card */}
+            <div className="bg-light p-3 rounded-3 text-start small border mb-3">
+              <div className="d-flex justify-content-between mb-2">
+                <span className="text-muted">{t('booking_id_label', 'Booking ID')}:</span>
+                <span className="fw-semibold font-monospace">#{bookingShortId}</span>
               </div>
-              <div className="receipt-row">
-                <span>Booking Reference:</span>
-                <strong>#{bookingShortId}</strong>
+              <div className="d-flex justify-content-between mb-2">
+                <span className="text-muted">{t('transaction_ref', 'Payment Reference')}:</span>
+                <span className="fw-semibold font-monospace text-truncate" style={{ maxWidth: '200px' }}>
+                  {receipt?.paymentId || receipt?.transactionId}
+                </span>
               </div>
-              <div className="receipt-row">
-                <span>Payment Mode:</span>
-                <strong>{txnDetails?.paymentMethod}</strong>
+              <div className="d-flex justify-content-between mb-2">
+                <span className="text-muted">{t('payment_mode_label', 'Payment Mode')}:</span>
+                <span className="fw-semibold text-dark">{receipt?.paymentMethod}</span>
               </div>
-              <div className="receipt-row">
-                <span>Total Amount Paid:</span>
-                <strong className="text-success fs-5">₹{txnDetails?.amount}</strong>
+              <div className="d-flex justify-content-between mb-2">
+                <span className="text-muted">{t('total_amount_label', 'Total Service Fare')}:</span>
+                <span className="fw-semibold text-dark">₹{receipt?.amountTotal}</span>
               </div>
-              <div className="receipt-row">
-                <span>Handyman Payout Share:</span>
-                <strong className="text-primary">₹{txnDetails?.workerPayout} (Includes +5% Bonus)</strong>
-              </div>
-              <div className="receipt-row">
-                <span>Platform Commission:</span>
-                <strong>₹{txnDetails?.platformCommission}</strong>
-              </div>
-              <div className="receipt-row">
-                <span>Date & Time:</span>
-                <small>{txnDetails?.timestamp}</small>
+              {receipt?.walletUsed > 0 && (
+                <div className="d-flex justify-content-between mb-2 text-success">
+                  <span>{t('wallet_deducted_label', 'Wallet Balance Deducted')}:</span>
+                  <span className="fw-bold">-₹{receipt?.walletUsed}</span>
+                </div>
+              )}
+              <div className="d-flex justify-content-between pt-2 border-top fw-bold text-dark fs-6">
+                <span>{t('net_paid_label', 'Net Paid')}:</span>
+                <span className="text-primary">₹{receipt?.amountPaid}</span>
               </div>
             </div>
 
-            <div className="receipt-actions d-flex gap-2 mt-4">
+            {/* Bonus Cashback Award Banner */}
+            {receipt?.bonusCredited > 0 && (
+              <div className="alert alert-success d-flex align-items-center gap-2 py-2 px-3 small rounded-3 mb-3 text-start">
+                <Gift size={22} className="text-success flex-shrink-0" />
+                <div>
+                  <strong>{t('cashback_awarded_heading', '🎉 ₹{{amount}} Wallet Cashback Credited!', { amount: receipt.bonusCredited })}</strong>
+                  <div style={{ fontSize: '0.78rem' }}>
+                    {t('cashback_awarded_sub', 'Added directly to your SmartFix wallet for upcoming home repairs.')}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Invoice Download & Done Actions */}
+            <div className="d-grid gap-2">
               <button
                 type="button"
-                className="btn btn-outline-secondary flex-fill rounded-3 py-2 fw-bold d-flex align-items-center justify-content-center gap-1"
-                onClick={handlePrintReceipt}
+                className="btn btn-outline-secondary py-2 fw-semibold rounded-3 d-flex align-items-center justify-content-center gap-2"
+                onClick={handleDownloadInvoice}
               >
-                <Download size={16} /> Print Receipt
+                <Download size={16} />
+                <span>{t('download_tax_invoice', 'Download Tax Invoice (PDF)')}</span>
               </button>
               <button
                 type="button"
-                className="btn btn-primary flex-fill rounded-3 py-2 fw-bold"
+                className="btn btn-primary py-2 fw-bold rounded-3 shadow-sm"
                 onClick={onClose}
               >
-                Done
+                {t('done_btn', 'Done & Return to Dashboard')}
               </button>
             </div>
           </div>

@@ -34,6 +34,24 @@ const getPlatformRates = async () => {
 };
 
 /**
+ * Check if current MongoDB deployment supports multi-document transactions (requires ReplicaSet or Sharded)
+ */
+const supportsTransactions = () => {
+  try {
+    const desc = mongoose.connection?.client?.topology?.description;
+    if (!desc) return false;
+    const type = desc.type;
+    const setName = desc.setName;
+    if (type === 'ReplicaSetWithPrimary' || type === 'Sharded' || Boolean(setName)) {
+      return true;
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
+};
+
+/**
  * Helper to emit Socket.io events when booking is marked Paid
  */
 const emitPaidSocketEvents = (io, booking, payment, splits) => {
@@ -86,10 +104,13 @@ const emitPaidSocketEvents = (io, booking, payment, splits) => {
  * Executes wallet deductions, bonus cashback, worker payout, and status update inside a transaction.
  */
 const markPaid = async (orderId, paymentId, options = {}) => {
-  const { paymentMethod = 'Razorpay', io = null } = options;
+  const { paymentMethod = 'Razorpay', io = null, bookingId = null } = options;
 
   // 1. Fetch Payment record
-  const payment = await Payment.findOne({ razorpayOrderId: orderId });
+  let payment = await Payment.findOne({ razorpayOrderId: orderId });
+  if (!payment && bookingId) {
+    payment = await Payment.findOne({ booking: bookingId }).sort({ createdAt: -1 });
+  }
   if (!payment) {
     throw new Error(`Payment record with orderId '${orderId}' not found`);
   }
@@ -123,24 +144,6 @@ const markPaid = async (orderId, paymentId, options = {}) => {
   const bonusCredited = Math.round(payment.amountPaid * (bonusPct / 100));
 
   const now = new Date();
-
-/**
- * Check if current MongoDB deployment supports multi-document transactions (requires ReplicaSet or Sharded)
- */
-const supportsTransactions = () => {
-  try {
-    const desc = mongoose.connection?.client?.topology?.description;
-    if (!desc) return false;
-    const type = desc.type;
-    const setName = desc.setName;
-    if (type === 'ReplicaSetWithPrimary' || type === 'Sharded' || Boolean(setName)) {
-      return true;
-    }
-    return false;
-  } catch (e) {
-    return false;
-  }
-};
 
   // 4. Atomic Execution (with transaction support & fallback for standalone MongoDB)
   const executeOperations = async (sess) => {
@@ -559,7 +562,8 @@ exports.verifyPayment = async (req, res) => {
     }
 
     const io = req.app?.get('io');
-    const result = await markPaid(orderId, paymentId, { paymentMethod: 'Razorpay', io });
+    const bookingId = req.body.bookingId || req.body.booking;
+    const result = await markPaid(orderId, paymentId, { paymentMethod: 'Razorpay', io, bookingId });
 
     return res.status(200).json({
       success: true,
@@ -716,6 +720,260 @@ exports.getPaymentByBooking = async (req, res) => {
   }
 };
 
+// 7. POST /api/payments/pay-cod (Customer settles Cash on Delivery with worker)
+exports.payCod = async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    const customerId = req.user?.id || req.user?._id;
+
+    if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ success: false, message: 'Valid booking ID is required.' });
+    }
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    const bookingCustId = (booking.customer?._id || booking.customer)?.toString();
+    if (bookingCustId !== customerId.toString()) {
+      return res.status(403).json({ success: false, message: 'Access denied: You can only settle your own bookings.' });
+    }
+
+    const st = (booking.status || '').toLowerCase();
+    if (!['completed', 'workcompleted'].includes(st)) {
+      return res.status(400).json({
+        success: false,
+        message: `Payment can only be initiated after the worker marks the job as Completed. Current status: '${booking.status}'.`,
+      });
+    }
+
+    if (booking.paymentStatus === 'Paid' || st === 'paid') {
+      return res.status(400).json({ success: false, message: 'This booking has already been paid.' });
+    }
+
+    const fullPrice = Number(booking.price) || 0;
+    const { commissionPct } = await getPlatformRates();
+    const commission = Math.round(fullPrice * (commissionPct / 100));
+    const workerPayout = fullPrice - commission;
+    const now = new Date();
+    const codOrderId = `order_cod_${bookingId}_${Date.now()}`;
+
+    // Create Payment record
+    const payment = await Payment.create({
+      booking: bookingId,
+      customer: customerId,
+      provider: booking.worker,
+      worker: booking.worker,
+      razorpayOrderId: codOrderId,
+      amountTotal: fullPrice,
+      walletUsed: 0,
+      amountPaid: fullPrice,
+      status: 'paid',
+      paymentMethod: 'COD',
+      commission,
+      commissionAmount: commission,
+      workerPayout,
+      providerPayout: workerPayout,
+      bonusCredited: 0,
+      customerCashback: 0,
+      paidAt: now,
+    });
+
+    // Debit Platform Commission from Worker's Wallet (since worker collected full cash from customer)
+    const workerId = booking.worker;
+    if (workerId) {
+      let workerWallet = await Wallet.findOne({ user: workerId });
+      if (!workerWallet) {
+        workerWallet = await Wallet.create({ user: workerId, role: 'worker', balance: 0 });
+      }
+      if (workerWallet.balance >= commission) {
+        await workerWallet.debit(
+          commission,
+          `COD Platform Commission (${commissionPct}%) for Booking #${booking._id.toString().slice(-6)}`,
+          booking._id,
+          payment._id
+        ).catch(() => {});
+      } else {
+        workerWallet.balance = Math.max(0, workerWallet.balance - commission);
+        workerWallet.transactions.unshift({
+          type: 'debit',
+          amount: commission,
+          description: `COD Platform Commission (${commissionPct}%) for Booking #${booking._id.toString().slice(-6)}`,
+          bookingRef: booking._id,
+          paymentRef: payment._id,
+          createdAt: now,
+        });
+        await workerWallet.save().catch(() => {});
+      }
+    }
+
+    // Update Booking Record
+    booking.status = 'paid';
+    booking.paymentStatus = 'Paid';
+    booking.paidAt = now;
+    booking.paymentMethod = 'COD';
+    booking.transactionId = `COD_${Date.now()}`;
+    booking.isOnlinePayment = false;
+    booking.commissionAmount = commission;
+    booking.providerPayout = workerPayout;
+    booking.workerTotalPayout = workerPayout;
+    booking.statusHistory.push({
+      status: 'paid',
+      changedAt: now,
+      changedBy: customerId,
+      actorRole: 'customer',
+      reason: 'Cash on delivery payment settled with technician',
+    });
+    await booking.save();
+
+    const io = req.app?.get('io');
+    emitPaidSocketEvents(io, booking, payment, { workerPayout, bonusCredited: 0, commission });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cash on Delivery payment recorded successfully.',
+      payment,
+      splits: { price: fullPrice, commission, workerPayout, bonusCredited: 0 },
+    });
+  } catch (err) {
+    console.error('COD payment error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to record COD payment', error: err.message });
+  }
+};
+
+async (req, res) => {
+  try {
+    const { bookingId, utrNumber, paymentId } = req.body;
+    const customerId = req.user?.id || req.user?._id;
+
+    if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ success: false, message: 'Valid booking ID is required.' });
+    }
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    const bookingCustId = (booking.customer?._id || booking.customer)?.toString();
+    if (bookingCustId !== customerId.toString()) {
+      return res.status(403).json({ success: false, message: 'Access denied: You can only settle your own bookings.' });
+    }
+
+    const st = (booking.status || '').toLowerCase();
+    if (!['completed', 'workcompleted'].includes(st)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment can only be confirmed after the worker marks the job as Completed. Current status: ' + booking.status + '.',
+      });
+    }
+
+    if (booking.paymentStatus === 'Paid' || st === 'paid') {
+      return res.status(400).json({ success: false, message: 'This booking has already been paid.' });
+    }
+
+    const fullPrice = Number(booking.price) || 0;
+    const { commissionPct, workerOnlineBonusPct, customerBonusPct } = await getPlatformRates();
+
+    const baseWorkerPayout = fullPrice - Math.round(fullPrice * (commissionPct / 100)); // 90%
+    const workerBonus = Math.round(fullPrice * (workerOnlineBonusPct / 100)); // 5%
+    const totalWorkerPayout = baseWorkerPayout + workerBonus; // 95%
+    const customerBonus = Math.round(fullPrice * (customerBonusPct / 100)); // 5%
+    const commission = fullPrice - totalWorkerPayout; // 5% net commission
+    const now = new Date();
+    const txnRef = (paymentId || utrNumber || ('RZP_ME_' + Date.now())).trim();
+    const rzpOrderId = 'order_rzpme_' + bookingId + '_' + Date.now();
+
+    // Create Payment record
+    const payment = await Payment.create({
+      booking: bookingId,
+      customer: customerId,
+      provider: booking.worker,
+      worker: booking.worker,
+      razorpayOrderId: rzpOrderId,
+      razorpayPaymentId: txnRef,
+      amountTotal: fullPrice,
+      walletUsed: 0,
+      amountPaid: fullPrice,
+      status: 'paid',
+      paymentMethod: 'Razorpay.me Direct UPI',
+      commission,
+      commissionAmount: commission,
+      workerPayout: totalWorkerPayout,
+      providerPayout: totalWorkerPayout,
+      bonusCredited: customerBonus,
+      customerCashback: customerBonus,
+      paidAt: now,
+    });
+
+    // Credit Worker Wallet (95%)
+    const workerId = booking.worker;
+    if (workerId) {
+      let workerWallet = await Wallet.findOne({ user: workerId });
+      if (!workerWallet) {
+        workerWallet = await Wallet.create({ user: workerId, role: 'worker', balance: 0 });
+      }
+      await workerWallet.credit(
+        totalWorkerPayout,
+        'Earnings (90% base + 5% online bonus) for Booking #' + booking._id.toString().slice(-6) + ' via Razorpay.me',
+        booking._id,
+        payment._id
+      ).catch(() => {});
+    }
+
+    // Credit Customer Bonus Cashback (5%)
+    let customerWallet = await Wallet.findOne({ user: customerId });
+    if (!customerWallet) {
+      customerWallet = await Wallet.create({ user: customerId, role: 'customer', balance: 0 });
+    }
+    if (customerBonus > 0) {
+      await customerWallet.credit(
+        customerBonus,
+        '🎁 5% Cashback Reward for paying via Razorpay.me (Booking #' + booking._id.toString().slice(-6) + ')',
+        booking._id,
+        payment._id
+      ).catch(() => {});
+    }
+
+    // Update Booking Record
+    booking.status = 'paid';
+    booking.paymentStatus = 'Paid';
+    booking.paidAt = now;
+    booking.paymentMethod = 'Razorpay.me';
+    booking.transactionId = txnRef;
+    booking.isOnlinePayment = true;
+    booking.commissionAmount = commission;
+    booking.providerPayout = totalWorkerPayout;
+    booking.workerTotalPayout = totalWorkerPayout;
+    booking.statusHistory.push({
+      status: 'paid',
+      changedAt: now,
+      changedBy: customerId,
+      actorRole: 'customer',
+      reason: 'Settled via direct Razorpay.me payment link (Ref: ' + txnRef + ')',
+    });
+    await booking.save();
+
+    const io = req.app?.get('io');
+    emitPaidSocketEvents(io, booking, payment, { workerPayout: totalWorkerPayout, bonusCredited: customerBonus, commission });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Payment confirmed via Razorpay.me successfully. 5% cashback credited to your wallet!',
+      payment,
+      splits: {
+        price: fullPrice,
+        commission,
+        workerPayout: totalWorkerPayout,
+        bonusCredited: customerBonus,
+      },
+    });
+  } catch (err) {
+    console.error('Razorpay.me payment error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to record Razorpay.me payment', error: err.message });
+  }
+}
 // Aliases
 exports.getAllPayments = exports.getAdminPayments;
 
