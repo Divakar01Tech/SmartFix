@@ -842,7 +842,8 @@ exports.payCod = async (req, res) => {
   }
 };
 
-async (req, res) => {
+// Customer settles via direct Razorpay.me link
+exports.payRazorpayMe = async (req, res) => {
   try {
     const { bookingId, utrNumber, paymentId } = req.body;
     const customerId = req.user?.id || req.user?._id;
