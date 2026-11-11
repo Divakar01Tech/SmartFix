@@ -85,9 +85,6 @@ function prepareGeminiPayload(messagesPayload, temperature = 0.4, maxTokens = 60
 }
 
 /**
- * Call Gemini API with resilient multi-model fallback chain for high-availability
- */
-/**
  * Call Gemini API with resilient multi-model fallback chain and OpenRouter fallback
  */
 async function callGeminiApi(messagesPayload, temperature = 0.4, maxTokens = 600, imageBase64 = null) {
