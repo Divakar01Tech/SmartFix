@@ -702,6 +702,52 @@
   color: #92400e;
 }
 
+.voice-error-banner-container {
+  background: #fffbeb;
+  border-top: 1px solid #fde68a;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.voice-quick-fallback-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.voice-fallback-chip-btn {
+  background: #ffffff;
+  border: 1px solid #f59e0b;
+  color: #b45309;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.voice-fallback-chip-btn:hover {
+  background: #fef3c7;
+  transform: translateY(-1px);
+}
+
+.action-icon-btn.speaking-active {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border: 1px solid #86efac !important;
+  font-weight: 700;
+  animation: pulseSpeaking 1.5s infinite;
+}
+
+@keyframes pulseSpeaking {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
 .close-err-btn {
   background: none;
   border: none;

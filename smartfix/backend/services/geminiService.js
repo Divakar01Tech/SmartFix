@@ -91,16 +91,80 @@ function prepareGeminiPayload(messagesPayload, temperature = 0.4, maxTokens = 60
  * Call Gemini API with resilient multi-model fallback chain and OpenRouter fallback
  */
 async function callGeminiApi(messagesPayload, temperature = 0.4, maxTokens = 600, imageBase64 = null) {
+  const openRouterApiKey = process.env.OPENROUTER_API_KEY;
   const grokApiKey = process.env.GROK_API_KEY;
   const geminiApiKey = process.env.GEMINI_API_KEY;
-  const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+
+  // 1. Try OpenRouter API First (Configured primary AI provider)
+  if (openRouterApiKey) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 9000);
+
+    const openRouterMessages = messagesPayload.map((m) => {
+      if (m.role === 'system') {
+        return { role: 'user', content: `[SYSTEM INSTRUCTION]\n${m.content}` };
+      }
+      if (m.role === 'user' && imageBase64) {
+        const rawData = imageBase64.data || imageBase64;
+        const mimeType = imageBase64.mimeType || (typeof rawData === 'string' && rawData.startsWith('data:audio') ? 'audio/webm' : (typeof rawData === 'string' && rawData.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'));
+        const isImage = typeof mimeType === 'string' && mimeType.startsWith('image/');
+        if (isImage) {
+          const prefix = typeof rawData === 'string' && rawData.startsWith('data:') ? '' : `data:${mimeType};base64,`;
+          return {
+            role: 'user',
+            content: [
+              { type: 'text', text: m.content || 'Please diagnose repair issue' },
+              { type: 'image_url', image_url: { url: `${prefix}${rawData}` } }
+            ]
+          };
+        }
+      }
+      return m;
+    });
+
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openRouterApiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:5000',
+          'X-Title': 'SmartFix AI Assistant',
+        },
+        body: JSON.stringify({
+          model: process.env.OPENROUTER_MODEL || 'openrouter/auto',
+          messages: openRouterMessages,
+          temperature,
+          max_tokens: maxTokens,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        const candidateText = data?.choices?.[0]?.message?.content;
+        if (candidateText) {
+          return {
+            text: candidateText,
+            model: data?.model || 'openrouter/auto',
+            provider: 'OpenRouter Gateway',
+            usage: data?.usage || null,
+          };
+        }
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.warn('OpenRouter API Warning:', err.message);
+    }
+  }
 
   const payload = prepareGeminiPayload(messagesPayload, temperature, maxTokens, imageBase64);
 
-  // 1. Try Grok (xAI) API Models if GROK_API_KEY is present
+  // 2. Try Grok (xAI) API Models if GROK_API_KEY is present
   if (grokApiKey) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const grokMessages = messagesPayload.map((m) => {
       if (m.role === 'user' && imageBase64) {
@@ -154,18 +218,18 @@ async function callGeminiApi(messagesPayload, temperature = 0.4, maxTokens = 600
     }
   }
 
-  // 2. Try Google Gemini API Models if GEMINI_API_KEY is present
+  // 3. Try Google Gemini API Models if GEMINI_API_KEY is present
   if (geminiApiKey && payload) {
     const modelsToTry = [
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-1.5-pro',
+      'gemini-flash-latest',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
     ];
 
     for (const modelName of modelsToTry) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
       try {
         const res = await fetch(url, {
@@ -191,54 +255,6 @@ async function callGeminiApi(messagesPayload, temperature = 0.4, maxTokens = 600
       } catch (err) {
         clearTimeout(timeoutId);
       }
-    }
-  }
-
-  // 2. OpenRouter Fallback if Gemini fails or is unconfigured
-  if (openRouterApiKey) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    const openRouterMessages = messagesPayload.map((m) => {
-      if (m.role === 'system') {
-        return { role: 'user', content: `[SYSTEM INSTRUCTION]\n${m.content}` };
-      }
-      return m;
-    });
-
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openRouterApiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'http://localhost:5000',
-          'X-Title': 'SmartFix AI Assistant',
-        },
-        body: JSON.stringify({
-          model: process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001',
-          messages: openRouterMessages,
-          temperature,
-          max_tokens: maxTokens,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        const candidateText = data?.choices?.[0]?.message?.content;
-        if (candidateText) {
-          return {
-            text: candidateText,
-            model: data?.model || 'OpenRouter LLM',
-            provider: 'OpenRouter Gateway',
-            usage: data?.usage || null,
-          };
-        }
-      }
-    } catch (err) {
-      clearTimeout(timeoutId);
     }
   }
 

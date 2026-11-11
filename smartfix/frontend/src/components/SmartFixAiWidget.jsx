@@ -46,6 +46,14 @@ const ADMIN_SUGGESTION_CHIPS = [
   { id: 'active', label: '📊 Active Bookings', prompt: 'Show currently active running bookings' }
 ];
 
+const VOICE_FALLBACK_PROBLEMS = [
+  { id: 'ac', label: '❄️ AC Leak / Cooling', prompt: 'My AC is leaking water and not cooling properly. What is the solution?' },
+  { id: 'fan', label: '⚡ Fan Not Working', prompt: 'Ceiling fan is not running or humming. How to fix?' },
+  { id: 'pipe', label: '🚰 Water Pipe Leak', prompt: 'Water pipe leaking under the tap/sink. How to fix and book plumber?' },
+  { id: 'spark', label: '💡 Power Trip / Spark', prompt: 'Main MCB tripping and switch spark. How to safely troubleshoot?' },
+  { id: 'door', label: '🚪 Door Lock Jammed', prompt: 'Door lock jammed or wooden hinge broken. Need carpenter service.' }
+];
+
 const SmartFixAiWidget = () => {
   const navigate = useNavigate();
   const { language, setLanguage } = useLanguage();
@@ -78,6 +86,7 @@ const SmartFixAiWidget = () => {
   const [speakingMsgIdx, setSpeakingMsgIdx] = useState(null);
   const [isFullVoiceMode, setIsFullVoiceMode] = useState(false);
   const [voiceState, setVoiceState] = useState('idle'); // 'idle' | 'listening' | 'processing' | 'speaking'
+  const [liveVoiceTranscript, setLiveVoiceTranscript] = useState('');
 
   const [messages, setMessages] = useState([
     {
@@ -113,6 +122,22 @@ const SmartFixAiWidget = () => {
     };
   }, []);
 
+  // Synchronize Full Voice Mode Lifecycle
+  useEffect(() => {
+    if (isFullVoiceMode) {
+      startVoiceRecording();
+    } else {
+      if (isRecording) {
+        stopVoiceRecording();
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setSpeakingMsgIdx(null);
+      setVoiceState('idle');
+    }
+  }, [isFullVoiceMode]);
+
   // -------------------------------------------------------------
   // Speech-to-Text (STT) & Native Audio Recording Setup
   // -------------------------------------------------------------
@@ -120,8 +145,9 @@ const SmartFixAiWidget = () => {
     latestTranscriptRef.current = '';
     audioChunksRef.current = [];
     setVoiceErrorMsg('');
+    setLiveVoiceTranscript('');
 
-    // 1. MediaRecorder Audio Stream (Guaranteed fallback for Gemini 3.6 Multimodal Audio)
+    // 1. MediaRecorder Stream for mic audio access
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -141,12 +167,16 @@ const SmartFixAiWidget = () => {
     } catch (err) {
       console.warn('MediaRecorder audio access warning:', err.message);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setVoiceErrorMsg('⚠️ Mic permission denied. Allow mic access in your browser address bar.');
+        setVoiceErrorMsg(
+          language === 'ta'
+            ? '⚠️ மைக்ரோஃபோன் அனுமதி மறுக்கப்பட்டுள்ளது. உலாவி முகவரிப் பட்டியில் மைக் அணுகலை அனுமதிக்கவும்.'
+            : '⚠️ Microphone access denied. Please allow microphone permission in your browser address bar.'
+        );
         return;
       }
     }
 
-    // 2. Parallel Web Speech API for real-time text input typing
+    // 2. Parallel Web Speech API for real-time text input transcription
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       try {
@@ -155,9 +185,9 @@ const SmartFixAiWidget = () => {
         }
 
         const recognition = new SpeechRecognition();
-        recognition.continuous = false;
+        recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = language === 'ta' ? 'ta-IN' : (navigator.language || 'en-US');
+        recognition.lang = language === 'ta' ? 'ta-IN' : 'en-IN';
 
         recognition.onresult = (event) => {
           let currentTranscript = '';
@@ -166,16 +196,27 @@ const SmartFixAiWidget = () => {
           }
           latestTranscriptRef.current = currentTranscript;
           setInput(currentTranscript);
+          setLiveVoiceTranscript(currentTranscript);
         };
 
         recognition.onerror = (event) => {
-          // Ignore Web Speech network errors quietly because MediaRecorder audio backup is active!
-          console.warn('Web Speech event note:', event.error);
+          console.warn('Web Speech recognition note:', event.error);
+          if (event.error === 'not-allowed') {
+            setVoiceErrorMsg(
+              language === 'ta'
+                ? '⚠️ மைக்ரோஃபோன் அனுமதி மறுக்கப்பட்டுள்ளது.'
+                : '⚠️ Microphone permission was denied.'
+            );
+          }
         };
 
         recognitionRef.current = recognition;
         recognition.start();
-      } catch (e) {}
+        setIsRecording(true);
+        setVoiceState('listening');
+      } catch (e) {
+        console.warn('SpeechRecognition start error:', e);
+      }
     }
   };
 
@@ -183,54 +224,41 @@ const SmartFixAiWidget = () => {
     setIsRecording(false);
     setVoiceState('idle');
 
-    // Stop Web Speech Recognition if running
+    // Stop Web Speech Recognition if active
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (e) {}
     }
 
-    // Stop MediaRecorder and process audio blob if available
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-
+    // Stop MediaRecorder stream tracks
+    if (mediaRecorderRef.current) {
+      try {
+        if (mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
         if (mediaRecorderRef.current.stream) {
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
         }
-
-        const transcript = latestTranscriptRef.current.trim();
-
-        // If Web Speech API captured text into input box
-        if (transcript) {
-          setInput(transcript);
-          if (isFullVoiceMode) {
-            handleSend(null, transcript);
-          }
-        } else if (audioBlob.size > 0) {
-          // Send audio recording directly to Gemini 3.6 Flash
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            handleSendWithAudio(reader.result);
-          };
-          reader.readAsDataURL(audioBlob);
-        }
-      };
-
-      try {
-        mediaRecorderRef.current.stop();
       } catch (e) {}
+    }
+
+    const spokenText = (latestTranscriptRef.current || input || '').trim();
+    setLiveVoiceTranscript('');
+
+    if (spokenText) {
+      // User spoke real words: send to AI and automatically read the solution back!
+      handleSend(null, spokenText, true);
     } else {
-      const transcript = latestTranscriptRef.current.trim();
-      if (transcript) {
-        setInput(transcript);
-        if (isFullVoiceMode) {
-          handleSend(null, transcript);
-        }
-      }
+      // Speech recognition returned empty (e.g. Brave blocking Google speech server or quiet mic)
+      setVoiceErrorMsg(
+        language === 'ta'
+          ? '⚠️ உங்கள் குரல் கேட்கவில்லை. கீழே உள்ள பிரச்சனைகளில் ஒன்றைத் தொடவும் அல்லது மீண்டும் பேசவும்:'
+          : '⚠️ Could not detect speech clearly. Please choose your issue below or try speaking again:'
+      );
     }
   };
 
   // -------------------------------------------------------------
-  // Text-to-Speech (TTS) Setup
+  // Text-to-Speech (TTS) Setup — Speaks Solutions to the User
   // -------------------------------------------------------------
   const speakText = (text, idx) => {
     if (!('speechSynthesis' in window)) return;
@@ -243,15 +271,44 @@ const SmartFixAiWidget = () => {
     }
 
     window.speechSynthesis.cancel();
-    const cleanText = text
+
+    // Clean markdown, symbols, bullet asterisks, URLs, and emojis for natural human speech
+    let cleanText = (text || '')
       .replace(/[*#_~`>]/g, '')
       .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
-      .replace(/https?:\/\/\S+/g, '');
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .replace(/•/g, ', ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-    const utterance = new SpeechSynthesisUtterance(cleanText);
+    // Format for natural, direct, conversational voice playback
+    const sentences = cleanText.match(/[^.!?]+[.!?]+/g);
+    let speechPrompt = cleanText;
+    if (sentences && sentences.length > 3) {
+      speechPrompt = sentences.slice(0, 3).join(' ') + (language === 'ta' ? ' முழு விவரங்கள் மற்றும் பதிவு விருப்பங்கள் திரையில் உள்ளன.' : ' Full details and booking options are available on your screen.');
+    } else if (speechPrompt.length > 350) {
+      speechPrompt = speechPrompt.slice(0, 350) + (language === 'ta' ? '... முழு விவரங்களை திரையில் பார்க்கவும்.' : '... Full troubleshooting details and verified technicians are listed on your screen.');
+    }
+
+    const utterance = new SpeechSynthesisUtterance(speechPrompt);
     utterance.lang = language === 'ta' ? 'ta-IN' : 'en-IN';
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
+
+    // Pick appropriate localized voice if available
+    const voices = window.speechSynthesis.getVoices();
+    if (voices && voices.length > 0) {
+      if (language === 'ta') {
+        const taVoice = voices.find(v => v.lang.includes('ta') || v.lang.includes('ta-IN'));
+        if (taVoice) utterance.voice = taVoice;
+      } else {
+        const inVoice = voices.find(v => v.lang.includes('en-IN') || v.lang.includes('en_IN'));
+        const enVoice = voices.find(v => v.lang.startsWith('en'));
+        if (inVoice) utterance.voice = inVoice;
+        else if (enVoice) utterance.voice = enVoice;
+      }
+    }
 
     utterance.onstart = () => {
       setSpeakingMsgIdx(idx);
@@ -263,7 +320,9 @@ const SmartFixAiWidget = () => {
       setVoiceState('idle');
 
       if (isFullVoiceMode) {
-        setTimeout(() => startVoiceRecording(), 1000);
+        setTimeout(() => {
+          if (isFullVoiceMode) startVoiceRecording();
+        }, 1200);
       }
     };
 
@@ -414,7 +473,7 @@ const SmartFixAiWidget = () => {
 
 
   // -------------------------------------------------------------
-  // Send Audio Recording Directly to Gemini AI
+  // Send Audio Recording Directly to AI
   // -------------------------------------------------------------
   const handleSendWithAudio = async (base64Audio) => {
     if (loading) return;
@@ -422,6 +481,7 @@ const SmartFixAiWidget = () => {
     const userMessageObj = {
       role: 'user',
       content: '🎙️ Spoken Voice Message',
+      isVoice: true,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -429,18 +489,22 @@ const SmartFixAiWidget = () => {
     setLoading(true);
 
     try {
-      const responseObj = await processQuery('Spoken voice repair query', null, base64Audio);
-      setMessages((prev) => [...prev, responseObj]);
-
-      if (isFullVoiceMode) {
-        speakText(responseObj.content, messages.length + 1);
-      }
+      const responseObj = await processQuery('Please diagnose home repair problem from user voice recording', null, base64Audio);
+      setMessages((prev) => {
+        const nextList = [...prev, responseObj];
+        setTimeout(() => {
+          speakText(responseObj.content, nextList.length - 1);
+        }, 300);
+        return nextList;
+      });
     } catch (err) {
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: 'SmartFix AI: System issue processing voice audio. Please try typing.',
+          content: language === 'ta'
+            ? 'குரல் ஆடியோவை செயலாக்குவதில் பிழை. கீழே உள்ள விருப்பங்களை தேர்வு செய்யவும் அல்லது டைப் செய்யவும்.'
+            : 'SmartFix AI: System issue processing voice audio. Please tap a suggested issue below or type your problem.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -450,9 +514,9 @@ const SmartFixAiWidget = () => {
   };
 
   // -------------------------------------------------------------
-  // Send Message Action
+  // Send Message Action (Supports Voice Auto-Speak)
   // -------------------------------------------------------------
-  const handleSend = async (e, textOverride = null) => {
+  const handleSend = async (e, textOverride = null, autoSpeak = false) => {
     if (e) e.preventDefault();
     const query = textOverride || input;
     const currentImg = selectedImage;
@@ -462,10 +526,15 @@ const SmartFixAiWidget = () => {
 
     setInput('');
     removeSelectedImage();
+    setVoiceErrorMsg('');
+    setLiveVoiceTranscript('');
+
+    const isSpoken = autoSpeak || isFullVoiceMode;
 
     const userMessageObj = {
       role: 'user',
-      content: query.trim() || 'Uploaded image for inspection',
+      content: isSpoken ? `🎙️ ${query.trim()}` : (query.trim() || 'Uploaded image for inspection'),
+      isVoice: isSpoken,
       imagePreview: currentImg ? currentImg.previewUrl : null,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
@@ -475,17 +544,26 @@ const SmartFixAiWidget = () => {
 
     try {
       const responseObj = await processQuery(query.trim(), currentImg);
-      setMessages((prev) => [...prev, responseObj]);
 
-      if (isFullVoiceMode) {
-        speakText(responseObj.content, messages.length + 1);
-      }
+      setMessages((prev) => {
+        const nextList = [...prev, responseObj];
+        // If this query was spoken or voice mode is on, speak the solution aloud!
+        if (isSpoken) {
+          setTimeout(() => {
+            speakText(responseObj.content, nextList.length - 1);
+          }, 300);
+        }
+        return nextList;
+      });
     } catch (err) {
+      console.warn('AI Query Processing Error:', err);
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: 'SmartFix AI: System issue encountered. Please try again.',
+          content: language === 'ta'
+            ? 'மன்னிக்கவும், தற்காலிகமாக ஆன்லைன் தொடர்பு கிடைக்கவில்லை. கீழே உள்ள கைவினைஞர்களை நேரடியாக தொடர்பு கொள்ளலாம்.'
+            : 'SmartFix AI: System issue encountered. Please try selecting a verified technician below.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -780,12 +858,12 @@ const SmartFixAiWidget = () => {
                     <div className="bubble-actions">
                       <button
                         type="button"
-                        className="action-icon-btn"
-                        title="Listen to response"
+                        className={`action-icon-btn ${speakingMsgIdx === idx ? 'speaking-active' : ''}`}
+                        title="Listen to solution with voice"
                         onClick={() => speakText(msg.content, idx)}
                       >
-                        {speakingMsgIdx === idx ? <VolumeX size={13} color="#ef4444" /> : <Volume2 size={13} />}
-                        <span>{speakingMsgIdx === idx ? 'Stop' : 'Listen'}</span>
+                        {speakingMsgIdx === idx ? <VolumeX size={13} color="#ef4444" /> : <Volume2 size={13} color="#2563eb" />}
+                        <span>{speakingMsgIdx === idx ? (language === 'ta' ? 'நிறுத்து' : 'Stop') : (language === 'ta' ? '🔊 கேளுங்கள்' : '🔊 Listen')}</span>
                       </button>
                     </div>
                   )}
@@ -838,17 +916,38 @@ const SmartFixAiWidget = () => {
             <div className="voice-listening-active-bar">
               <div className="listening-indicator">
                 <span className="listening-pulse-dot">🔴</span>
-                <span>Recording your voice audio... Click Done to send!</span>
+                <span>
+                  {liveVoiceTranscript ? `"${liveVoiceTranscript}"` : (language === 'ta' ? 'பேசுங்கள், நான் கேட்கிறேன்...' : 'Listening... Speak your repair issue!')}
+                </span>
               </div>
-              <button type="button" onClick={stopVoiceRecording} className="stop-mic-btn">Done</button>
+              <button type="button" onClick={stopVoiceRecording} className="stop-mic-btn">
+                {language === 'ta' ? 'முடிந்தது' : 'Done'}
+              </button>
             </div>
           )}
 
-          {/* Voice Error Diagnostic Banner */}
+          {/* Voice Error Diagnostic Banner with Quick Tap Suggestions */}
           {voiceErrorMsg && (
-            <div className="voice-error-banner">
-              <span>{voiceErrorMsg}</span>
-              <button type="button" onClick={() => setVoiceErrorMsg('')} className="close-err-btn">✕</button>
+            <div className="voice-error-banner-container">
+              <div className="voice-error-banner">
+                <span>{voiceErrorMsg}</span>
+                <button type="button" onClick={() => setVoiceErrorMsg('')} className="close-err-btn">✕</button>
+              </div>
+              <div className="voice-quick-fallback-chips">
+                {VOICE_FALLBACK_PROBLEMS.map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    className="voice-fallback-chip-btn"
+                    onClick={() => {
+                      setVoiceErrorMsg('');
+                      handleSend(null, chip.prompt, true);
+                    }}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

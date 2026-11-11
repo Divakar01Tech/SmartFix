@@ -19,21 +19,56 @@ Chat naturally in English, Tamil, or Tanglish based on the user's input.
 /**
  * Local rule-based fallback if AI APIs fail
  */
-function getLocalKnowledgeFallback(message) {
-  const msg = message.toLowerCase().trim();
-  
+function getLocalKnowledgeFallback(message, language = 'en') {
+  const msg = (message || '').toLowerCase().trim();
+  const isTa = language === 'ta' || /[அ-ஹ]/.test(msg);
+
   // Greeting detection
   if (/^(hi+|hello+|hey|vanakkam|வணக்கம்|hai)(?:\s+.*)?$/.test(msg)) {
-    return "Hello! 👋 I'm the SmartFix AI Assistant. I can help you book plumbers, electricians, or AC mechanics. How can I help you today?";
-  }
-  
-  // Help detection
-  if (msg.includes('help') || msg.includes('support')) {
-    return "I'm here to help! You can tell me what repair you need (e.g., 'AC is not cooling', 'Need a plumber'), and I will guide you to the right service.";
+    return isTa
+      ? "வணக்கம்! 👋 நான் உங்கள் SmartFix AI உதவியாளர். ஏசி, எலக்ட்ரீஷியன், பிளம்பர் அல்லது பிற பழுதுபார்ப்புகளுக்கு நான் எப்படி உதவலாம்?"
+      : "Hello! 👋 I'm your SmartFix AI Assistant. I can help diagnose home repair problems and connect you with top-rated electricians, plumbers, or AC mechanics in Sivagangai. How can I help you today?";
   }
 
-  // Default fallback
-  return `I apologize, but I am currently experiencing connectivity issues and cannot process your complex request. However, I can still help you manually! Please select a service from the options below.`;
+  // AC / Cooling issues
+  if (msg.includes('ac') || msg.includes('cooling') || msg.includes('leak') || msg.includes('ஏசி') || msg.includes('குளிர')) {
+    return isTa
+      ? "❄️ **ஏசி பழுதுபார்ப்பு ஆலோசனை:** ஏசி சரியாக குளிரவில்லை என்றால், ஏர் பில்டரை (Air Filter) சுத்தம் செய்யவும். தண்ணீர் கசிந்தால், டிரைன் பைப் அடைத்திருக்கலாம். மின் இணைப்பை ஆஃப் செய்துவிட்டு, எங்கள் சான்றளிக்கப்பட்ட SmartFix ஏசி மெக்கானிக்கை உடனே பதிவு செய்யவும்!"
+      : "❄️ **AC Troubleshooting Solution:** If your AC is not cooling or leaking water, check that the air filter is clean and the outdoor fan is spinning. Water dripping usually indicates a clogged condensate drain line. Turn off the AC unit to protect electrical components, and book a verified SmartFix AC technician below!";
+  }
+
+  // Electrical / Fan / Lights / Sparks / MCB
+  if (msg.includes('electric') || msg.includes('fan') || msg.includes('light') || msg.includes('spark') || msg.includes('mcb') || msg.includes('wire') || msg.includes('கரண்ட்') || msg.includes('மின்சாரம்') || msg.includes('மின்விசிறி')) {
+    return isTa
+      ? "⚡ **மின்சார பாதுகாப்பு & தீர்வு:** மின்விசிறி சுழலவில்லை என்றாலோ, ஸ்பார்க் அல்லது MCB ட்ரிப் ஏற்பட்டாலோ, உடனடியாக மெயின் பிரேக்கரை ஆஃப் செய்யவும். மின் வயர்களை தொடாதீர்கள். எங்கள் பாதுகாப்பான SmartFix எலக்ட்ரீஷியனை உடனே அழைக்கவும்!"
+      : "⚡ **Electrical Repair & Safety Guidance:** If your ceiling fan is not spinning, lights are flickering, or there is an MCB trip/spark, switch off the main electrical breaker immediately for your safety. Do not touch exposed wiring. Book a licensed SmartFix electrician in Sivagangai below!";
+  }
+
+  // Plumbing / Tap / Leak / Pipe
+  if (msg.includes('plumb') || msg.includes('water') || msg.includes('pipe') || msg.includes('tap') || msg.includes('sink') || msg.includes('குழாய்') || msg.includes('தண்ணீர்')) {
+    return isTa
+      ? "🚰 **குழாய் பழுதுபார்ப்பு:** தண்ணீர் கசிவு ஏற்பட்டால், முதலில் பிரதான தண்ணீர் வால்வை (Main Water Valve) மூடவும். உடைந்த பைப் அல்லது டேப் மாற்ற SmartFix பிளம்பரை அழைக்கவும்!"
+      : "🚰 **Plumbing Solution:** For pipe leaks, low pressure, or dripping faucets, first shut off the main water valve near the tank to avoid flooding. A worn-out washer or loose joint is common. Book a verified SmartFix plumber below for quick repair!";
+  }
+
+  // Carpentry / Door / Furniture
+  if (msg.includes('carpent') || msg.includes('door') || msg.includes('lock') || msg.includes('wood') || msg.includes('தச்சு') || msg.includes('கதவு')) {
+    return isTa
+      ? "🚪 **தச்சு வேலை ஆலோசனை:** கதவு பூட்டு பழுது அல்லது மர வேலைகளுக்கு எங்கள் அனுபவம் வாய்ந்த தச்சரை உடனே பதிவு செய்யலாம்!"
+      : "🚪 **Carpentry Solution:** For jamming doors, broken locks, or wooden furniture repairs, book our background-checked SmartFix carpenter for professional doorstep repair!";
+  }
+
+  // Help detection
+  if (msg.includes('help') || msg.includes('support')) {
+    return isTa
+      ? "நான் உதவ தயாராக உள்ளேன்! உங்களுக்கு என்ன பழுது தேவை என்று சொல்லுங்கள் (எ.கா: 'ஏசி குளிரவில்லை', 'மின்விசிறி ஓடவில்லை'). சரியான சேவையை தேர்வு செய்ய உதவுகிறேன்."
+      : "I'm here to help! Tell me what repair you need (e.g., 'AC is not cooling', 'Ceiling fan stopped working', 'Need a plumber'), and I will guide you to the right solution.";
+  }
+
+  // General fallback
+  return isTa
+    ? "நான் உங்கள் SmartFix AI உதவியாளர். உங்கள் பழுதுபார்ப்பு சிக்கலை (ஏசி, மின்சாரம், குழாய், தச்சு வேலை) தீர்க்க உதவ தயாராக உள்ளேன்! நீங்கள் கேட்க விரும்பும் கேள்வியை சொல்லவும் அல்லது கீழே உள்ள சேவையைத் தேர்வு செய்யவும்."
+    : "I am your SmartFix AI Assistant! I can diagnose repair issues (AC, Electrical, Plumbing, Carpentry) and dispatch verified technicians across Sivagangai. Tell me what issue you are experiencing or choose an option below!";
 }
 
 // ==============================================================
@@ -92,7 +127,7 @@ exports.askSmartFixAi = async (req, res) => {
         usageObj = aiResult.usage;
       } else if (!isTransactionalOnly) {
         // Fall back to Local Knowledge Base if AI APIs are offline or unreachable
-        replyText = getLocalKnowledgeFallback(message);
+        replyText = getLocalKnowledgeFallback(message, language || intentData.language);
         accuracyText = '98%+ SmartFix Domain Knowledge Base';
         providerName = 'SmartFix Expert System';
       }

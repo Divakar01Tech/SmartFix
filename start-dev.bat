@@ -7,7 +7,7 @@ echo.
 echo Starting SmartFix Express Backend on port 5000...
 start "SmartFix Backend (Port 5000)" cmd /k "cd /d %~dp0smartfix\backend && npm run dev"
 
-timeout /t 3 /nobreak >nul
+ping 127.0.0.1 -n 3 >nul
 
 echo Starting SmartFix React/Vite Frontend on port 5173...
 start "SmartFix Frontend (Port 5173)" cmd /k "cd /d %~dp0smartfix\frontend && npm run dev"
