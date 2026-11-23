@@ -13,6 +13,7 @@ export default function BookingForm() {
 
   const queryCategory = searchParams.get('category') || '';
   const querySubService = searchParams.get('subService') || '';
+  const queryNotes = searchParams.get('notes') || searchParams.get('problem') || '';
 
   // Catalog State
   const [categories, setCategories] = useState([]);
@@ -21,7 +22,7 @@ export default function BookingForm() {
   // Form Fields
   const [selectedCategory, setSelectedCategory] = useState(queryCategory);
   const [selectedSubService, setSelectedSubService] = useState(querySubService);
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(queryNotes);
   const [address, setAddress] = useState('');
   const [coordinates, setCoordinates] = useState({ lat: 9.8433, lng: 78.4809 }); // Default Tamil Nadu (Sivagangai center)
 

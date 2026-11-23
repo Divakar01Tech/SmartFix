@@ -1197,6 +1197,28 @@ export const apiService = {
     return data.copilot;
   },
 
+  // 2b. Worker AI Job Summary & Invoice Generator
+  getWorkerInvoiceSummary: async (bookingId, workDone, partsUsed, laborAmount, partsAmount, language = 'en') => {
+    const res = await fetch(`${API_BASE}/ai/worker-invoice-summary`, {
+      method: 'POST',
+      headers: getHeaders('worker'),
+      body: JSON.stringify({ bookingId, workDone, partsUsed, laborAmount, partsAmount, language }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to generate invoice summary');
+    return data.invoice;
+  },
+
+  // 2c. Worker AI Demand & Growth Intelligence
+  getWorkerDemandInsights: async () => {
+    const res = await fetch(`${API_BASE}/ai/worker-demand-insights`, {
+      headers: getHeaders('worker'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch demand insights');
+    return data.insights;
+  },
+
   // 3. Admin AI Operational Anomaly & Fraud Radar
   getAdminAiRadar: async () => {
     const res = await fetch(`${API_BASE}/admin/ai-radar`, {
@@ -1205,5 +1227,39 @@ export const apiService = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to fetch AI Operations Radar');
     return data;
+  },
+
+  // 3b. Admin AI Dispute Resolution Advisor
+  analyzeDisputeWithAi: async (disputeId) => {
+    const res = await fetch(`${API_BASE}/ai/analyze-dispute`, {
+      method: 'POST',
+      headers: getHeaders('admin'),
+      body: JSON.stringify({ disputeId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to analyze dispute with AI');
+    return data;
+  },
+
+  // 3c. Admin AI Platform Strategic Health Report
+  getAdminPlatformHealthReport: async () => {
+    const res = await fetch(`${API_BASE}/ai/platform-health-report`, {
+      headers: getHeaders('admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to generate platform health report');
+    return data.report;
+  },
+
+  // 3d. Admin AI Document / KYC Inspector
+  verifyKycWithAi: async (workerId, docKey) => {
+    const res = await fetch(`${API_BASE}/ai/verify-kyc`, {
+      method: 'POST',
+      headers: getHeaders('admin'),
+      body: JSON.stringify({ workerId, docKey }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to verify KYC document with AI');
+    return data.analysis;
   },
 };

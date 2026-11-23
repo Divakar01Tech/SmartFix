@@ -14,6 +14,7 @@ import PaymentModal from '../components/PaymentModal';
 import PayButton from '../components/PayButton';
 import SOSButton from '../components/SOSButton';
 import DisputeModal from '../components/DisputeModal';
+import CustomerAiDiagnoser from '../components/CustomerAiDiagnoser';
 import { useComfort } from '../context/ComfortContext';
 
 import { User, Calendar, Clock, MapPin, Wrench, ShieldCheck, CheckCircle2, Phone, PhoneCall, MessageSquare, AlertCircle, RefreshCw, Star, CreditCard, Navigation, Gift, Sparkles, XCircle, RotateCcw, Map, Download, Camera, Heart } from 'lucide-react';
@@ -286,6 +287,9 @@ const CustomerDashboard = () => {
           <span>{toastMessage}</span>
         </div>
       )}
+
+      {/* AI Instant Issue Diagnoser & Quote Estimator */}
+      <CustomerAiDiagnoser />
 
       {/* KPI Summary Cards */}
       <div className="row g-3 mb-4">

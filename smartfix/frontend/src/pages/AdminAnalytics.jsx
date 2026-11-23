@@ -8,6 +8,7 @@ import {
 import { 
   TrendingUp, Users, Calendar, DollarSign, Award, ShieldAlert, CheckCircle2, Clock, Star, RefreshCw 
 } from 'lucide-react';
+import AdminAiHealthReport from '../components/AdminAiHealthReport';
 
 export default function AdminAnalytics() {
   const { user } = useAuth();
@@ -127,6 +128,9 @@ export default function AdminAnalytics() {
       </div>
 
       {error && <div className="alert alert-danger mb-4">{error}</div>}
+
+      {/* AI Strategic Health & Operations Briefing */}
+      <AdminAiHealthReport />
 
       {/* Summary KPI Cards */}
       {analytics && (

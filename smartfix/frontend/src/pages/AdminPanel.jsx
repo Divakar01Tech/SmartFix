@@ -252,6 +252,40 @@ const AdminPanel = ({ initialTab }) => {
     } catch (err) {}
   };
 
+  const [analyzingDisputeId, setAnalyzingDisputeId] = useState(null);
+
+  const handleAnalyzeDisputeAi = async (disputeId) => {
+    try {
+      setAnalyzingDisputeId(disputeId);
+      const res = await apiService.analyzeDisputeWithAi(disputeId);
+      if (res && (res.dispute || res.analysis)) {
+        setDisputes((prev) =>
+          prev.map((item) =>
+            item._id === disputeId
+              ? {
+                  ...item,
+                  ...(res.dispute || {}),
+                  aiSummary: res.analysis?.summary || res.dispute?.aiSummary,
+                  aiRecommendation: res.analysis?.recommendation || res.dispute?.aiRecommendation,
+                  aiConfidence: res.analysis?.confidence || res.dispute?.aiConfidence,
+                  aiReasoning: res.analysis?.reasoning || res.dispute?.aiReasoning,
+                  aiSummaryFailed: false,
+                }
+              : item
+          )
+        );
+        setActionToast('✅ AI Dispute analysis completed with recommendation!');
+        setTimeout(() => setActionToast(''), 4000);
+      }
+    } catch (err) {
+      console.error('Error analyzing dispute with AI:', err);
+      setActionToast('❌ AI dispute analysis failed: ' + err.message);
+      setTimeout(() => setActionToast(''), 4000);
+    } finally {
+      setAnalyzingDisputeId(null);
+    }
+  };
+
   const handleViewAiInsights = async (worker) => {
     setAiInsightsWorker(worker);
     setAiInsightsData(null);
@@ -3538,6 +3572,18 @@ const AdminPanel = ({ initialTab }) => {
                   </p>
                   <p style={{ fontSize: '0.9rem', marginBottom: '12px' }}>{d.description}</p>
                   
+                  <div className="mb-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 rounded-pill px-3 py-1"
+                      style={{ fontSize: '0.78rem', fontWeight: '700' }}
+                      disabled={analyzingDisputeId === d._id}
+                      onClick={() => handleAnalyzeDisputeAi(d._id)}
+                    >
+                      <Bot size={14} /> {analyzingDisputeId === d._id ? 'Analyzing with AI...' : '🤖 Run / Refresh AI Dispute Audit'}
+                    </button>
+                  </div>
+
                   {d.aiSummaryFailed ? (
                     <div className="alert alert-warning py-2 small">AI Summary generation failed or is pending.</div>
                   ) : d.aiSummary ? (

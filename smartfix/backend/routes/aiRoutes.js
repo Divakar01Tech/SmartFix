@@ -12,6 +12,10 @@ const {
   getTaxonomy,
   estimateRepairQuote,
   getWorkerJobCopilot,
+  generateWorkerInvoiceSummary,
+  getWorkerDemandInsights,
+  analyzeDisputeWithAi,
+  getAdminPlatformHealthReport,
 } = require('../controllers/aiController');
 const { protect } = require('../middleware/authMiddleware');
 const { aiRateLimiter } = require('../services/aiService');
@@ -55,6 +59,10 @@ router.post('/create-service-request', protect, createServiceRequestFromAi);
 router.post('/match-workers', matchWorkers);
 router.post('/estimate-quote', optionalAuth, estimateRepairQuote);
 router.post('/worker-copilot', protect, getWorkerJobCopilot);
+router.post('/worker-invoice-summary', protect, generateWorkerInvoiceSummary);
+router.get('/worker-demand-insights', protect, getWorkerDemandInsights);
+router.post('/analyze-dispute', protect, analyzeDisputeWithAi);
+router.get('/platform-health-report', protect, getAdminPlatformHealthReport);
 router.post('/verify-kyc', protect, require('../controllers/aiController').verifyKycImage);
 
 module.exports = router;

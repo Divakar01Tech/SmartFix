@@ -10,6 +10,8 @@ import LiveTrackerMap from '../components/LiveTrackerMap';
 import SkillInterviewModal from '../components/SkillInterviewModal';
 import WorkerScorecard from '../components/WorkerScorecard';
 import WorkerAiCopilotModal from '../components/WorkerAiCopilotModal';
+import WorkerAiInvoiceModal from '../components/WorkerAiInvoiceModal';
+import WorkerAiDemandRadar from '../components/WorkerAiDemandRadar';
 import SOSButton from '../components/SOSButton';
 import DisputeModal from '../components/DisputeModal';
 
@@ -34,6 +36,7 @@ const HandymanDashboard = ({ initialTab }) => {
 
   const [activeTab, setActiveTab] = useState(getTabFromPath);
   const [copilotBooking, setCopilotBooking] = useState(null);
+  const [invoiceBooking, setInvoiceBooking] = useState(null);
 
   useEffect(() => {
     if (initialTab) {
@@ -720,6 +723,9 @@ const HandymanDashboard = ({ initialTab }) => {
         </button>
       </div>
 
+      {/* AI Market Demand & Earnings Intelligence */}
+      {isApprovedWorker && <WorkerAiDemandRadar />}
+
       {/* KPI Stats Cards (Hidden if not verified) */}
       {isApprovedWorker && (
         <div className="hd-stats-grid">
@@ -982,6 +988,14 @@ const HandymanDashboard = ({ initialTab }) => {
                         >
                           <Sparkles size={14} /> ⚡ AI Co-Pilot
                         </button>
+                        <button
+                          type="button"
+                          className="btn btn-info btn-sm text-dark fw-bold d-inline-flex align-items-center gap-1 shadow-sm px-3"
+                          onClick={() => setInvoiceBooking(b)}
+                          title="Generate AI Service Invoice & Customer Handover"
+                        >
+                          <FileText size={14} /> ✨ AI Invoice
+                        </button>
                       </div>
                     </div>
 
@@ -1185,6 +1199,14 @@ const HandymanDashboard = ({ initialTab }) => {
                           </span>
                         </td>
                         <td>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary fw-bold d-inline-flex align-items-center gap-1 rounded-3 me-1"
+                            onClick={() => setInvoiceBooking(b)}
+                            title="Generate professional invoice & customer handover"
+                          >
+                            <FileText size={14} /> ✨ AI Invoice
+                          </button>
                           <button
                             type="button"
                             className="btn btn-sm btn-outline-danger fw-bold d-inline-flex align-items-center gap-1 rounded-3"
@@ -1768,6 +1790,21 @@ const HandymanDashboard = ({ initialTab }) => {
         <WorkerAiCopilotModal
           booking={copilotBooking}
           onClose={() => setCopilotBooking(null)}
+        />
+      )}
+
+      {invoiceBooking && (
+        <WorkerAiInvoiceModal
+          booking={invoiceBooking}
+          onClose={() => setInvoiceBooking(null)}
+          onAttachToProof={(notes) => {
+            setWorkProofNotes((prev) => ({
+              ...prev,
+              [invoiceBooking._id || invoiceBooking.id]: notes
+            }));
+            setToastMessage('✓ AI Invoice details attached to your service notes!');
+            setTimeout(() => setToastMessage(''), 4000);
+          }}
         />
       )}
 
