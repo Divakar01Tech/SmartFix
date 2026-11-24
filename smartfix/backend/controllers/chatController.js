@@ -1,7 +1,7 @@
 const ChatMessage = require('../models/ChatMessage');
 const PolicyViolation = require('../models/PolicyViolation');
-
 const { askGroqJSON } = require('../services/aiService');
+const { translateMessage } = require('../services/translationService');
 
 // Deterministic regex for fast filtering
 const REGEX_PII = /(\b\d{10}\b|\+91[-.\s]?\d{10}|\b[\w.-]+@[\w.-]+\.\w{2,4}\b|whatsapp|call me|my number)/i;
@@ -76,12 +76,27 @@ exports.sendMessage = async (req, res) => {
     return res.status(200).json({ message: warning });
   }
 
-  // Safe message
+  // Safe message — Perform bidirectional translation (Tamil ↔ English)
+  const isTamil = /[\u0B80-\u0BFF]/.test(text);
+  const tanglishRegex = /\b(naan|vandhurren|vandhuten|varaen|irukken|poren|enga|epdi|theriyum|pannunga|kudunga|seri|aachu|illa|aama)\b/i;
+  const isTanglish = tanglishRegex.test(text);
+
+  const targetLang = (isTamil || isTanglish) ? 'en' : 'ta';
+  const transResult = await translateMessage(text, targetLang);
+
+  const translations = {
+    en: targetLang === 'en' ? transResult.translatedText : text,
+    ta: targetLang === 'ta' ? transResult.translatedText : text,
+  };
+
   const chatMessage = await ChatMessage.create({
     booking: bookingId,
     sender: senderId,
     senderRole,
-    text
+    text,
+    originalLang: transResult.originalLang,
+    translations,
+    translatedBy: transResult.translatedBy,
   });
 
   // Emit to socket (guarding against null io in testing)
@@ -94,4 +109,16 @@ exports.sendMessage = async (req, res) => {
   }
   
   res.status(200).json({ message: chatMessage });
+};
+
+exports.getMessages = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const messages = await ChatMessage.find({ booking: bookingId })
+      .populate('sender', 'name role')
+      .sort({ createdAt: 1 });
+    return res.status(200).json({ success: true, messages });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 };

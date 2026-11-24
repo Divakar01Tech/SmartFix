@@ -176,3 +176,17 @@ exports.getWorkerScorecard = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch worker scorecard', error: err.message });
   }
 };
+
+const { generateWorkerInsights } = require('../services/demandInsightService');
+
+// Prompt 8: GET /api/worker/insights
+exports.getWorkerInsights = async (req, res) => {
+  try {
+    const workerId = req.user?.id || req.user?._id;
+    const result = await generateWorkerInsights(workerId);
+    return res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    console.error('getWorkerInsights error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate insights: ' + err.message });
+  }
+};

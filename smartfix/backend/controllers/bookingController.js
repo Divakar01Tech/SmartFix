@@ -10,6 +10,10 @@ const { sendCustomSms } = require('../services/smsService');
 const { createProxySession, closeProxySession } = require('../utils/twilioProxy');
 const { toSafeBooking, serializeBookingForCustomer, serializeBookingForWorker } = require('../utils/serializers');
 const { startDispatch } = require('../services/dispatchService');
+const triageService = require('../services/triageService');
+const jobProofService = require('../services/jobProofService');
+const { syncBookingToAppliance } = require('../services/applianceService');
+const fs = require('fs');
 
 // State machine normalization helper
 const normalizeStatus = (st) => {
@@ -94,6 +98,22 @@ const emitSocket = (req, event, data) => {
 };
 
 // ==============================================================
+// POST /api/bookings/triage-preview — Real-time Emergency Triage Preview
+// ==============================================================
+exports.previewTriage = async (req, res) => {
+  try {
+    const { description, notes, category, trade } = req.body;
+    const text = description || notes || '';
+    const cat = category || trade || '';
+    const triage = await triageService.classify(text, cat);
+    return res.status(200).json({ success: true, triage });
+  } catch (err) {
+    console.error('Triage preview error:', err.message);
+    return res.status(500).json({ success: false, message: 'Triage preview error: ' + err.message });
+  }
+};
+
+// ==============================================================
 // POST /api/bookings — Create Booking (Customer)
 // ==============================================================
 exports.createBooking = async (req, res) => {
@@ -158,6 +178,14 @@ exports.createBooking = async (req, res) => {
       subServices: Array.isArray(subServices) ? subServices : [],
     };
 
+    if (req.body.appliance || req.body.applianceId) {
+      bookingPayload.appliance = req.body.appliance || req.body.applianceId;
+    }
+
+    // Run Two-Stage Emergency Triage classification
+    const triageResult = await triageService.classify(bookingPayload.notes, bookingPayload.trade);
+    bookingPayload.urgency = triageResult;
+
     const created = await Booking.create(bookingPayload);
     const populated = await Booking.findById(created._id)
       .populate('customer', 'name phone email')
@@ -168,6 +196,11 @@ exports.createBooking = async (req, res) => {
     if (io) {
       io.emit('booking-created', populated);
       io.emit('booking-updated', populated);
+
+      if (triageResult.level === 'urgent' || triageResult.level === 'critical') {
+        io.emit('booking:urgent', populated);
+        io.emit('booking-urgent', populated);
+      }
 
       if (assignedWorkerId) {
         io.to(`user-${assignedWorkerId}`).emit('new-booking-request', populated);
@@ -709,6 +742,14 @@ exports.updateBookingStatus = async (req, res) => {
       runAiVerification(updated).catch(e => console.error(e));
     }
 
+    // Trigger async Fraud Evaluation (Prompt 1)
+    if (['Completed', 'Cancelled', 'completed', 'cancelled'].includes(targetStatus) || ['Completed', 'Cancelled'].includes(newStatus)) {
+      try {
+        const { evaluate: evaluateFraud } = require('../services/fraudService');
+        evaluateFraud({ bookingId: updated._id, userId: updated.customer?._id || updated.customer }).catch(() => {});
+      } catch (fraudErr) {}
+    }
+
     // Trigger Status Update SMS Notifications (bilingual aware)
     const custPhone = updated?.customer?.phone;
     const wrkName = updated?.worker?.name || 'Technician';
@@ -761,6 +802,10 @@ exports.updateBookingStatus = async (req, res) => {
         io.to(`booking:${id}`).emit('tracking-ended', trackingEndedPayload);
         io.to(`user-${updated?.customer?._id || updated?.customer}`).emit('tracking-ended', trackingEndedPayload);
       }
+    }
+
+    if (targetStatus === 'completed') {
+      syncBookingToAppliance(id).catch((err) => console.warn('syncBookingToAppliance error:', err.message));
     }
 
     const safe = toSafeBooking(updated, req.user?.role || 'customer');
@@ -872,6 +917,8 @@ exports.payBooking = async (req, res) => {
     };
 
     const updated = await Booking.findByIdAndUpdate(id, updateFields, { new: true });
+
+    syncBookingToAppliance(id).catch((err) => console.warn('syncBookingToAppliance error:', err.message));
 
     // Sync Wallet balance for assigned handyman
     if (updated && updated.worker) {
@@ -993,5 +1040,125 @@ exports.rateBooking = async (req, res) => {
     res.status(200).json({ message: 'Rating submitted successfully', booking: safe });
   } catch (err) {
     res.status(500).json({ message: 'Rating failed', error: err.message });
+  }
+};
+
+// ==============================================================
+// Prompt 7: Before/After Job Proof Verification Handlers
+// ==============================================================
+
+// POST /api/bookings/:id/proof
+exports.uploadJobProofHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { kind } = req.body; // 'before' | 'after'
+    const userId = req.user?.id || req.user?._id;
+    const role = (req.user?.role || '').toLowerCase();
+
+    if (!kind || !['before', 'after'].includes(kind)) {
+      return res.status(400).json({ success: false, message: 'Field "kind" must be "before" or "after"' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No photo uploaded under field "photo"' });
+    }
+
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    // Worker ownership check: only assigned worker or admin can upload job proofs
+    const isAssignedWorker = booking.worker && booking.worker.toString() === userId.toString();
+    const isAdmin = role === 'admin';
+    if (!isAssignedWorker && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Only the assigned worker can upload job proof photos' });
+    }
+
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const relativeUrl = `/storage/proofs/${req.file.filename}`;
+
+    const result = await jobProofService.recordAndUploadProof({
+      bookingId: id,
+      workerId: booking.worker || userId,
+      fileBuffer,
+      fileRelativePath: relativeUrl,
+      kind,
+    });
+
+    const updatedBooking = await Booking.findById(id).select('jobProof');
+
+    return res.status(200).json({
+      success: true,
+      message: `${kind} photo uploaded successfully`,
+      entry: result.entry,
+      jobProof: updatedBooking?.jobProof,
+      isReused: result.isReused,
+    });
+  } catch (err) {
+    console.error('uploadJobProofHandler error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to upload job proof: ' + err.message });
+  }
+};
+
+// POST /api/bookings/:id/verify-proof
+exports.verifyJobProofHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id || req.user?._id;
+    const role = (req.user?.role || '').toLowerCase();
+
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    // Role check: customer, worker, or admin
+    const isCustomer = booking.customer && booking.customer.toString() === userId.toString();
+    const isWorker = booking.worker && booking.worker.toString() === userId.toString();
+    const isAdmin = role === 'admin';
+
+    if (!isCustomer && !isWorker && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Unauthorized to verify proof for this booking' });
+    }
+
+    const aiResult = await jobProofService.verifyJobProof(id);
+
+    return res.status(200).json({
+      success: true,
+      ai: aiResult,
+    });
+  } catch (err) {
+    console.error('verifyJobProofHandler error:', err);
+    return res.status(500).json({ success: false, message: 'Verification error: ' + err.message });
+  }
+};
+
+// GET /api/bookings/:id/proof
+exports.getJobProofHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id || req.user?._id;
+    const role = (req.user?.role || '').toLowerCase();
+
+    const booking = await Booking.findById(id).select('jobProof customer worker');
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const isCustomer = booking.customer && booking.customer.toString() === userId.toString();
+    const isWorker = booking.worker && booking.worker.toString() === userId.toString();
+    const isAdmin = role === 'admin';
+
+    if (!isCustomer && !isWorker && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      jobProof: booking.jobProof || { before: [], after: [], ai: { verdict: 'not_run' } },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 };

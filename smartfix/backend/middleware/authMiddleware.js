@@ -30,6 +30,17 @@ exports.authenticate = async (req, res, next) => {
       role: normalizedRole,
       email: decoded.email,
     };
+
+    // Telemetry device & IP recording for fraud detection (Prompt 1)
+    try {
+      const { recordUserDeviceAndIp } = require('../services/fraudService');
+      const deviceId = req.headers['x-device-id'];
+      const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip;
+      if (deviceId || clientIp) {
+        recordUserDeviceAndIp(req.user.id, clientIp, deviceId);
+      }
+    } catch (e) {}
+
     next();
   } catch (err) {
     return res.status(401).json({ success: false, message: 'Not authorized, token invalid or expired' });

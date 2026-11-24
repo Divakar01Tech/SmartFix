@@ -13,8 +13,13 @@ const {
   providerDeclineBooking,
   getPendingBookingsForProvider,
   getBookingInvoice,
+  previewTriage,
+  uploadJobProofHandler,
+  verifyJobProofHandler,
+  getJobProofHandler,
 } = require('../controllers/bookingController');
 const { protect, requireApprovedWorker, requireCustomer } = require('../middleware/authMiddleware');
+const proofUpload = require('../middleware/proofUploadMiddleware');
 
 // If the caller is a worker or handyman, enforce requireApprovedWorker
 const checkWorkerApprovalIfWorker = async (req, res, next) => {
@@ -24,6 +29,7 @@ const checkWorkerApprovalIfWorker = async (req, res, next) => {
   next();
 };
 
+router.post('/triage-preview', protect, previewTriage);
 router.post('/', protect, requireCustomer, createBooking);
 router.get('/my', protect, getMyBookings);
 router.get('/all', protect, getAllBookings);
@@ -36,6 +42,11 @@ router.patch('/:id/decline', protect, requireApprovedWorker, providerDeclineBook
 router.patch('/:id/worker-location', protect, requireApprovedWorker, updateWorkerLocation);
 router.post('/:id/rate', protect, rateBooking);
 router.patch('/:id/pay', protect, payBooking);
+
+// Prompt 7: Job Proof Upload & AI Verification
+router.post('/:id/proof', protect, proofUpload, uploadJobProofHandler);
+router.post('/:id/verify-proof', protect, verifyJobProofHandler);
+router.get('/:id/proof', protect, getJobProofHandler);
 
 module.exports = router;
 

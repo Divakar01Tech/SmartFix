@@ -82,6 +82,14 @@ export default function WalletPage() {
         </div>
       </div>
 
+      {/* Bonus Under Review Neutral Notice */}
+      {wallet?.transactions?.some((tx) => tx.status === 'pending_review') && (
+        <div className="alert alert-warning py-2 px-3 small rounded-4 mb-4 border-0 shadow-sm d-flex align-items-center gap-2">
+          <Clock size={16} className="text-warning-emphasis flex-shrink-0" />
+          <span>{t('bonus_under_review_banner', 'Bonus reward under routine verification. Approved credits will update your balance automatically.')}</span>
+        </div>
+      )}
+
       {/* Transactions History */}
       <div className="card border-0 shadow-sm rounded-4 p-4 bg-white border">
         <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
@@ -121,7 +129,14 @@ export default function WalletPage() {
                       {isCredit ? <ArrowDownLeft size={18} /> : <ArrowUpRight size={18} />}
                     </div>
                     <div>
-                      <div className="fw-semibold text-dark small">{tx.description || (isCredit ? 'Cashback Credit' : 'Payment Debit')}</div>
+                      <div className="fw-semibold text-dark small d-flex align-items-center gap-2">
+                        <span>{tx.description || (isCredit ? 'Cashback Credit' : 'Payment Debit')}</span>
+                        {tx.status === 'pending_review' && (
+                          <span className="badge bg-warning-subtle text-warning-emphasis" style={{ fontSize: '0.65rem' }}>
+                            {t('bonus_under_review', 'Bonus under review')}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-muted" style={{ fontSize: '0.75rem' }}>
                         {new Date(tx.createdAt || tx.date || Date.now()).toLocaleString()}
                       </div>

@@ -30,6 +30,11 @@ const bookingSchema = new mongoose.Schema(
     notes: {
       type: String,
     },
+    appliance: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Appliance',
+      default: null,
+    },
     aiSuggested: {
       category: String,
       subService: String,
@@ -38,6 +43,48 @@ const bookingSchema = new mongoose.Schema(
       priceMax: Number,
       confidence: Number,
       acceptedByUser: Boolean
+    },
+    urgency: {
+      level: {
+        type: String,
+        enum: ['normal', 'urgent', 'critical'],
+        default: 'normal',
+      },
+      reasonCode: { type: String, default: '' },
+      classifiedBy: { type: String, enum: ['rules', 'ai', 'fallback'], default: 'rules' },
+      safetyTip: {
+        en: { type: String, default: '' },
+        ta: { type: String, default: '' },
+      },
+      emergencyHelpline: { type: String, default: '' },
+      classifiedAt: { type: Date, default: Date.now },
+    },
+    jobProof: {
+      before: [
+        {
+          url: { type: String, required: true },
+          sha256: { type: String, required: true },
+          uploadedAt: { type: Date, default: Date.now },
+        },
+      ],
+      after: [
+        {
+          url: { type: String, required: true },
+          sha256: { type: String, required: true },
+          uploadedAt: { type: Date, default: Date.now },
+        },
+      ],
+      ai: {
+        verdict: {
+          type: String,
+          enum: ['verified', 'inconclusive', 'suspicious', 'not_run'],
+          default: 'not_run',
+        },
+        completionConfidence: { type: Number, default: 0 },
+        observations: { type: String, default: '' },
+        concerns: [{ type: String }],
+        ranAt: { type: Date },
+      },
     },
     price: {
       type: Number, // stored in INR

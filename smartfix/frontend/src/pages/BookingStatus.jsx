@@ -6,6 +6,8 @@ import socket from '../services/socket';
 import LiveTrackerMap from '../components/LiveTrackerMap';
 import ReviewForm from '../components/ReviewForm';
 import PayButton from '../components/PayButton';
+import InAppChatModal from '../components/InAppChatModal';
+import JobProofVerificationCard from '../components/JobProofVerificationCard';
 import {
   Clock,
   CheckCircle2,
@@ -43,6 +45,7 @@ export default function BookingStatus() {
   const [cancelling, setCancelling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [showChatModal, setShowChatModal] = useState(false);
 
   // SLA countdown timer state
   const [slaCountdownSecs, setSlaCountdownSecs] = useState(null);
@@ -369,8 +372,16 @@ export default function BookingStatus() {
                   </div>
                 </div>
 
-                {/* Masked Call Option */}
-                <div>
+                {/* Masked Call & In-App Translation Chat */}
+                <div className="d-flex align-items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm rounded-circle p-2 text-white shadow-sm"
+                    title={t('chat_tooltip', 'In-App Live Chat (Bilingual Translation)')}
+                    onClick={() => setShowChatModal(true)}
+                  >
+                    <MessageSquare size={18} />
+                  </button>
                   <button
                     type="button"
                     className="btn btn-outline-primary btn-sm rounded-circle p-2"
@@ -383,6 +394,9 @@ export default function BookingStatus() {
               </div>
             )}
           </div>
+
+          {/* Prompt 7: Before/After Job Proof Verification */}
+          <JobProofVerificationCard bookingId={bookingId} isWorker={false} />
 
           {/* Booking Summary Card */}
           <div className="card border-0 shadow-sm rounded-4 p-4 bg-white border">
@@ -553,6 +567,15 @@ export default function BookingStatus() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Prompt 4: Bilingual Live In-App Chat */}
+      {showChatModal && (
+        <InAppChatModal
+          bookingId={bookingId}
+          recipientName={workerObj?.name || 'Technician'}
+          onClose={() => setShowChatModal(false)}
+        />
       )}
     </div>
   );

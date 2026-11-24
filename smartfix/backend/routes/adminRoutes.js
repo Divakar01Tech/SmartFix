@@ -29,11 +29,21 @@ router.post('/workers/:id/feedback', adminController.sendWorkerFeedback);
 router.get('/workers/:id/feedback', adminController.getWorkerFeedback);
 router.get('/dispatch-stats', adminController.getDispatchStats);
 router.get('/ai-radar', adminController.getAdminAiRadar);
+router.get('/ai-settings', adminController.getAiSettings);
+router.put('/ai-settings', adminController.updateAiSettings);
+
+// Fraud & Wallet Abuse Detection (Prompt 1)
+router.get('/fraud-flags', adminController.getFraudFlags);
+router.get('/fraud-flags/:id', adminController.getFraudFlagById);
+router.patch('/fraud-flags/:id', adminController.updateFraudFlagStatus);
+router.get('/fraud-settings', adminController.getAdminFraudSettings);
+router.put('/fraud-settings', adminController.updateAdminFraudSettings);
 
 // Worker KYC & AI Recommendation Review Endpoints
 router.get('/workers/review-queue', adminController.getWorkerReviewQueue);
 router.get('/workers/:id/kyc/:docKey', adminController.serveKycDocument);
 router.patch('/workers/:id/review', adminController.reviewWorkerApplication);
+router.post('/workers/:id/kyc/recheck', adminController.recheckWorkerKyc);
 
 const { getHighRiskBookings } = require('../controllers/riskController');
 router.get('/bookings/high-risk', getHighRiskBookings);
@@ -55,9 +65,19 @@ router.patch('/locations/taluks/:id', adminLocationController.adminUpdateTaluk);
 router.post('/locations/villages', adminLocationController.adminAddVillage);
 router.patch('/locations/villages/:id', adminLocationController.adminUpdateVillage);
 
+// Support Tickets (Prompt 5)
+const { getAdminSupportTickets, updateAdminSupportTicket } = require('../controllers/supportController');
+router.get('/support-tickets', getAdminSupportTickets);
+router.patch('/support-tickets/:id', updateAdminSupportTicket);
+
 // Payments & Financial Overview
 const { getAdminPayments } = require('../controllers/paymentController');
 router.get('/payments', getAdminPayments);
+
+// Prompt 10: Upskill Academy Review & Badge Awarding
+const { getAdminUpskillList, adminBadgeDecision } = require('../controllers/upskillingController');
+router.get('/workers-upskill', getAdminUpskillList);
+router.post('/workers/:id/upskill-badge', adminBadgeDecision);
 
 module.exports = router;
 

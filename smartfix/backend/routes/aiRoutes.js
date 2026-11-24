@@ -16,6 +16,7 @@ const {
   getWorkerDemandInsights,
   analyzeDisputeWithAi,
   getAdminPlatformHealthReport,
+  handleVoiceIntent,
 } = require('../controllers/aiController');
 const { protect } = require('../middleware/authMiddleware');
 const { aiRateLimiter } = require('../services/aiService');
@@ -64,6 +65,7 @@ router.get('/worker-demand-insights', protect, getWorkerDemandInsights);
 router.post('/analyze-dispute', protect, analyzeDisputeWithAi);
 router.get('/platform-health-report', protect, getAdminPlatformHealthReport);
 router.post('/verify-kyc', protect, require('../controllers/aiController').verifyKycImage);
+router.post('/voice-intent', optionalAuth, handleVoiceIntent);
 
 module.exports = router;
 

@@ -174,7 +174,17 @@ export default function MyBookings() {
                     <span className="text-muted small">•</span>
                     <span className="text-dark fw-semibold small">{b.category}</span>
                   </div>
-                  <div>{getStatusBadge(b.status)}</div>
+                  <div className="d-flex align-items-center gap-1">
+                    {b.urgency?.level && b.urgency.level !== 'normal' && (
+                      <span
+                        className={`badge ${b.urgency.level === 'critical' ? 'bg-danger text-white' : 'bg-warning text-dark'}`}
+                        style={{ fontSize: '0.72rem', letterSpacing: '0.5px' }}
+                      >
+                        {b.urgency.level === 'critical' ? '🚨 CRITICAL' : '⚡ URGENT'}
+                      </span>
+                    )}
+                    {getStatusBadge(b.status)}
+                  </div>
                 </div>
 
                 <div className="row g-3 align-items-center">

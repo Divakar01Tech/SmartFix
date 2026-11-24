@@ -473,5 +473,33 @@
     "payment_id": "Payment ID",
     "order_id": "Razorpay Order ID",
     "status": "Status"
+  },
+  "triage": {
+    "safety_alert_title": "CRITICAL SAFETY ALERT",
+    "urgent_title": "URGENT ATTENTION",
+    "precaution_ack_required": "⚠️ Immediate safety alert: Please review the emergency instructions and check the safety precaution box before submitting.",
+    "take_precaution_checkbox": "I have taken safety precautions and still want to book a technician"
+  },
+  "appliance_passport": "Appliance Passport",
+  "linked_appliance": "Linked Appliance",
+  "unlink": "Unlink",
+  "appliance": {
+    "title": "SmartFix Appliance Passport",
+    "subtitle": "AI-assisted digital warranty, service lifecycle, & QR passport",
+    "register_new": "Register New Appliance",
+    "scan_title": "Scan or Enter Appliance Specifications",
+    "scan_prompt": "Take a photo or upload Nameplate / Rating Sticker",
+    "no_appliances": "No appliances registered yet",
+    "warranty_active": "Warranty active until",
+    "warranty_expired": "Warranty Expired",
+    "warranty_expiring_soon": "Warranty Expiring Soon!",
+    "service_history": "Service & Maintenance History"
+  },
+  "upskill": {
+    "title": "SmartFix Upskilling Academy",
+    "subtitle": "Curated technical coaching & Admin Trusted Worker Badge certification",
+    "certification_progress": "Certification Progress",
+    "pass_score_notice": "Score 70% or higher on each module to qualify for Trusted Worker Badge.",
+    "all_completed_notice": "All modules completed! Flagged for Admin Trusted Badge review."
   }
 }

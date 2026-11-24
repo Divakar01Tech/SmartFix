@@ -8,6 +8,7 @@ const Booking = require('../models/Booking');
 const InterviewSession = require('../models/InterviewSession');
 const { sendWorkerOtpEmail } = require('../utils/mailer');
 const { toSafeWorker } = require('../utils/serializers');
+const { analyzeKycDocument } = require('../services/kycAiService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'smartfix_secret_key_2026';
 
@@ -510,6 +511,13 @@ exports.registerWorker = async (req, res) => {
       }
     }
 
+    // Trigger AI KYC Document check in background if documents were uploaded
+    if (aadhaarFrontFile || aadhaarBackFile || secondIdFile) {
+      analyzeKycDocument(workerDoc._id).catch(err => {
+        console.error('Auto KYC AI check error:', err.message);
+      });
+    }
+
     const workerJwt = generateWorkerJwt(workerDoc);
 
     return res.status(201).json({
@@ -907,6 +915,11 @@ exports.uploadKyc = async (req, res) => {
 
     await worker.save();
 
+    // Trigger AI KYC check in background
+    analyzeKycDocument(worker._id).catch(err => {
+      console.error('Worker uploadKyc AI check error:', err.message);
+    });
+
     return res.status(200).json({
       success: true,
       message: 'KYC documents uploaded successfully and submitted for review.',
@@ -933,6 +946,11 @@ exports.toggleAvailability = async (req, res) => {
     worker.isAvailable = availability === 'available';
     worker.isOnline = availability !== 'offline';
     await worker.save();
+
+    // Trigger AI KYC check in background
+    analyzeKycDocument(worker._id).catch(err => {
+      console.error('Worker uploadKyc AI check error:', err.message);
+    });
 
     return res.status(200).json({
       success: true,

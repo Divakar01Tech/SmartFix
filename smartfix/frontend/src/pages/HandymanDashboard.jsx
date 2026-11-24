@@ -12,6 +12,7 @@ import WorkerScorecard from '../components/WorkerScorecard';
 import WorkerAiCopilotModal from '../components/WorkerAiCopilotModal';
 import WorkerAiInvoiceModal from '../components/WorkerAiInvoiceModal';
 import WorkerAiDemandRadar from '../components/WorkerAiDemandRadar';
+import WorkerUpskillModal from '../components/WorkerUpskillModal';
 import SOSButton from '../components/SOSButton';
 import DisputeModal from '../components/DisputeModal';
 
@@ -68,6 +69,7 @@ const HandymanDashboard = ({ initialTab }) => {
   // Withdrawal & Bank Account States
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showInterviewModal, setShowInterviewModal] = useState(false);
+  const [showUpskillModal, setShowUpskillModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [payoutMethod, setPayoutMethod] = useState('UPI'); // 'UPI' | 'BANK'
 
@@ -711,16 +713,26 @@ const HandymanDashboard = ({ initialTab }) => {
             <small className="text-secondary">When customers pay online in-app via UPI, Card, or NetBanking, you get an <strong>EXTRA +5% Reward Bonus (95% Total Payout)</strong> credited instantly to your wallet!</small>
           </div>
         </div>
-        <button
-          type="button"
-          className="btn btn-success btn-sm fw-bold rounded-3 px-3 shadow-xs"
-          onClick={() => {
-            setWithdrawAmount(totalWorkerPayout > 0 ? totalWorkerPayout : 1000);
-            setShowWithdrawModal(true);
-          }}
-        >
-          Withdraw Funds 🏦
-        </button>
+        <div className="d-flex align-items-center gap-2">
+          <button
+            type="button"
+            className="btn btn-warning btn-sm fw-bold rounded-3 px-3 shadow-xs d-flex align-items-center gap-1"
+            onClick={() => setShowUpskillModal(true)}
+          >
+            <Award size={16} />
+            <span>🎓 Upskilling Academy</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-success btn-sm fw-bold rounded-3 px-3 shadow-xs"
+            onClick={() => {
+              setWithdrawAmount(totalWorkerPayout > 0 ? totalWorkerPayout : 1000);
+              setShowWithdrawModal(true);
+            }}
+          >
+            Withdraw Funds 🏦
+          </button>
+        </div>
       </div>
 
       {/* AI Market Demand & Earnings Intelligence */}
@@ -1807,6 +1819,12 @@ const HandymanDashboard = ({ initialTab }) => {
           }}
         />
       )}
+
+      {/* Prompt 10: Upskilling Academy Modal */}
+      <WorkerUpskillModal
+        isOpen={showUpskillModal}
+        onClose={() => setShowUpskillModal(false)}
+      />
 
     </div>
   );

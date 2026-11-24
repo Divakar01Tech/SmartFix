@@ -126,6 +126,8 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/invoices', express.static(path.join(__dirname, 'invoices')));
+app.use('/storage/proofs', express.static(path.join(__dirname, 'storage/proofs')));
+app.use('/storage/appliances', express.static(path.join(__dirname, 'storage/appliances')));
 
 // Database readiness guard for all /api endpoints
 app.use('/api', (req, res, next) => {
@@ -175,6 +177,8 @@ app.use('/api/jobs', require('./routes/jobRoutes'));
 app.use('/api/disputes', require('./routes/disputeRoutes'));
 app.use('/api/assistant', require('./routes/assistantRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
+app.use('/api/support', require('./routes/supportRoutes'));
+app.use('/api/appliances', require('./routes/applianceRoutes'));
 app.use('/api/nearby-workers', require('./routes/nearbyWorkersRoutes'));
 
 app.use(errorHandler);

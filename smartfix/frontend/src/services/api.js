@@ -13,8 +13,21 @@ export const getApiBase = () => {
 
 const API_BASE = getApiBase();
 
+function getOrCreateDeviceId() {
+  if (typeof window === 'undefined') return 'server';
+  let devId = localStorage.getItem('smartfix_device_id');
+  if (!devId) {
+    devId = 'dev_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+    localStorage.setItem('smartfix_device_id', devId);
+  }
+  return devId;
+}
+
 const getHeaders = (tokenOrRole) => {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = { 
+    'Content-Type': 'application/json',
+    'x-device-id': getOrCreateDeviceId(),
+  };
   let authToken = null;
   if (tokenOrRole && typeof tokenOrRole === 'string' && tokenOrRole.startsWith('ey')) {
     authToken = tokenOrRole;
@@ -404,6 +417,17 @@ export const apiService = {
   },
 
   // Bookings
+  previewBookingTriage: async (description, category) => {
+    const res = await fetch(`${API_BASE}/bookings/triage-preview`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ description, category }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to check emergency triage');
+    return data.triage;
+  },
+
   createBooking: async (bookingData) => {
     const res = await fetch(`${API_BASE}/bookings`, {
       method: 'POST',
@@ -435,6 +459,65 @@ export const apiService = {
       throw err;
     }
     return data.booking;
+  },
+
+  // In-App Chat (Prompt 4)
+  getChatMessages: async (bookingId) => {
+    const res = await fetch(`${API_BASE}/chat/messages/${bookingId}`, {
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch messages');
+    return data.messages || [];
+  },
+
+  sendChatMessage: async (bookingId, text) => {
+    const res = await fetch(`${API_BASE}/chat/message`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ bookingId, text }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to send message');
+    return data.message;
+  },
+
+  // Job Proof Verification (Prompt 7)
+  uploadJobProof: async (bookingId, file, kind) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    formData.append('kind', kind);
+
+    const token = getAuthToken();
+    const res = await fetch(`${API_BASE}/bookings/${bookingId}/proof`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to upload proof photo');
+    return data;
+  },
+
+  verifyJobProof: async (bookingId) => {
+    const res = await fetch(`${API_BASE}/bookings/${bookingId}/verify-proof`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Verification failed');
+    return data.ai;
+  },
+
+  getJobProof: async (bookingId) => {
+    const res = await fetch(`${API_BASE}/bookings/${bookingId}/proof`, {
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch proof');
+    return data.jobProof;
   },
 
   cancelBooking: async (bookingId, reason = 'Customer requested cancellation') => {
@@ -1209,14 +1292,22 @@ export const apiService = {
     return data.invoice;
   },
 
-  // 2c. Worker AI Demand & Growth Intelligence
+  // 2c. Worker AI Demand & Growth Intelligence (Prompt 8)
   getWorkerDemandInsights: async () => {
-    const res = await fetch(`${API_BASE}/ai/worker-demand-insights`, {
+    const res = await fetch(`${API_BASE}/worker/insights`, {
       headers: getHeaders('worker'),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to fetch demand insights');
-    return data.insights;
+    return data;
+  },
+  workerGetDemandInsights: async () => {
+    const res = await fetch(`${API_BASE}/worker/insights`, {
+      headers: getHeaders('worker'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch demand insights');
+    return data;
   },
 
   // 3. Admin AI Operational Anomaly & Fraud Radar
@@ -1261,5 +1352,257 @@ export const apiService = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to verify KYC document with AI');
     return data.analysis;
+  },
+
+  // Support Assistant (Prompt 5)
+  chatWithSupport: async (conversationId, message) => {
+    const res = await fetch(`${API_BASE}/support/chat`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ conversationId, message }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Support request failed');
+    return data;
+  },
+
+  getSupportConversation: async (id) => {
+    const res = await fetch(`${API_BASE}/support/conversation/${id}`, {
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch conversation');
+    return data.conversation;
+  },
+
+  getAdminSupportTickets: async (status, category) => {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (category) params.append('category', category);
+    const res = await fetch(`${API_BASE}/admin/support-tickets?${params.toString()}`, {
+      headers: getHeaders('admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to load support tickets');
+    return data;
+  },
+
+  updateAdminSupportTicket: async (id, status, adminNotes) => {
+    const res = await fetch(`${API_BASE}/admin/support-tickets/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders('admin'),
+      body: JSON.stringify({ status, adminNotes }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update support ticket');
+    return data.ticket;
+  },
+
+  adminRecheckWorkerKyc: async (workerId) => {
+    const res = await fetch(`${API_BASE}/admin/workers/${workerId}/kyc/recheck`, {
+      method: 'POST',
+      headers: getHeaders('admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to recheck worker KYC with AI');
+    return data;
+  },
+
+  // Voice Booking (Prompt 6)
+  parseVoiceIntent: async (transcript) => {
+    const res = await fetch(`${API_BASE}/ai/voice-intent`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ transcript }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Voice intent processing failed');
+    return data;
+  },
+
+  // 3e. Admin AI Settings & Telemetry Control
+  getAdminAiSettings: async () => {
+    const res = await fetch(`${API_BASE}/admin/ai-settings`, {
+      headers: getHeaders('admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to load AI settings');
+    return data;
+  },
+
+  updateAdminAiSettings: async (settings) => {
+    const res = await fetch(`${API_BASE}/admin/ai-settings`, {
+      method: 'PUT',
+      headers: getHeaders('admin'),
+      body: JSON.stringify(settings),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update AI settings');
+    return data;
+  },
+
+  // 3f. Admin Fraud & Wallet Abuse Detection (Prompt 1)
+  getAdminFraudFlags: async (queryObj = {}) => {
+    const params = new URLSearchParams(queryObj);
+    const res = await fetch(`${API_BASE}/admin/fraud-flags?${params.toString()}`, {
+      headers: getHeaders('admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch fraud flags');
+    return data;
+  },
+
+  getAdminFraudFlagById: async (id) => {
+    const res = await fetch(`${API_BASE}/admin/fraud-flags/${id}`, {
+      headers: getHeaders('admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch fraud flag detail');
+    return data;
+  },
+
+  updateAdminFraudFlagStatus: async (id, status, adminNote) => {
+    const res = await fetch(`${API_BASE}/admin/fraud-flags/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders('admin'),
+      body: JSON.stringify({ status, adminNote }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update fraud flag status');
+    return data;
+  },
+
+  getAdminFraudSettings: async () => {
+    const res = await fetch(`${API_BASE}/admin/fraud-settings`, {
+      headers: getHeaders('admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch fraud settings');
+    return data.settings;
+  },
+
+  updateAdminFraudSettings: async (settings) => {
+    const res = await fetch(`${API_BASE}/admin/fraud-settings`, {
+      method: 'PUT',
+      headers: getHeaders('admin'),
+      body: JSON.stringify(settings),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update fraud settings');
+    return data;
+  },
+
+  // Prompt 9: Appliance Passport API
+  getMyAppliances: async () => {
+    const res = await fetch(`${API_BASE}/appliances`, {
+      headers: getHeaders('customer'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch appliances');
+    return data.appliances || [];
+  },
+
+  getExpiringAppliances: async (days = 30) => {
+    const res = await fetch(`${API_BASE}/appliances/expiring?days=${days}`, {
+      headers: getHeaders('customer'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch expiring appliances');
+    return data.expiring || [];
+  },
+
+  getApplianceById: async (id) => {
+    const res = await fetch(`${API_BASE}/appliances/${id}`, {
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch appliance passport');
+    return data.appliance;
+  },
+
+  createAppliance: async (payload) => {
+    const res = await fetch(`${API_BASE}/appliances`, {
+      method: 'POST',
+      headers: getHeaders('customer'),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to create appliance');
+    return data.appliance;
+  },
+
+  updateAppliance: async (id, payload) => {
+    const res = await fetch(`${API_BASE}/appliances/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders('customer'),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update appliance');
+    return data.appliance;
+  },
+
+  deleteAppliance: async (id) => {
+    const res = await fetch(`${API_BASE}/appliances/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders('customer'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to delete appliance');
+    return data;
+  },
+
+  extractApplianceFromPhoto: async (formData) => {
+    const h = getHeaders('customer');
+    delete h['Content-Type'];
+    const res = await fetch(`${API_BASE}/appliances/extract`, {
+      method: 'POST',
+      headers: h,
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to extract appliance details');
+    return data;
+  },
+
+  // Prompt 10: Worker Upskilling Coach & Academy
+  getWorkerUpskillPlan: async () => {
+    const res = await fetch(`${API_BASE}/worker/upskill/plan`, {
+      headers: getHeaders('worker'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch upskilling plan');
+    return data.plan;
+  },
+
+  submitWorkerQuiz: async (lessonId, answers) => {
+    const res = await fetch(`${API_BASE}/worker/upskill/quiz-submit`, {
+      method: 'POST',
+      headers: getHeaders('worker'),
+      body: JSON.stringify({ lessonId, answers }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to grade quiz');
+    return data;
+  },
+
+  getAdminUpskillList: async (status = 'graduated') => {
+    const res = await fetch(`${API_BASE}/admin/workers-upskill?status=${status}`, {
+      headers: getHeaders('admin'),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch upskill records');
+    return data.records || [];
+  },
+
+  adminUpskillBadgeDecision: async (workerId, approved, adminNotes) => {
+    const res = await fetch(`${API_BASE}/admin/workers/${workerId}/upskill-badge`, {
+      method: 'POST',
+      headers: getHeaders('admin'),
+      body: JSON.stringify({ approved, adminNotes }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to record badge decision');
+    return data;
   },
 };

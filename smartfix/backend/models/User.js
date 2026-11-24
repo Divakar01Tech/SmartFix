@@ -46,6 +46,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       sparse: true,
     },
+    lastKnownIps: {
+      type: [String],
+      default: [],
+    },
+    deviceIds: {
+      type: [String],
+      default: [],
+    },
     address: {
       type: String,
     },
@@ -215,6 +223,29 @@ const userSchema = new mongoose.Schema(
       aadhaarFrontPath: { type: String, default: '' },
       aadhaarBackPath: { type: String, default: '' },
       secondIdPath: { type: String, default: '' },
+      kycCheck: {
+        status: {
+          type: String,
+          enum: ['not_run', 'pass', 'needs_review', 'recommend_reject'],
+          default: 'not_run',
+        },
+        docType: { type: String, default: '' },
+        nameOnDoc: { type: String, default: null },
+        dobOnDoc: { type: String, default: null },
+        idLast4: { type: String, default: '' },
+        nameMatchScore: { type: Number, default: 0 },
+        dobMatch: { type: Boolean, default: null },
+        quality: {
+          blurry: { type: Boolean, default: false },
+          cropped: { type: Boolean, default: false },
+          glare: { type: Boolean, default: false },
+          tooDark: { type: Boolean, default: false },
+          looksLikeScreenPhoto: { type: Boolean, default: false },
+        },
+        flags: [{ type: String }],
+        aiNotes: { type: String, default: '' },
+        ranAt: { type: Date, default: null },
+      },
     },
     interview: {
       transcriptSummary: { type: String, default: '' },

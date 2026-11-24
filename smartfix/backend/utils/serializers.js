@@ -94,6 +94,8 @@ exports.toSafeBooking = (booking, viewerRole = 'customer') => {
     state: raw.state || 'Tamil Nadu',
     notes: raw.notes || '',
     price: raw.price,
+    urgency: raw.urgency || { level: 'normal', safetyTip: { en: '', ta: '' } },
+    jobProof: raw.jobProof || { before: [], after: [], ai: { verdict: 'not_run' } },
     status: raw.status,
     statusHistory: raw.statusHistory || [],
     serviceTier: raw.serviceTier || 'AutoHandyman',
@@ -132,6 +134,7 @@ exports.toSafeBooking = (booking, viewerRole = 'customer') => {
     cancelReason: raw.cancelReason || raw.cancellationReason || '',
     cancelledBy: raw.cancelledBy || null,
     cancelledAt: raw.cancelledAt || null,
+    appliance: raw.appliance || null,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };

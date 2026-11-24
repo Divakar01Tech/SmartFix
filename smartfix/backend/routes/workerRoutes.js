@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getWorkers, getWorkerById, createWorker, deleteWorker, getWorkerScorecard } = require('../controllers/workerController');
+const { getWorkers, getWorkerById, createWorker, deleteWorker, getWorkerScorecard, getWorkerInsights } = require('../controllers/workerController');
 const {
   getWorkerMe,
   uploadKyc,
@@ -27,6 +27,12 @@ router.post('/interview/answer', submitWorkerAnswer);
 // Guarded by requireApprovedWorker (re-reads from DB, blocks pending/rejected)
 router.patch('/availability', protect, requireApprovedWorker, toggleAvailability);
 router.get('/earnings', protect, requireApprovedWorker, getEarnings);
+router.get('/insights', protect, requireWorker, getWorkerInsights);
+
+// Prompt 10: Worker Upskilling Coach & Academy
+const { getWorkerPlan, submitQuiz } = require('../controllers/upskillingController');
+router.get('/upskill/plan', protect, requireWorker, getWorkerPlan);
+router.post('/upskill/quiz-submit', protect, requireWorker, submitQuiz);
 
 // Legacy and public worker routes
 router.get('/', getWorkers);

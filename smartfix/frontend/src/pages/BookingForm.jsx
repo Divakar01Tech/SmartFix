@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { apiService } from '../services/api';
 import LocationPickerMap from '../components/LocationPickerMap';
 import NearbyWorkers from '../components/NearbyWorkers';
+import VoiceBookingButton from '../components/VoiceBookingButton';
+import AppliancePassportModal from '../components/AppliancePassportModal';
 import { Wrench, MapPin, Calendar, Clock, AlertCircle, CheckCircle2, ShieldCheck, ArrowLeft, Send, Sparkles, RefreshCw } from 'lucide-react';
 
 export default function BookingForm() {
@@ -39,6 +41,79 @@ export default function BookingForm() {
   const [aiEstimate, setAiEstimate] = useState(null);
   const [aiEstimateLoading, setAiEstimateLoading] = useState(false);
   const [aiEstimateError, setAiEstimateError] = useState('');
+
+  // Emergency Triage State (Prompt 3)
+  const [triage, setTriage] = useState(null);
+  const [triageLoading, setTriageLoading] = useState(false);
+  const [precautionChecked, setPrecautionChecked] = useState(false);
+
+  // Appliance Passport State (Prompt 9)
+  const [selectedAppliance, setSelectedAppliance] = useState(null);
+  const [showApplianceModal, setShowApplianceModal] = useState(false);
+
+  const handleSelectAppliance = (app) => {
+    setSelectedAppliance(app);
+    if (app.category.includes('Air Condition') || app.category === 'AC') {
+      setSelectedCategory('AC Repair');
+    } else if (app.category.includes('Plumbing')) {
+      setSelectedCategory('Plumbing');
+    } else if (app.category.includes('Inverter') || app.category.includes('Television')) {
+      setSelectedCategory('Electrical Repairs');
+    } else {
+      setSelectedCategory('Appliance Repair');
+    }
+    if (!description) {
+      setDescription(`Service request for ${app.brand} ${app.category} (${app.modelNumber || app.capacityOrSpecs || ''}).`);
+    }
+  };
+
+  // Debounced real-time emergency triage preview (600ms)
+  useEffect(() => {
+    const text = description.trim();
+    if (!text || text.length < 5) {
+      setTriage(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        setTriageLoading(true);
+        const result = await apiService.previewBookingTriage(text, selectedCategory);
+        if (result && (result.level === 'urgent' || result.level === 'critical')) {
+          setTriage(result);
+        } else {
+          setTriage(null);
+        }
+      } catch (err) {
+        // Degrade gracefully on network or offline
+      } finally {
+        setTriageLoading(false);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [description, selectedCategory]);
+
+  // Voice Intent Auto-Fill Handler (Prompt 6)
+  const handleVoiceIntentExtracted = (intent) => {
+    if (!intent) return;
+    if (intent.category) setSelectedCategory(intent.category);
+    if (intent.subService) setSelectedSubService(intent.subService);
+    if (intent.issueDescription) setDescription(intent.issueDescription);
+    if (intent.preferredDate) setScheduledDate(intent.preferredDate);
+    if (intent.preferredTime) {
+      if (intent.preferredTime === 'immediate') setScheduledTime('Immediate (within 1 hour)');
+      else if (intent.preferredTime === 'morning') setScheduledTime('Morning (9 AM - 12 PM)');
+      else if (intent.preferredTime === 'afternoon') setScheduledTime('Afternoon (1 PM - 4 PM)');
+      else if (intent.preferredTime === 'evening') setScheduledTime('Evening (5 PM - 8 PM)');
+    }
+    if (intent.urgency && (intent.urgency.level === 'urgent' || intent.urgency.level === 'critical')) {
+      setTriage(intent.urgency);
+    }
+    if (intent.missingFields?.includes('address')) {
+      setTimeout(() => {
+        document.getElementById('doorstepAddressInput')?.focus();
+      }, 100);
+    }
+  };
 
   const handleGetAiEstimate = async () => {
     if (!selectedCategory && !description.trim()) {
@@ -108,6 +183,11 @@ export default function BookingForm() {
       return;
     }
 
+    if (triage?.level === 'critical' && !precautionChecked) {
+      setErrorMessage(t('emergency_precaution_ack_required', '⚠️ Immediate safety alert: Please review the emergency instructions and check the safety precaution box before submitting.'));
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -128,6 +208,7 @@ export default function BookingForm() {
         },
         scheduledDate,
         scheduledTime,
+        appliance: selectedAppliance?._id || undefined,
       };
 
       const createdBooking = await apiService.createBooking(bookingData);
@@ -203,10 +284,39 @@ export default function BookingForm() {
           {/* Left Column: Form Details */}
           <div className="col-12 col-lg-7">
             <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
-              <h2 className="h5 fw-bold text-dark mb-3 d-flex align-items-center gap-2">
-                <Wrench size={20} className="text-primary" />
-                <span>{t('service_details_header', '1. Select Category & Service')}</span>
-              </h2>
+              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                <h2 className="h5 fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                  <Wrench size={20} className="text-primary" />
+                  <span>{t('service_details_header', '1. Select Category & Service')}</span>
+                </h2>
+                <div className="d-flex align-items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-primary rounded-pill d-flex align-items-center gap-1 shadow-2xs"
+                    onClick={() => setShowApplianceModal(true)}
+                  >
+                    <span>🛡️ {t('appliance_passport', 'Appliance Passport')}</span>
+                  </button>
+                  <VoiceBookingButton onIntentExtracted={handleVoiceIntentExtracted} />
+                </div>
+              </div>
+
+              {/* Linked Appliance Banner */}
+              {selectedAppliance && (
+                <div className="alert alert-primary py-2 px-3 rounded-3 d-flex align-items-center justify-content-between mb-3 small">
+                  <div>
+                    <strong>🛡️ {t('linked_appliance', 'Linked Appliance')}:</strong> {selectedAppliance.brand} {selectedAppliance.category} ({selectedAppliance.qrCodeId})
+                    {selectedAppliance.capacityOrSpecs && <span className="text-muted ms-1">- {selectedAppliance.capacityOrSpecs}</span>}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-link text-primary p-0 text-decoration-none fw-semibold"
+                    onClick={() => setSelectedAppliance(null)}
+                  >
+                    {t('unlink', 'Unlink')}
+                  </button>
+                </div>
+              )}
 
               {/* Service Category */}
               <div className="mb-3">
@@ -434,6 +544,7 @@ export default function BookingForm() {
                 </label>
                 <input
                   type="text"
+                  id="doorstepAddressInput"
                   className="form-control"
                   placeholder={t(
                     'address_placeholder',
@@ -492,6 +603,69 @@ export default function BookingForm() {
               </div>
             </div>
 
+            {/* Prompt 3: Emergency Triage Safety Alert Banner */}
+            {triage && (triage.level === 'urgent' || triage.level === 'critical') && (
+              <div
+                className={`p-3 rounded-4 mb-4 border ${triage.level === 'critical' ? 'bg-danger-subtle border-danger text-danger-emphasis' : 'bg-warning-subtle border-warning text-warning-emphasis'}`}
+                style={{ boxShadow: '0 4px 14px rgba(220, 38, 38, 0.15)' }}
+              >
+                <div className="d-flex align-items-center justify-content-between mb-2">
+                  <div className="d-flex align-items-center gap-2 fw-bold">
+                    <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+                    <span>
+                      {triage.level === 'critical' ? 'CRITICAL SAFETY ALERT / அவசர எச்சரிக்கை' : 'URGENT ATTENTION / அவசர பாதுகாப்பு அறிவுரை'}
+                    </span>
+                  </div>
+                  <span className={`badge ${triage.level === 'critical' ? 'bg-danger text-white' : 'bg-warning text-dark'} text-uppercase`}>
+                    {triage.level}
+                  </span>
+                </div>
+
+                {triage.safetyTip?.en && (
+                  <p className="small mb-1 fw-medium" style={{ lineHeight: 1.4 }}>
+                    <strong>Action:</strong> {triage.safetyTip.en}
+                  </p>
+                )}
+                {triage.safetyTip?.ta && (
+                  <p className="small mb-2" style={{ lineHeight: 1.4, color: '#991b1b' }}>
+                    <strong>முன்னெச்சரிக்கை:</strong> {triage.safetyTip.ta}
+                  </p>
+                )}
+
+                {triage.emergencyHelpline && (
+                  <div className="d-flex flex-wrap gap-2 my-2">
+                    <a
+                      href={`tel:${triage.emergencyHelpline}`}
+                      className="btn btn-danger btn-sm fw-bold rounded-pill px-3 py-1 d-inline-flex align-items-center gap-1 text-decoration-none"
+                    >
+                      📞 Call Helpline {triage.emergencyHelpline}
+                    </a>
+                    <a
+                      href="tel:112"
+                      className="btn btn-outline-danger btn-sm fw-bold rounded-pill px-3 py-1 text-decoration-none"
+                    >
+                      🚨 National Emergency (112)
+                    </a>
+                  </div>
+                )}
+
+                {triage.level === 'critical' && (
+                  <div className="form-check mt-3 pt-2 border-top border-danger-subtle">
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      id="precautionCheck"
+                      checked={precautionChecked}
+                      onChange={(e) => setPrecautionChecked(e.target.checked)}
+                    />
+                    <label className="form-check-label small fw-semibold text-danger-emphasis" htmlFor="precautionCheck">
+                      I have taken safety precautions and still want to book a technician / நான் பாதுகாப்பு நடவடிக்கைகளை எடுத்துள்ளேன், தொடர்ந்து புக் செய்ய விரும்புகிறேன்.
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Submit Button */}
             <button
               type="submit"
@@ -516,6 +690,13 @@ export default function BookingForm() {
           </div>
         </div>
       </form>
+
+      {/* Appliance Passport Modal */}
+      <AppliancePassportModal
+        isOpen={showApplianceModal}
+        onClose={() => setShowApplianceModal(false)}
+        onSelectAppliance={handleSelectAppliance}
+      />
     </div>
   );
 }

@@ -3,10 +3,14 @@ import { Link, useLocation } from 'react-router-dom';
 import { apiService, getApiBase } from '../services/api';
 import AddWorkerModal from '../components/AddWorkerModal';
 import AdminLocations from '../components/AdminLocations';
+import AdminAiSettingsCard from '../components/AdminAiSettingsCard';
+import AdminFraudReviewCard from '../components/AdminFraudReviewCard';
+import AdminSupportTicketsCard from '../components/AdminSupportTicketsCard';
+import AdminUpskillReviewCard from '../components/AdminUpskillReviewCard';
 
 import { useLanguage } from '../context/LanguageContext';
 import socket from '../services/socket';
-import { ShieldCheck, CheckCircle2, XCircle, TrendingUp, Users, DollarSign, Activity, Wrench, RefreshCw, Plus, Trash2, MapPin, Phone, UserX, UserCheck, Search, Award, FileText, BookOpen, Wallet, Percent, ChevronDown, AlertTriangle, Bot, Sparkles, MessageSquare, Camera, Eye, ExternalLink, CreditCard, Download } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, XCircle, TrendingUp, Users, DollarSign, Activity, Wrench, RefreshCw, Plus, Trash2, MapPin, Phone, UserX, UserCheck, Search, Award, FileText, BookOpen, Wallet, Percent, ChevronDown, AlertTriangle, Bot, Sparkles, MessageSquare, Camera, Eye, ExternalLink, CreditCard, Download, Sliders, LifeBuoy } from 'lucide-react';
 import './AdminPanel.css';
 
 const AdminPanel = ({ initialTab }) => {
@@ -1923,9 +1927,86 @@ const AdminPanel = ({ initialTab }) => {
         >
           <MapPin size={18} /> Service Locations
         </button>
+
+        <button
+          onClick={() => setActiveTab('ai_settings')}
+          style={{
+            background: activeTab === 'ai_settings' ? '#4f46e5' : '#ffffff',
+            color: activeTab === 'ai_settings' ? '#ffffff' : '#475569',
+            border: activeTab === 'ai_settings' ? '1px solid #4f46e5' : '1px solid #cbd5e1',
+            padding: '10px 20px',
+            borderRadius: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <Sliders size={18} /> AI Governance & Settings
+        </button>
+
+        <button
+          onClick={() => setActiveTab('fraud_flags')}
+          style={{
+            background: activeTab === 'fraud_flags' ? '#dc2626' : '#ffffff',
+            color: activeTab === 'fraud_flags' ? '#ffffff' : '#475569',
+            border: activeTab === 'fraud_flags' ? '1px solid #dc2626' : '1px solid #cbd5e1',
+            padding: '10px 20px',
+            borderRadius: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <ShieldAlert size={18} /> Fraud Review
+        </button>
+
+        <button
+          onClick={() => setActiveTab('support_tickets')}
+          style={{
+            background: activeTab === 'support_tickets' ? '#2563eb' : '#ffffff',
+            color: activeTab === 'support_tickets' ? '#ffffff' : '#475569',
+            border: activeTab === 'support_tickets' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+            padding: '10px 20px',
+            borderRadius: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <LifeBuoy size={18} /> Support Tickets
+        </button>
+
+        <button
+          onClick={() => setActiveTab('upskill_academy')}
+          style={{
+            padding: '10px 18px',
+            borderRadius: '12px',
+            border: 'none',
+            background: activeTab === 'upskill_academy' ? '#0f172a' : '#f8fafc',
+            color: activeTab === 'upskill_academy' ? '#ffffff' : '#64748b',
+            fontWeight: '700',
+            fontSize: '0.88rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <Award size={18} /> Upskill Academy
+        </button>
       </div>
 
       {activeTab === 'locations' && <AdminLocations />}
+      {activeTab === 'ai_settings' && <AdminAiSettingsCard />}
+      {activeTab === 'fraud_flags' && <AdminFraudReviewCard />}
+      {activeTab === 'support_tickets' && <AdminSupportTicketsCard />}
+      {activeTab === 'upskill_academy' && <AdminUpskillReviewCard />}
 
       {/* TAB 1: VERIFIED WORKER DIRECTORY */}
       {activeTab === 'workers' && (
@@ -2339,6 +2420,94 @@ const AdminPanel = ({ initialTab }) => {
                               <strong>UPI ID:</strong> {c.upiId} {c.upiPhone ? `(Phone: ${c.upiPhone})` : ''}
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* AI KYC Consistency & Quality Check (Prompt 2) */}
+                      {c.kyc?.kycCheck && c.kyc.kycCheck.status && c.kyc.kycCheck.status !== 'not_run' && (
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px', marginBottom: '12px', fontSize: '0.82rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ fontWeight: '700', color: '#1e293b' }}>AI KYC Document Analysis</span>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              fontSize: '0.72rem',
+                              fontWeight: '700',
+                              textTransform: 'uppercase',
+                              background: c.kyc.kycCheck.status === 'pass' ? '#dcfce7' : c.kyc.kycCheck.status === 'recommend_reject' ? '#fee2e2' : '#fef3c7',
+                              color: c.kyc.kycCheck.status === 'pass' ? '#166534' : c.kyc.kycCheck.status === 'recommend_reject' ? '#991b1b' : '#92400e',
+                            }}>
+                              {c.kyc.kycCheck.status}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px', background: '#ffffff', padding: '6px 8px', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
+                            <div>
+                              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>Entered at Signup</div>
+                              <div style={{ fontWeight: '600', color: '#0f172a' }}>{c.name || 'N/A'}</div>
+                            </div>
+                            <div>
+                              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>Read from Document</div>
+                              <div style={{ fontWeight: '600', color: '#0f172a' }}>{c.kyc.kycCheck.nameOnDoc || 'Unreadable'}</div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ color: '#64748b' }}>Name Match Score:</span>
+                            <span style={{ fontWeight: '700', color: c.kyc.kycCheck.nameMatchScore >= 75 ? '#16a34a' : '#dc2626' }}>
+                              {c.kyc.kycCheck.nameMatchScore}%
+                            </span>
+                          </div>
+
+                          {/* Document Quality Flags */}
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
+                            {Object.entries(c.kyc.kycCheck.quality || {}).map(([qKey, qVal]) => (
+                              <span key={qKey} style={{
+                                fontSize: '0.7rem',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: qVal ? '#fee2e2' : '#f1f5f9',
+                                color: qVal ? '#b91c1c' : '#64748b',
+                                border: `1px solid ${qVal ? '#fecaca' : '#e2e8f0'}`,
+                                fontWeight: qVal ? '700' : '500'
+                              }}>
+                                {qKey}: {qVal ? '⚠️ Flagged' : '✓ Clean'}
+                              </span>
+                            ))}
+                          </div>
+
+                          <button
+                            onClick={async () => {
+                              setAiVisionWorkerId(cId);
+                              try {
+                                const res = await apiService.adminRecheckWorkerKyc(cId);
+                                if (res.success) {
+                                  alert('AI KYC analysis refreshed successfully.');
+                                  fetchCaptains();
+                                } else {
+                                  alert(res.message || 'AI KYC recheck completed.');
+                                }
+                              } catch (err) {
+                                alert('Recheck failed: ' + err.message);
+                              } finally {
+                                setAiVisionWorkerId(null);
+                              }
+                            }}
+                            disabled={aiVisionWorkerId === cId}
+                            style={{
+                              width: '100%',
+                              background: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '6px',
+                              padding: '5px',
+                              fontSize: '0.75rem',
+                              fontWeight: '600',
+                              color: '#334155',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {aiVisionWorkerId === cId ? 'Rechecking...' : '↻ AI Recheck Document'}
+                          </button>
                         </div>
                       )}
 
@@ -3084,17 +3253,33 @@ const AdminPanel = ({ initialTab }) => {
                         <td style={{ padding: '12px', fontWeight: '800', color: '#059669' }}>₹{b.price || 0}</td>
                         <td style={{ padding: '12px', fontWeight: '700', color: '#0369a1' }}>₹{commission10}</td>
                         <td style={{ padding: '12px' }}>
-                          <span style={{
-                            padding: '3px 10px',
-                            borderRadius: '12px',
-                            fontSize: '0.76rem',
-                            fontWeight: '800',
-                            background: b.status === 'Completed' ? '#f0fdf4' : b.status === 'Cancelled' ? '#fef2f2' : '#eff6ff',
-                            color: b.status === 'Completed' ? '#166534' : b.status === 'Cancelled' ? '#dc2626' : '#1d4ed8',
-                            border: `1px solid ${b.status === 'Completed' ? '#bbf7d0' : b.status === 'Cancelled' ? '#fecaca' : '#bfdbfe'}`,
-                          }}>
-                            {b.status}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {b.urgency?.level && b.urgency.level !== 'normal' && (
+                              <span style={{
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '0.72rem',
+                                fontWeight: '800',
+                                background: b.urgency.level === 'critical' ? '#fee2e2' : '#fef3c7',
+                                color: b.urgency.level === 'critical' ? '#991b1b' : '#92400e',
+                                border: `1px solid ${b.urgency.level === 'critical' ? '#fecaca' : '#fde68a'}`,
+                                textTransform: 'uppercase'
+                              }}>
+                                {b.urgency.level === 'critical' ? '🚨 CRITICAL' : '⚡ URGENT'}
+                              </span>
+                            )}
+                            <span style={{
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.76rem',
+                              fontWeight: '800',
+                              background: b.status === 'Completed' ? '#f0fdf4' : b.status === 'Cancelled' ? '#fef2f2' : '#eff6ff',
+                              color: b.status === 'Completed' ? '#166534' : b.status === 'Cancelled' ? '#dc2626' : '#1d4ed8',
+                              border: `1px solid ${b.status === 'Completed' ? '#bbf7d0' : b.status === 'Cancelled' ? '#fecaca' : '#bfdbfe'}`,
+                            }}>
+                              {b.status}
+                            </span>
+                          </div>
                         </td>
                         <td style={{ padding: '12px' }}>
                           <span style={{

@@ -6,7 +6,36 @@ const PolicyViolation = require('../models/PolicyViolation');
 const DispatchAttempt = require('../models/DispatchAttempt');
 const ReviewFlag = require('../models/ReviewFlag');
 
-exports.getPolicyViolations = async (req, res) => {
+const { analyzeKycDocument } = require('../services/kycAiService');
+
+exports.recheckWorkerKyc = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const worker = await User.findById(id);
+    if (!worker) {
+      return res.status(404).json({ success: false, message: 'Worker profile not found.' });
+    }
+
+    const result = await analyzeKycDocument(id);
+    if (!result.ok) {
+      if (result.aiDisabled) {
+        return res.status(200).json({ success: false, aiDisabled: true, message: result.message });
+      }
+      return res.status(400).json({ success: false, message: result.error || 'KYC AI analysis failed' });
+    }
+
+    const updatedWorker = await User.findById(id).select('kyc name email');
+    return res.status(200).json({
+      success: true,
+      message: 'KYC check completed successfully',
+      kycCheck: updatedWorker?.kyc?.kycCheck
+    });
+  } catch (err) {
+    console.error('recheckWorkerKyc error:', err);
+    return res.status(500).json({ success: false, message: 'Server error during KYC recheck: ' + err.message });
+  }
+};
+
   try {
     const violations = await PolicyViolation.find()
       .populate('user', 'name phone email')
@@ -1447,6 +1476,266 @@ Sample Recent Booking Statuses: ${JSON.stringify(recentBookings.slice(0, 15).map
   } catch (error) {
     console.error('getAdminAiRadar error:', error);
     return res.status(500).json({ success: false, message: 'Failed to generate AI Radar: ' + error.message });
+  }
+};
+
+// ==============================================================
+// AI SETTINGS & TELEMETRY CONTROLLERS (Prompt 0)
+// ==============================================================
+const AiSettings = require('../models/AiSettings');
+const AiLog = require('../models/AiLog');
+const FraudFlag = require('../models/FraudFlag');
+const FraudSettings = require('../models/FraudSettings');
+const AuditLog = require('../models/AuditLog');
+const Wallet = require('../models/Wallet');
+const { invalidateAiSettingsCache } = require('../services/aiService');
+
+// ==============================================================
+// FRAUD DETECTION & WALLET ABUSE CONTROLLERS (Prompt 1)
+// ==============================================================
+exports.getFraudFlags = async (req, res) => {
+  try {
+    const { status = '', type = '', page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (type) filter.type = type;
+
+    const skip = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);
+    const [flags, total] = await Promise.all([
+      FraudFlag.find(filter)
+        .populate('subjectUserId', 'name email phone role address district')
+        .populate('relatedUserIds', 'name email phone role')
+        .populate('bookingId', 'trade status price createdAt')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit, 10))
+        .lean(),
+      FraudFlag.countDocuments(filter),
+    ]);
+
+    const openCount = await FraudFlag.countDocuments({ status: 'open' });
+
+    return res.status(200).json({
+      success: true,
+      flags,
+      total,
+      openCount,
+      page: parseInt(page, 10),
+      totalPages: Math.ceil(total / parseInt(limit, 10)) || 1,
+    });
+  } catch (err) {
+    console.error('getFraudFlags error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch fraud flags: ' + err.message });
+  }
+};
+
+exports.getFraudFlagById = async (req, res) => {
+  try {
+    const flag = await FraudFlag.findById(req.params.id)
+      .populate('subjectUserId', 'name email phone role address district deviceIds lastKnownIps')
+      .populate('relatedUserIds', 'name email phone role deviceIds lastKnownIps')
+      .populate('bookingId')
+      .populate('reviewedBy', 'name email');
+
+    if (!flag) {
+      return res.status(404).json({ success: false, message: 'Fraud flag not found' });
+    }
+
+    // Also fetch subject's wallet to show pending_review transactions
+    const wallet = await Wallet.findOne({ user: flag.subjectUserId?._id || flag.subjectUserId });
+    const pendingTransactions = (wallet?.transactions || []).filter((t) => t.status === 'pending_review');
+
+    return res.status(200).json({
+      success: true,
+      flag,
+      pendingTransactions,
+    });
+  } catch (err) {
+    console.error('getFraudFlagById error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch flag: ' + err.message });
+  }
+};
+
+exports.updateFraudFlagStatus = async (req, res) => {
+  try {
+    const { status, adminNote = '' } = req.body;
+    if (!['cleared', 'confirmed'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Status must be cleared or confirmed' });
+    }
+
+    const flag = await FraudFlag.findById(req.params.id);
+    if (!flag) {
+      return res.status(404).json({ success: false, message: 'Fraud flag not found' });
+    }
+
+    flag.status = status;
+    flag.adminNote = adminNote;
+    flag.reviewedBy = req.user?.id || req.user?._id;
+    flag.reviewedAt = new Date();
+    await flag.save();
+
+    // Release or revoke held bonus transactions in subject's wallet
+    const userWallet = await Wallet.findOne({ user: flag.subjectUserId });
+    if (userWallet && Array.isArray(userWallet.transactions)) {
+      let walletModified = false;
+      userWallet.transactions.forEach((tx) => {
+        if (tx.status === 'pending_review') {
+          if (status === 'cleared') {
+            tx.status = 'available';
+            walletModified = true;
+          } else if (status === 'confirmed') {
+            tx.status = 'revoked';
+            // Adjust balance if it was credited
+            if (tx.type === 'credit') {
+              userWallet.balance = Math.max(0, userWallet.balance - (tx.amount || 0));
+            }
+            walletModified = true;
+          }
+        }
+      });
+      if (walletModified) {
+        await userWallet.save();
+      }
+    }
+
+    // Write audit log entry
+    await AuditLog.create({
+      adminId: req.user?.id || req.user?._id,
+      action: `fraud_flag_${status}`,
+      details: {
+        flagId: flag._id,
+        type: flag.type,
+        score: flag.score,
+        adminNote,
+      },
+      workerId: flag.subjectUserId,
+      adminDecision: status,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Fraud flag marked as ${status}.`,
+      flag,
+    });
+  } catch (err) {
+    console.error('updateFraudFlagStatus error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to update fraud flag: ' + err.message });
+  }
+};
+
+exports.getAdminFraudSettings = async (req, res) => {
+  try {
+    let settings = await FraudSettings.findOne({ singletonKey: 'DEFAULT_FRAUD_SETTINGS' });
+    if (!settings) {
+      settings = await FraudSettings.create({ singletonKey: 'DEFAULT_FRAUD_SETTINGS' });
+    }
+    return res.status(200).json({ success: true, settings });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch fraud settings: ' + err.message });
+  }
+};
+
+exports.updateAdminFraudSettings = async (req, res) => {
+  try {
+    let settings = await FraudSettings.findOne({ singletonKey: 'DEFAULT_FRAUD_SETTINGS' });
+    if (!settings) {
+      settings = new FraudSettings({ singletonKey: 'DEFAULT_FRAUD_SETTINGS' });
+    }
+
+    const numericFields = ['cancelsIn7Days', 'repeatPairIn14Days', 'minJobMinutes', 'bookingsPerHour', 'flagScore', 'holdScore'];
+    numericFields.forEach((field) => {
+      if (typeof req.body[field] === 'number') {
+        settings[field] = req.body[field];
+      }
+    });
+
+    settings.updatedBy = req.user?.id || req.user?._id;
+    settings.updatedAt = new Date();
+    await settings.save();
+
+    return res.status(200).json({ success: true, message: 'Fraud settings updated', settings });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to update fraud settings: ' + err.message });
+  }
+};
+
+exports.getAiSettings = async (req, res) => {
+  try {
+    let settings = await AiSettings.findOne({ singletonKey: 'DEFAULT_AI_SETTINGS' });
+    if (!settings) {
+      settings = await AiSettings.create({ singletonKey: 'DEFAULT_AI_SETTINGS' });
+    }
+
+    const [recentLogs, statsAgg] = await Promise.all([
+      AiLog.find().sort({ createdAt: -1 }).limit(50).lean().catch(() => []),
+      AiLog.aggregate([
+        {
+          $group: {
+            _id: '$feature',
+            totalCalls: { $sum: 1 },
+            successCalls: { $sum: { $cond: ['$success', 1, 0] } },
+            avgLatency: { $avg: '$latencyMs' }
+          }
+        }
+      ]).catch(() => [])
+    ]);
+
+    const featureStats = {};
+    statsAgg.forEach((s) => {
+      const rate = s.totalCalls > 0 ? Math.round((s.successCalls / s.totalCalls) * 100) : 100;
+      featureStats[s._id] = {
+        totalCalls: s.totalCalls,
+        successCalls: s.successCalls,
+        successRate: rate,
+        avgLatency: Math.round(s.avgLatency || 0)
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      settings,
+      recentLogs,
+      featureStats
+    });
+  } catch (err) {
+    console.error('getAiSettings error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch AI settings: ' + err.message });
+  }
+};
+
+exports.updateAiSettings = async (req, res) => {
+  try {
+    const allowedKeys = [
+      'fraudDetection', 'kycCheck', 'emergencyTriage', 'chatTranslation',
+      'supportBot', 'voiceBooking', 'jobProofCheck', 'demandInsights',
+      'appliancePassport', 'upskilling'
+    ];
+
+    let settings = await AiSettings.findOne({ singletonKey: 'DEFAULT_AI_SETTINGS' });
+    if (!settings) {
+      settings = new AiSettings({ singletonKey: 'DEFAULT_AI_SETTINGS' });
+    }
+
+    allowedKeys.forEach((key) => {
+      if (typeof req.body[key] === 'boolean') {
+        settings[key] = req.body[key];
+      }
+    });
+
+    settings.updatedBy = req.user?.id || req.user?._id;
+    settings.updatedAt = new Date();
+    await settings.save();
+
+    invalidateAiSettingsCache();
+
+    return res.status(200).json({
+      success: true,
+      message: 'AI settings updated successfully.',
+      settings
+    });
+  } catch (err) {
+    console.error('updateAiSettings error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to update AI settings: ' + err.message });
   }
 };
 

@@ -58,6 +58,7 @@ const SEOLandingPage = lazy(() => import('./pages/SEOLandingPage'));
 import SmartFixAiWidget from './components/SmartFixAiWidget';
 import WebRtcCallModal from './components/WebRtcCallModal';
 import CommandPalette from './components/CommandPalette';
+import FloatingSupportWidget from './components/FloatingSupportWidget';
 import SavedWorkersModal from './components/SavedWorkersModal';
 import OfflineAlert from './components/OfflineAlert';
 import ComfortQuickDock from './components/ComfortQuickDock';
@@ -412,6 +413,7 @@ function App() {
       <SavedWorkersModal />
       <OfflineAlert />
       <ComfortQuickDock />
+      <FloatingSupportWidget />
     </>
   );
 }

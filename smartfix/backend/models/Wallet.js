@@ -22,6 +22,16 @@ const transactionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Payment',
   },
+  status: {
+    type: String,
+    enum: ['available', 'pending_review', 'revoked'],
+    default: 'available',
+  },
+  category: {
+    type: String,
+    enum: ['bonus', 'earnings', 'cashback', 'payout', 'refund', 'general'],
+    default: 'general',
+  },
   createdAt: {
     type: Date,
     default: Date.now,

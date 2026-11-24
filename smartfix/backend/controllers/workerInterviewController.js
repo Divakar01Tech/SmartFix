@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const InterviewSession = require('../models/InterviewSession');
 const skillInterviewService = require('../services/skillInterviewService');
+const upskillingService = require('../services/upskillingService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'smartfix_secret_key_2026';
 
@@ -168,6 +169,20 @@ exports.submitWorkerAnswer = async (req, res) => {
           verificationStatus: 'pending_verification',
           rejectionReason: '',
         }).catch(() => null);
+
+        // Prompt 10: Auto-assign upskill plan if interview was borderline or score < 70
+        if (recommendation.verdict === 'borderline' || (recommendation.confidenceScore && recommendation.confidenceScore < 70)) {
+          const workerDoc = await User.findOne(workerQuery);
+          if (workerDoc) {
+            const weakAreas = [];
+            if (recommendation.scores.safetyAwareness < 15) weakAreas.push('safetyAwareness');
+            if (recommendation.scores.diagnosisLogic < 15) weakAreas.push('diagnosisLogic');
+            if (recommendation.scores.practicalSpecificity < 15) weakAreas.push('practicalSpecificity');
+            if (weakAreas.length === 0) weakAreas.push('safetyAwareness');
+            upskillingService.generateOrAssignUpskillPlan(workerDoc._id, 'interview_borderline', weakAreas)
+              .catch((e) => console.warn('[Upskilling] Auto-assign error:', e.message));
+          }
+        }
       }
     }
 
