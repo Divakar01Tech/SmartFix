@@ -36,6 +36,7 @@ exports.recheckWorkerKyc = async (req, res) => {
   }
 };
 
+exports.getPolicyViolations = async (req, res) => {
   try {
     const violations = await PolicyViolation.find()
       .populate('user', 'name phone email')
