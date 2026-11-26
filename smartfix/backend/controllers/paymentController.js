@@ -5,10 +5,12 @@ const Wallet = require('../models/Wallet');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
 const CommissionConfig = require('../models/CommissionConfig');
+const Earning = require('../models/Earning');
+const WebhookEvent = require('../models/WebhookEvent');
 const { getRazorpayInstance, verifyRazorpaySignature, verifyWebhookSignature } = require('../utils/razorpay');
 
 /**
- * Helper to get current commission % and customer bonus % from Settings / CommissionConfig
+ * Helper to get current platform commission % and customer bonus % from Settings / CommissionConfig
  */
 const getPlatformRates = async () => {
   let commissionPct = 10;
@@ -66,10 +68,15 @@ const emitPaidSocketEvents = (io, booking, payment, splits) => {
     status: 'Paid',
     paymentStatus: 'Paid',
     amountPaid: payment.amountPaid,
+    amountPayablePaise: payment.amountPayablePaise,
     walletUsed: payment.walletUsed,
+    walletUsedPaise: payment.walletUsedPaise,
     totalAmount: payment.amountTotal,
+    amountTotalPaise: payment.amountTotalPaise,
     workerPayout: splits.workerPayout,
+    workerPayoutPaise: splits.workerPayoutPaise,
     bonusCredited: splits.bonusCredited,
+    bonusPaise: splits.bonusPaise,
     paidAt: payment.paidAt,
   };
 
@@ -82,6 +89,7 @@ const emitPaidSocketEvents = (io, booking, payment, splits) => {
     io.to(`user-${customerId}`).emit('booking-status-changed', { bookingId, status: 'Paid' });
     io.to(`user-${customerId}`).emit('cashback-credited', {
       amount: splits.bonusCredited,
+      bonusPaise: splits.bonusPaise,
       bookingId,
     });
   }
@@ -90,6 +98,7 @@ const emitPaidSocketEvents = (io, booking, payment, splits) => {
     io.to(`user-${workerId}`).emit('booking-status-changed', { bookingId, status: 'Paid' });
     io.to(`user-${workerId}`).emit('earnings-credited', {
       amount: splits.workerPayout,
+      workerPayoutPaise: splits.workerPayoutPaise,
       bookingId,
     });
   }
@@ -98,16 +107,20 @@ const emitPaidSocketEvents = (io, booking, payment, splits) => {
 };
 
 /**
- * markPaid(orderId, paymentId, options)
+ * finalizePayment(orderId, paymentId, options)
  *
- * IDEMPOTENT: Returns early if payment is already marked paid.
- * Executes wallet deductions, bonus cashback, worker payout, and status update inside a transaction.
+ * IDEMPOTENT: Single source of truth for both browser callback and webhook.
+ * Processing an already-paid booking is a no-op that returns the existing payment record.
+ * Executes wallet commit, bonus cashback, worker earnings ledger, and booking status change.
  */
-const markPaid = async (orderId, paymentId, options = {}) => {
+const finalizePayment = async (orderId, paymentId, options = {}) => {
   const { paymentMethod = 'Razorpay', io = null, bookingId = null } = options;
 
   // 1. Fetch Payment record
-  let payment = await Payment.findOne({ razorpayOrderId: orderId });
+  let payment = null;
+  if (orderId) {
+    payment = await Payment.findOne({ razorpayOrderId: orderId });
+  }
   if (!payment && bookingId) {
     payment = await Payment.findOne({ booking: bookingId }).sort({ createdAt: -1 });
   }
@@ -117,7 +130,8 @@ const markPaid = async (orderId, paymentId, options = {}) => {
 
   // Idempotency: If payment already paid, return early without double crediting
   if (payment.status === 'paid') {
-    return { payment, alreadyProcessed: true };
+    const existingBooking = await Booking.findById(payment.booking);
+    return { payment, booking: existingBooking, alreadyProcessed: true };
   }
 
   // 2. Fetch Booking record
@@ -126,36 +140,76 @@ const markPaid = async (orderId, paymentId, options = {}) => {
     throw new Error(`Associated booking ${payment.booking} not found`);
   }
 
-  // Idempotency: If booking already paid, sync payment status and return early
+  // Idempotency check on booking status
   if (booking.paymentStatus === 'Paid' || (booking.status || '').toLowerCase() === 'paid') {
     payment.status = 'paid';
     payment.razorpayPaymentId = paymentId || payment.razorpayPaymentId;
     payment.paidAt = payment.paidAt || new Date();
     await payment.save();
-    return { payment, alreadyProcessed: true };
+    return { payment, booking, alreadyProcessed: true };
   }
 
-  // 3. Compute commission, worker payout, customer bonus
-  const { commissionPct, bonusPct } = await getPlatformRates();
-  const price = payment.amountTotal || Number(booking.price) || 0;
-  const commission = Math.round(price * (commissionPct / 100));
-  const workerPayout = price - commission;
-  // Customer bonus is credited on the amount paid via Razorpay (or 5% total if online)
-  const bonusCredited = Math.round(payment.amountPaid * (bonusPct / 100));
+  // 3. Integer Paise Calculations
+  const totalPaise = payment.amountTotalPaise || Math.round(payment.amountTotal * 100);
+  const payablePaise = payment.amountPayablePaise !== undefined ? payment.amountPayablePaise : Math.round(payment.amountPaid * 100);
+  const walletUsedPaise = payment.walletUsedPaise || Math.round((payment.walletUsed || 0) * 100);
+
+  const commPct = payment.commissionPercentSnapshot || payment.commissionPercent || 10;
+  const bonusPct = payment.bonusPercentSnapshot || payment.cashbackPercent || 5;
+
+  // Platform Commission calculated on total job amount
+  const commissionPaise = Math.floor((totalPaise * commPct) / 100);
+  // Worker Net Payout
+  const workerPayoutPaise = totalPaise - commissionPaise;
+  // Customer Bonus Cashback is earned ONLY on the Razorpay-paid portion (breaks spend-bonus -> earn-bonus loop)
+  const bonusPaise = Math.floor((payablePaise * bonusPct) / 100);
 
   const now = new Date();
 
-  // 4. Atomic Execution (with transaction support & fallback for standalone MongoDB)
+  // 4. Atomic Execution Helper
   const executeOperations = async (sess) => {
     const sessionOpt = sess ? { session: sess } : {};
 
-    // A. Deduct wallet used if customer applied wallet balance
-    if (payment.walletUsed > 0 && payment.customer) {
+    // A. Commit wallet reservation if customer used wallet balance
+    if (walletUsedPaise > 0 && payment.customer) {
       let customerWallet = await Wallet.findOne({ user: payment.customer });
       if (customerWallet) {
-        await customerWallet.debit(
-          payment.walletUsed,
-          `Wallet applied for Booking #${booking._id.toString().slice(-6)}`,
+        const walletUsedInr = Math.round(walletUsedPaise / 100);
+        if (typeof customerWallet.commitReservation === 'function') {
+          await customerWallet.commitReservation(
+            walletUsedInr,
+            `Wallet applied for Booking #${booking._id.toString().slice(-6)}`,
+            booking._id,
+            payment._id,
+            sess
+          );
+        } else {
+          await customerWallet.debit(
+            walletUsedInr,
+            `Wallet applied for Booking #${booking._id.toString().slice(-6)}`,
+            booking._id,
+            payment._id,
+            sess
+          );
+        }
+      }
+    }
+
+    // B. Credit Customer Bonus Cashback to Customer Wallet (on Razorpay-paid portion only)
+    if (bonusPaise > 0 && payment.customer) {
+      const bonusInr = Math.round(bonusPaise / 100);
+      if (bonusInr > 0) {
+        let customerWallet = await Wallet.findOne({ user: payment.customer });
+        if (!customerWallet) {
+          const [newWallet] = await Wallet.create(
+            [{ user: payment.customer, role: 'customer', balance: 0, reservedBalance: 0 }],
+            sessionOpt
+          );
+          customerWallet = newWallet;
+        }
+        await customerWallet.credit(
+          bonusInr,
+          `Cashback reward (${bonusPct}%) for Booking #${booking._id.toString().slice(-6)}`,
           booking._id,
           payment._id,
           sess
@@ -163,51 +217,31 @@ const markPaid = async (orderId, paymentId, options = {}) => {
       }
     }
 
-    // B. Credit Customer Bonus Cashback to Customer Wallet
-    if (bonusCredited > 0 && payment.customer) {
-      let customerWallet = await Wallet.findOne({ user: payment.customer });
-      if (!customerWallet) {
-        const [newWallet] = await Wallet.create(
-          [{ user: payment.customer, role: 'customer', balance: 0 }],
-          sessionOpt
-        );
-        customerWallet = newWallet;
-      }
-      await customerWallet.credit(
-        bonusCredited,
-        `Customer reward bonus for Booking #${booking._id.toString().slice(-6)}`,
-        booking._id,
-        payment._id,
-        sess
-      );
-    }
-
-    // C. Credit Worker Payout to Worker's Wallet & User Earnings
+    // C. Record Worker Earnings in Earning Ledger
     const workerId = booking.worker || payment.provider || payment.worker;
     if (workerId) {
-      let workerWallet = await Wallet.findOne({ user: workerId });
-      if (!workerWallet) {
-        const [newWWallet] = await Wallet.create(
-          [{ user: workerId, role: 'worker', balance: 0 }],
-          sessionOpt
-        );
-        workerWallet = newWWallet;
-      }
-      await workerWallet.credit(
-        workerPayout,
-        `Earnings payout for Booking #${booking._id.toString().slice(-6)} (Price: ₹${price} - ${commissionPct}% Comm: ₹${commission})`,
-        booking._id,
-        payment._id,
-        sess
+      await Earning.findOneAndUpdate(
+        { paymentId: payment._id },
+        {
+          workerId,
+          bookingId: booking._id,
+          paymentId: payment._id,
+          grossPaise: totalPaise,
+          commissionPaise,
+          netPaise: workerPayoutPaise,
+          status: 'pending_payout',
+        },
+        { upsert: true, new: true, ...sessionOpt }
       );
 
-      // Track earnings in User model
+      // Track worker earnings on User model
+      const workerPayoutInr = Math.round(workerPayoutPaise / 100);
       await User.findByIdAndUpdate(
         workerId,
         {
           $inc: {
-            earnings: workerPayout,
-            totalEarnings: workerPayout,
+            earnings: workerPayoutInr,
+            totalEarnings: workerPayoutInr,
           },
         },
         sessionOpt
@@ -216,15 +250,13 @@ const markPaid = async (orderId, paymentId, options = {}) => {
 
     // D. Update Payment Record
     payment.status = 'paid';
-    payment.razorpayPaymentId = paymentId || `pay_${Date.now()}`;
-    payment.commission = commission;
-    payment.commissionAmount = commission;
-    payment.workerPayout = workerPayout;
-    payment.providerPayout = workerPayout;
-    payment.bonusCredited = bonusCredited;
-    payment.customerCashback = bonusCredited;
-    payment.commissionPercent = commissionPct;
-    payment.cashbackPercent = bonusPct;
+    payment.razorpayPaymentId = paymentId || payment.razorpayPaymentId || `pay_${Date.now()}`;
+    payment.amountTotalPaise = totalPaise;
+    payment.walletUsedPaise = walletUsedPaise;
+    payment.amountPayablePaise = payablePaise;
+    payment.commissionPaise = commissionPaise;
+    payment.workerPayoutPaise = workerPayoutPaise;
+    payment.bonusPaise = bonusPaise;
     payment.paymentMethod = paymentMethod;
     payment.paidAt = now;
     await payment.save(sessionOpt);
@@ -233,13 +265,13 @@ const markPaid = async (orderId, paymentId, options = {}) => {
     booking.status = 'paid';
     booking.paymentStatus = 'Paid';
     booking.paidAt = now;
-    booking.paymentMethod = payment.walletUsed >= price ? 'Wallet' : 'Razorpay';
+    booking.paymentMethod = paymentMethod === 'Wallet' ? 'Wallet' : 'Razorpay';
     booking.transactionId = payment.razorpayPaymentId;
     booking.isOnlinePayment = true;
-    booking.commissionAmount = commission;
-    booking.providerPayout = workerPayout;
-    booking.workerTotalPayout = workerPayout;
-    booking.customerCashback = bonusCredited;
+    booking.commissionAmount = Math.round(commissionPaise / 100);
+    booking.providerPayout = Math.round(workerPayoutPaise / 100);
+    booking.workerTotalPayout = Math.round(workerPayoutPaise / 100);
+    booking.customerCashback = Math.round(bonusPaise / 100);
     booking.statusHistory.push({
       status: 'paid',
       changedAt: now,
@@ -278,7 +310,6 @@ const markPaid = async (orderId, paymentId, options = {}) => {
         await session.abortTransaction();
       } catch (abortErr) {}
     }
-    // If transaction failed due to replica set requirement, fall back to non-transaction execution
     if (useTransaction && (err.message?.includes('Transaction numbers are only allowed') || err.message?.includes('replica set'))) {
       await executeOperations(null);
     } else {
@@ -292,19 +323,30 @@ const markPaid = async (orderId, paymentId, options = {}) => {
     }
   }
 
-  // 5. Emit Socket.io real-time events to booking room & user rooms
-  emitPaidSocketEvents(io, booking, payment, { workerPayout, bonusCredited, commission });
+  const splits = {
+    price: Math.round(totalPaise / 100),
+    totalPaise,
+    commission: Math.round(commissionPaise / 100),
+    commissionPaise,
+    workerPayout: Math.round(workerPayoutPaise / 100),
+    workerPayoutPaise,
+    bonusCredited: Math.round(bonusPaise / 100),
+    bonusPaise,
+  };
+
+  // 5. Emit Socket.io real-time events
+  emitPaidSocketEvents(io, booking, payment, splits);
 
   return {
     payment,
     booking,
-    splits: { price, commission, workerPayout, bonusCredited },
+    splits,
     alreadyProcessed: false,
   };
 };
 
 // ============================================================================
-// 1. POST /api/payments/create-order (Auth required)
+// 1. POST /api/payments/create-order (Customer Authenticated)
 // ============================================================================
 exports.createOrder = async (req, res) => {
   try {
@@ -320,7 +362,7 @@ exports.createOrder = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
     }
 
-    // Business Rule: Only the booking's own customer can pay
+    // Role & Ownership Rule: Only the booking's own customer can initiate payment
     const bookingCustId = (booking.customer?._id || booking.customer)?.toString();
     if (bookingCustId !== customerId.toString()) {
       return res.status(403).json({
@@ -329,7 +371,7 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // Business Rule: Customer pays AFTER worker marks job Completed (Completed -> Paid)
+    // Lifecycle Rule: Customer pays AFTER job is Completed (Completed -> Paid)
     const st = (booking.status || '').toLowerCase();
     const isCompleted = ['completed', 'workcompleted'].includes(st);
     if (!isCompleted) {
@@ -339,7 +381,7 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // Business Rule: Already paid check
+    // Already Paid check
     if (booking.paymentStatus === 'Paid' || st === 'paid') {
       return res.status(400).json({
         success: false,
@@ -347,65 +389,108 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // Amount is ALWAYS computed server-side from the booking's final price in DB. Never trust client amount!
-    const fullPrice = Number(booking.price);
-    if (!fullPrice || fullPrice <= 0) {
-      return res.status(400).json({ success: false, message: 'Invalid booking price.' });
+    // Amount is ALWAYS computed server-side in INTEGER PAISE. Never trust client amount!
+    const finalAmountPaise = booking.finalAmountPaise || Math.round((Number(booking.price) || 0) * 100);
+    if (!finalAmountPaise || finalAmountPaise <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid booking final amount.' });
     }
 
-    // Tamper Protection: Reject if client passed an amount that does not match server-calculated amount
+    // Tamper Protection: Reject if client provided an amount that deviates from server price
     if (req.body.amount !== undefined && req.body.amount !== null) {
-      const clientAmount = Number(req.body.amount);
-      if (Math.round(clientAmount) !== Math.round(fullPrice)) {
+      const clientAmountPaise = Math.round(Number(req.body.amount));
+      // Client amount might be in INR or paise
+      const matchesPaise = clientAmountPaise === finalAmountPaise;
+      const matchesInr = clientAmountPaise === Math.round(finalAmountPaise / 100);
+      if (!matchesPaise && !matchesInr) {
         return res.status(400).json({
           success: false,
           message: 'Tampered payment amount rejected: Client provided amount does not match server-calculated price.',
-          expectedAmount: fullPrice,
-          clientAmount,
+          expectedPaise: finalAmountPaise,
         });
       }
     }
 
-    // Customer wallet balance calculation
-    let walletUsed = 0;
+    // Snapshot current platform rates onto payment record
+    const { commissionPct, bonusPct } = await getPlatformRates();
+
+    // Customer Wallet balance check
+    let walletUsedPaise = 0;
+    let customerWallet = null;
+
     if (useWallet) {
-      const custWallet = await Wallet.findOne({ user: customerId }).catch(() => null);
-      const balance = Math.max(0, custWallet?.balance || 0);
-      walletUsed = Math.min(balance, fullPrice);
+      customerWallet = await Wallet.findOne({ user: customerId }).catch(() => null);
+      if (customerWallet) {
+        const spendableInr = customerWallet.getSpendableBalance ? customerWallet.getSpendableBalance() : (customerWallet.balance || 0);
+        const spendablePaise = Math.round(spendableInr * 100);
+        walletUsedPaise = Math.min(spendablePaise, finalAmountPaise);
+      }
     }
 
-    const amountPaid = fullPrice - walletUsed; // Amount to be charged via Razorpay
+    let amountPayablePaise = finalAmountPaise - walletUsedPaise;
 
-    // If wallet covers 100% of price, skip Razorpay and finalize directly
-    if (amountPaid === 0 && walletUsed >= fullPrice) {
+    // Razorpay constraint: non-zero payment must be at least 100 paise (₹1).
+    // If payable is between 1 and 99 paise, adjust walletUsed so payable is 100 paise or 0.
+    if (amountPayablePaise > 0 && amountPayablePaise < 100) {
+      walletUsedPaise = Math.max(0, finalAmountPaise - 100);
+      amountPayablePaise = finalAmountPaise - walletUsedPaise;
+    }
+
+    // Case A: 100% covered by wallet
+    if (amountPayablePaise === 0 && walletUsedPaise >= finalAmountPaise) {
       const walletOrderId = `order_wallet_${bookingId}_${Date.now()}`;
+
+      // Reserve wallet balance first
+      if (customerWallet && typeof customerWallet.reserve === 'function') {
+        await customerWallet.reserve(Math.round(walletUsedPaise / 100), bookingId);
+      }
+
       const walletPayment = await Payment.create({
         booking: bookingId,
         customer: customerId,
         provider: booking.worker,
         worker: booking.worker,
         razorpayOrderId: walletOrderId,
-        amountTotal: fullPrice,
-        walletUsed: fullPrice,
+        method: 'wallet',
+        amountTotalPaise: finalAmountPaise,
+        walletUsedPaise,
+        amountPayablePaise: 0,
+        commissionPercentSnapshot: commissionPct,
+        bonusPercentSnapshot: bonusPct,
+        amountTotal: Math.round(finalAmountPaise / 100),
+        walletUsed: Math.round(walletUsedPaise / 100),
         amountPaid: 0,
-        amount: 0,
         status: 'created',
         paymentMethod: 'Wallet',
       });
 
       const io = req.app?.get('io');
-      await markPaid(walletOrderId, `pay_wallet_${Date.now()}`, { paymentMethod: 'Wallet', io });
+      await finalizePayment(walletOrderId, `pay_wallet_${Date.now()}`, { paymentMethod: 'Wallet', io, bookingId });
 
       return res.status(200).json({
         success: true,
-        paidWithWallet: true,
-        message: 'Payment completed successfully using wallet balance.',
+        paidByWalletOnly: true,
+        message: 'Payment completed successfully using your wallet balance.',
         bookingId,
         orderId: walletOrderId,
+        paymentId: walletPayment._id,
       });
     }
 
-    // Business Rule: If an unpaid 'created' order already exists for the booking, reuse it instead of creating duplicate
+    // Case B: Partial or full charge via Razorpay
+    // Reserve wallet funds during checkout so customer cannot double-spend
+    if (walletUsedPaise > 0 && customerWallet && typeof customerWallet.reserve === 'function') {
+      try {
+        await customerWallet.reserve(Math.round(walletUsedPaise / 100), bookingId);
+      } catch (reserveErr) {
+        return res.status(400).json({ success: false, message: reserveErr.message });
+      }
+    }
+
+    // Expiration duration (default 15 minutes)
+    const expiryMinutes = parseInt(process.env.PAYMENT_ORDER_EXPIRY_MINUTES) || 15;
+    const orderExpiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
+
+    // Reuse existing 'created' Payment order if identical and not expired
     const existingPayment = await Payment.findOne({
       booking: bookingId,
       status: 'created',
@@ -413,51 +498,55 @@ exports.createOrder = async (req, res) => {
 
     if (
       existingPayment &&
-      existingPayment.amountPaid === amountPaid &&
-      existingPayment.walletUsed === walletUsed &&
-      existingPayment.razorpayOrderId
+      existingPayment.amountPayablePaise === amountPayablePaise &&
+      existingPayment.walletUsedPaise === walletUsedPaise &&
+      existingPayment.razorpayOrderId &&
+      (!existingPayment.orderExpiresAt || existingPayment.orderExpiresAt > new Date())
     ) {
       return res.status(200).json({
         success: true,
         orderId: existingPayment.razorpayOrderId,
-        amount: Math.round(amountPaid * 100), // in paise
+        amount: amountPayablePaise, // In integer paise
+        currency: 'INR',
         keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
         key: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
         paymentId: existingPayment._id,
         order: {
           id: existingPayment.razorpayOrderId,
-          amount: Math.round(amountPaid * 100),
+          amount: amountPayablePaise,
           currency: 'INR',
         },
         splits: {
-          price: fullPrice,
-          walletUsed,
-          amountPaid,
+          totalPaise: finalAmountPaise,
+          walletUsedPaise,
+          payablePaise: amountPayablePaise,
+          totalInr: Math.round(finalAmountPaise / 100),
+          walletUsedInr: Math.round(walletUsedPaise / 100),
+          payableInr: Math.round(amountPayablePaise / 100),
         },
       });
     }
 
-    // Create Razorpay order
-    const amountPaise = Math.round(amountPaid * 100);
+    // Call Razorpay API to create order
     let rzpOrder;
     try {
       const razorpay = getRazorpayInstance();
       rzpOrder = await razorpay.orders.create({
-        amount: amountPaise,
+        amount: amountPayablePaise,
         currency: 'INR',
         receipt: `bk_${bookingId.toString().slice(-16)}`,
         notes: {
           bookingId: bookingId.toString(),
           customerId: customerId.toString(),
-          walletUsed: walletUsed.toString(),
+          walletUsedPaise: walletUsedPaise.toString(),
+          totalPaise: finalAmountPaise.toString(),
         },
       });
     } catch (rzpErr) {
-      // In development / demo fallback if keys aren't configured with live Razorpay server
-      console.warn('⚠️ Razorpay order create fallback:', rzpErr.message);
+      console.warn('⚠️ Razorpay live API call notice:', rzpErr.message);
       rzpOrder = {
         id: `order_${Date.now()}`,
-        amount: amountPaise,
+        amount: amountPayablePaise,
         currency: 'INR',
         status: 'created',
       };
@@ -465,49 +554,57 @@ exports.createOrder = async (req, res) => {
 
     // Save Payment record with status 'created'
     let paymentRecord;
+    const paymentData = {
+      booking: bookingId,
+      customer: customerId,
+      provider: booking.worker,
+      worker: booking.worker,
+      razorpayOrderId: rzpOrder.id,
+      method: 'razorpay',
+      amountTotalPaise: finalAmountPaise,
+      walletUsedPaise,
+      amountPayablePaise,
+      commissionPercentSnapshot: commissionPct,
+      bonusPercentSnapshot: bonusPct,
+      amountTotal: Math.round(finalAmountPaise / 100),
+      walletUsed: Math.round(walletUsedPaise / 100),
+      amountPaid: Math.round(amountPayablePaise / 100),
+      amount: amountPayablePaise,
+      orderExpiresAt,
+      status: 'created',
+      paymentMethod: 'Razorpay',
+      receipt: `bk_${bookingId.toString().slice(-16)}`,
+    };
+
     if (existingPayment) {
-      existingPayment.razorpayOrderId = rzpOrder.id;
-      existingPayment.amountTotal = fullPrice;
-      existingPayment.walletUsed = walletUsed;
-      existingPayment.amountPaid = amountPaid;
-      existingPayment.amount = amountPaise;
+      Object.assign(existingPayment, paymentData);
       paymentRecord = await existingPayment.save();
     } else {
-      paymentRecord = await Payment.create({
-        booking: bookingId,
-        customer: customerId,
-        provider: booking.worker,
-        worker: booking.worker,
-        razorpayOrderId: rzpOrder.id,
-        amountTotal: fullPrice,
-        walletUsed,
-        amountPaid,
-        amount: amountPaise,
-        status: 'created',
-        paymentMethod: 'Razorpay',
-        receipt: `bk_${bookingId.toString().slice(-16)}`,
-      });
+      paymentRecord = await Payment.create(paymentData);
     }
 
-    // Link orderId to booking
     await Booking.findByIdAndUpdate(bookingId, { razorpayOrderId: rzpOrder.id }).catch(() => {});
 
     return res.status(201).json({
       success: true,
       orderId: rzpOrder.id,
-      amount: amountPaise,
+      amount: amountPayablePaise, // in integer paise
+      currency: 'INR',
       keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
       key: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
       paymentId: paymentRecord._id,
       order: {
         id: rzpOrder.id,
-        amount: amountPaise,
+        amount: amountPayablePaise,
         currency: 'INR',
       },
       splits: {
-        price: fullPrice,
-        walletUsed,
-        amountPaid,
+        totalPaise: finalAmountPaise,
+        walletUsedPaise,
+        payablePaise: amountPayablePaise,
+        totalInr: Math.round(finalAmountPaise / 100),
+        walletUsedInr: Math.round(walletUsedPaise / 100),
+        payableInr: Math.round(amountPayablePaise / 100),
       },
     });
   } catch (err) {
@@ -517,7 +614,7 @@ exports.createOrder = async (req, res) => {
 };
 
 // ============================================================================
-// 2. POST /api/payments/verify (Auth required)
+// 2. POST /api/payments/verify (Customer Authenticated)
 // ============================================================================
 exports.verifyPayment = async (req, res) => {
   try {
@@ -544,11 +641,9 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Verify HMAC-SHA256 signature using timingSafeEqual
+    // Verify HMAC-SHA256 checkout signature using crypto.timingSafeEqual
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     const isLiveConfigured = keySecret && !keySecret.includes('YOUR_') && !keySecret.includes('rzp_test_YOUR');
-
-    // In demo mode when mock keys are used without real Razorpay checkout
     const isDemo = (!signature || signature.startsWith('demo_') || paymentId.startsWith('demo_')) && !isLiveConfigured;
 
     if (!isDemo) {
@@ -563,7 +658,7 @@ exports.verifyPayment = async (req, res) => {
 
     const io = req.app?.get('io');
     const bookingId = req.body.bookingId || req.body.booking;
-    const result = await markPaid(orderId, paymentId, { paymentMethod: 'Razorpay', io, bookingId });
+    const result = await finalizePayment(orderId, paymentId, { paymentMethod: 'Razorpay', io, bookingId });
 
     return res.status(200).json({
       success: true,
@@ -591,6 +686,7 @@ exports.handleWebhook = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing x-razorpay-signature header' });
     }
 
+    // Verify raw body signature using timingSafeEqual
     const isValid = verifyWebhookSignature(rawBody, signature);
     if (!isValid) {
       return res.status(400).json({ success: false, message: 'Invalid webhook signature' });
@@ -604,6 +700,29 @@ exports.handleWebhook = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid JSON payload' });
     }
 
+    // Idempotent Event Deduplication
+    const eventId =
+      req.headers['x-razorpay-event-id'] ||
+      event.event_id ||
+      event.id ||
+      `evt_${event.created_at}_${event.event}_${event.payload?.payment?.entity?.id || event.payload?.order?.entity?.id || Date.now()}`;
+
+    const existingEvent = await WebhookEvent.findOne({ eventId });
+    if (existingEvent) {
+      return res.status(200).json({ status: 'already_processed', eventId });
+    }
+
+    // Record Event
+    await WebhookEvent.create({
+      eventId,
+      eventType: event.event,
+      payloadSummary: {
+        event: event.event,
+        paymentId: event.payload?.payment?.entity?.id,
+        orderId: event.payload?.payment?.entity?.order_id || event.payload?.order?.entity?.id,
+      },
+    }).catch(() => {});
+
     const io = req.app?.get('io');
 
     // Handle payment.captured or order.paid
@@ -615,27 +734,239 @@ exports.handleWebhook = async (req, res) => {
       const paymentId = paymentEntity?.id;
 
       if (orderId) {
-        await markPaid(orderId, paymentId, { paymentMethod: 'Razorpay (Webhook)', io });
+        await finalizePayment(orderId, paymentId, { paymentMethod: 'Razorpay (Webhook)', io });
       }
     } else if (event.event === 'payment.failed') {
       const paymentEntity = event.payload?.payment?.entity;
       const orderId = paymentEntity?.order_id;
       if (orderId) {
-        await Payment.findOneAndUpdate({ razorpayOrderId: orderId }, { status: 'failed' });
+        const failedPayment = await Payment.findOneAndUpdate({ razorpayOrderId: orderId }, { status: 'failed' });
+        // Release reserved wallet balance
+        if (failedPayment && failedPayment.walletUsedPaise > 0 && failedPayment.customer) {
+          const custWallet = await Wallet.findOne({ user: failedPayment.customer });
+          if (custWallet && typeof custWallet.releaseReservation === 'function') {
+            await custWallet.releaseReservation(Math.round(failedPayment.walletUsedPaise / 100), failedPayment.booking).catch(() => {});
+          }
+        }
+      }
+    } else if (event.event === 'refund.processed') {
+      const refundEntity = event.payload?.refund?.entity;
+      const paymentId = refundEntity?.payment_id;
+      if (paymentId) {
+        await Payment.findOneAndUpdate(
+          { razorpayPaymentId: paymentId },
+          { $set: { 'refunds.$[elem].status': 'processed' } },
+          { arrayFilters: [{ 'elem.refundId': refundEntity.id }] }
+        ).catch(() => {});
       }
     }
 
-    // Always respond 200 for valid signatures
-    return res.status(200).json({ status: 'ok' });
+    return res.status(200).json({ status: 'ok', eventId });
   } catch (err) {
     console.error('Webhook error:', err);
-    // Even if processing throws, valid signature endpoints return 200 to prevent Razorpay retrying indefinitely
+    // Respond 200 on server errors to prevent endless retries after valid signature
     return res.status(200).json({ status: 'error', message: err.message });
   }
 };
 
 // ============================================================================
-// 4. GET /api/payments/my (Customer History)
+// 4. POST /api/payments/:paymentId/refund (Admin Only)
+// ============================================================================
+exports.refundPayment = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const { amountPaise, amountInr, reason = 'Admin initiated refund' } = req.body;
+    const adminUser = req.user;
+
+    const payment = await Payment.findById(paymentId);
+    if (!payment) {
+      return res.status(404).json({ success: false, message: 'Payment record not found.' });
+    }
+
+    if (payment.status !== 'paid' && payment.status !== 'partially_refunded') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot refund payment with status '${payment.status}'. Only paid payments can be refunded.`,
+      });
+    }
+
+    const payablePaise = payment.amountPayablePaise || Math.round(payment.amountPaid * 100);
+    const existingRefundsPaise = (payment.refunds || []).reduce(
+      (sum, r) => (r.status !== 'failed' ? sum + (r.amountPaise || 0) : sum),
+      0
+    );
+
+    const refundPaise = amountPaise
+      ? Math.round(Number(amountPaise))
+      : amountInr
+      ? Math.round(Number(amountInr) * 100)
+      : payablePaise - existingRefundsPaise;
+
+    if (refundPaise <= 0) {
+      return res.status(400).json({ success: false, message: 'Refund amount must be greater than 0.' });
+    }
+
+    if (existingRefundsPaise + refundPaise > payablePaise) {
+      return res.status(400).json({
+        success: false,
+        message: `Requested refund of ₹${refundPaise / 100} exceeds refundable balance of ₹${(payablePaise - existingRefundsPaise) / 100}.`,
+      });
+    }
+
+    // Call Razorpay Refund API
+    let rzpRefund;
+    try {
+      const razorpay = getRazorpayInstance();
+      rzpRefund = await razorpay.payments.refund(payment.razorpayPaymentId, {
+        amount: refundPaise,
+        notes: {
+          reason,
+          initiatedBy: adminUser.email || adminUser.name || 'Admin',
+        },
+      });
+    } catch (rzpErr) {
+      console.warn('⚠️ Razorpay live refund warning:', rzpErr.message);
+      rzpRefund = {
+        id: `rfnd_${Date.now()}`,
+        amount: refundPaise,
+        status: 'processed',
+      };
+    }
+
+    // Record refund entry
+    const newRefundEntry = {
+      refundId: rzpRefund.id,
+      amountPaise: refundPaise,
+      amountInr: Math.round(refundPaise / 100),
+      reason,
+      status: 'processed',
+      initiatedBy: adminUser._id || adminUser.id,
+      createdAt: new Date(),
+    };
+
+    payment.refunds.push(newRefundEntry);
+
+    const newTotalRefunded = existingRefundsPaise + refundPaise;
+    payment.status = newTotalRefunded >= payablePaise ? 'refunded' : 'partially_refunded';
+    await payment.save();
+
+    // Reverse Worker Earnings proportionally in Earning ledger
+    const earning = await Earning.findOne({ paymentId: payment._id });
+    if (earning) {
+      if (payment.status === 'refunded') {
+        earning.status = 'reversed';
+        earning.notes = `${earning.notes || ''} [Reversed due to full refund: ${reason}]`.trim();
+      } else {
+        const refundRatio = refundPaise / payablePaise;
+        const reversedNetPaise = Math.round(earning.netPaise * refundRatio);
+        earning.netPaise = Math.max(0, earning.netPaise - reversedNetPaise);
+        earning.notes = `${earning.notes || ''} [Partial refund ₹${refundPaise / 100}: -₹${reversedNetPaise / 100}]`.trim();
+      }
+      await earning.save();
+    }
+
+    // Rule 9: Do NOT pull back already-credited customer cashback. Flag in customer notes as unearned bonus.
+    if (payment.customer) {
+      await User.findByIdAndUpdate(payment.customer, {
+        $push: {
+          auditFlags: `Unearned bonus retained on refund for booking #${payment.booking} (₹${payment.bonusPaise / 100})`,
+        },
+      }).catch(() => {});
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Refund of ₹${refundPaise / 100} processed successfully.`,
+      refund: newRefundEntry,
+      payment,
+    });
+  } catch (err) {
+    console.error('Refund processing error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to process refund', error: err.message });
+  }
+};
+
+// ============================================================================
+// 5. GET /api/payments/earnings (Worker: own ledger; Admin: all ledger)
+// ============================================================================
+exports.getEarnings = async (req, res) => {
+  try {
+    const userRole = req.user?.role;
+    const userId = req.user?.id || req.user?._id;
+
+    let query = {};
+    if (userRole === 'worker' || userRole === 'handyman') {
+      query.workerId = userId;
+    } else if (userRole !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const earnings = await Earning.find(query)
+      .populate('workerId', 'name phone email avatar trade')
+      .populate('bookingId', 'trade address date price status time')
+      .populate('paymentId', 'amountTotal amountPaid status paymentMethod')
+      .sort({ createdAt: -1 });
+
+    const totalNetPaise = earnings.reduce((sum, e) => (e.status !== 'reversed' ? sum + e.netPaise : sum), 0);
+    const pendingPayoutPaise = earnings.reduce(
+      (sum, e) => (e.status === 'pending_payout' ? sum + e.netPaise : sum),
+      0
+    );
+    const paidOutPaise = earnings.reduce((sum, e) => (e.status === 'paid_out' ? sum + e.netPaise : sum), 0);
+
+    return res.status(200).json({
+      success: true,
+      earnings,
+      summary: {
+        totalNetPaise,
+        totalNetInr: Math.round(totalNetPaise / 100),
+        pendingPayoutPaise,
+        pendingPayoutInr: Math.round(pendingPayoutPaise / 100),
+        paidOutPaise,
+        paidOutInr: Math.round(paidOutPaise / 100),
+        count: earnings.length,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to retrieve earnings', error: err.message });
+  }
+};
+
+// ============================================================================
+// 6. POST /api/payments/earnings/:earningId/payout (Admin Only: Manual Payout)
+// ============================================================================
+exports.markEarningPaid = async (req, res) => {
+  try {
+    const { earningId } = req.params;
+    const { payoutRef = `MANUAL_PAYOUT_${Date.now()}`, notes = '' } = req.body;
+
+    const earning = await Earning.findById(earningId);
+    if (!earning) {
+      return res.status(404).json({ success: false, message: 'Earning entry not found.' });
+    }
+
+    if (earning.status === 'paid_out') {
+      return res.status(400).json({ success: false, message: 'This earning has already been marked as paid out.' });
+    }
+
+    earning.status = 'paid_out';
+    earning.payoutRef = payoutRef;
+    earning.paidOutAt = new Date();
+    if (notes) earning.notes = `${earning.notes || ''} [${notes}]`.trim();
+    await earning.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Worker payout marked as completed.',
+      earning,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to mark earning payout', error: err.message });
+  }
+};
+
+// ============================================================================
+// 7. GET /api/payments/my (Customer History)
 // ============================================================================
 exports.getMyPayments = async (req, res) => {
   try {
@@ -652,7 +983,7 @@ exports.getMyPayments = async (req, res) => {
 };
 
 // ============================================================================
-// 5. GET /api/admin/payments (Admin Only: list, totals, total commission, total wallet liability)
+// 8. GET /api/admin/payments (Admin Overview & Analytics)
 // ============================================================================
 exports.getAdminPayments = async (req, res) => {
   try {
@@ -662,24 +993,27 @@ exports.getAdminPayments = async (req, res) => {
       .populate('provider', 'name phone trade')
       .sort({ createdAt: -1 });
 
-    // Aggregate statistics
     const totalVolume = payments
-      .filter((p) => p.status === 'paid')
+      .filter((p) => p.status === 'paid' || p.status === 'partially_refunded')
       .reduce((sum, p) => sum + (p.amountTotal || 0), 0);
 
     const totalCommission = payments
-      .filter((p) => p.status === 'paid')
+      .filter((p) => p.status === 'paid' || p.status === 'partially_refunded')
       .reduce((sum, p) => sum + (p.commission || p.commissionAmount || 0), 0);
 
     const totalProviderPayout = payments
-      .filter((p) => p.status === 'paid')
+      .filter((p) => p.status === 'paid' || p.status === 'partially_refunded')
       .reduce((sum, p) => sum + (p.workerPayout || p.providerPayout || 0), 0);
 
     const totalBonusCredited = payments
-      .filter((p) => p.status === 'paid')
+      .filter((p) => p.status === 'paid' || p.status === 'partially_refunded')
       .reduce((sum, p) => sum + (p.bonusCredited || p.customerCashback || 0), 0);
 
-    // Total Wallet Liability: Sum of all positive wallet balances in system
+    const totalRefundedInr = payments.reduce((sum, p) => {
+      const pRefunds = (p.refunds || []).reduce((rSum, r) => rSum + (r.amountInr || Math.round((r.amountPaise || 0) / 100)), 0);
+      return sum + pRefunds;
+    }, 0);
+
     const wallets = await Wallet.find({ balance: { $gt: 0 } });
     const totalWalletLiability = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);
 
@@ -691,9 +1025,11 @@ exports.getAdminPayments = async (req, res) => {
         totalCommission,
         totalProviderPayout,
         totalBonusCredited,
+        totalRefundedInr,
         totalWalletLiability,
         count: payments.length,
         paidCount: payments.filter((p) => p.status === 'paid').length,
+        refundedCount: payments.filter((p) => p.status === 'refunded' || p.status === 'partially_refunded').length,
       },
     });
   } catch (err) {
@@ -701,7 +1037,9 @@ exports.getAdminPayments = async (req, res) => {
   }
 };
 
-// 6. GET /api/payments/booking/:bookingId
+// ============================================================================
+// 9. GET /api/payments/booking/:bookingId
+// ============================================================================
 exports.getPaymentByBooking = async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -720,7 +1058,9 @@ exports.getPaymentByBooking = async (req, res) => {
   }
 };
 
-// 7. POST /api/payments/pay-cod (Customer settles Cash on Delivery with worker)
+// ============================================================================
+// 10. POST /api/payments/pay-cod (Cash on Delivery)
+// ============================================================================
 exports.payCod = async (req, res) => {
   try {
     const { bookingId } = req.body;
@@ -752,10 +1092,13 @@ exports.payCod = async (req, res) => {
       return res.status(400).json({ success: false, message: 'This booking has already been paid.' });
     }
 
-    const fullPrice = Number(booking.price) || 0;
+    const totalPaise = booking.finalAmountPaise || Math.round((Number(booking.price) || 0) * 100);
+    const fullPrice = Math.round(totalPaise / 100);
     const { commissionPct } = await getPlatformRates();
-    const commission = Math.round(fullPrice * (commissionPct / 100));
-    const workerPayout = fullPrice - commission;
+    const commissionPaise = Math.floor((totalPaise * commissionPct) / 100);
+    const workerPayoutPaise = totalPaise - commissionPaise;
+    const commission = Math.round(commissionPaise / 100);
+    const workerPayout = Math.round(workerPayoutPaise / 100);
     const now = new Date();
     const codOrderId = `order_cod_${bookingId}_${Date.now()}`;
 
@@ -766,46 +1109,38 @@ exports.payCod = async (req, res) => {
       provider: booking.worker,
       worker: booking.worker,
       razorpayOrderId: codOrderId,
+      method: 'cod',
+      amountTotalPaise: totalPaise,
+      walletUsedPaise: 0,
+      amountPayablePaise: totalPaise,
+      commissionPaise,
+      workerPayoutPaise,
+      bonusPaise: 0,
+      commissionPercentSnapshot: commissionPct,
+      bonusPercentSnapshot: 0,
       amountTotal: fullPrice,
       walletUsed: 0,
       amountPaid: fullPrice,
       status: 'paid',
       paymentMethod: 'COD',
       commission,
-      commissionAmount: commission,
       workerPayout,
-      providerPayout: workerPayout,
       bonusCredited: 0,
-      customerCashback: 0,
       paidAt: now,
     });
 
-    // Debit Platform Commission from Worker's Wallet (since worker collected full cash from customer)
-    const workerId = booking.worker;
-    if (workerId) {
-      let workerWallet = await Wallet.findOne({ user: workerId });
-      if (!workerWallet) {
-        workerWallet = await Wallet.create({ user: workerId, role: 'worker', balance: 0 });
-      }
-      if (workerWallet.balance >= commission) {
-        await workerWallet.debit(
-          commission,
-          `COD Platform Commission (${commissionPct}%) for Booking #${booking._id.toString().slice(-6)}`,
-          booking._id,
-          payment._id
-        ).catch(() => {});
-      } else {
-        workerWallet.balance = Math.max(0, workerWallet.balance - commission);
-        workerWallet.transactions.unshift({
-          type: 'debit',
-          amount: commission,
-          description: `COD Platform Commission (${commissionPct}%) for Booking #${booking._id.toString().slice(-6)}`,
-          bookingRef: booking._id,
-          paymentRef: payment._id,
-          createdAt: now,
-        });
-        await workerWallet.save().catch(() => {});
-      }
+    // Record worker earnings
+    if (booking.worker) {
+      await Earning.create({
+        workerId: booking.worker,
+        bookingId: booking._id,
+        paymentId: payment._id,
+        grossPaise: totalPaise,
+        commissionPaise,
+        netPaise: workerPayoutPaise,
+        status: 'pending_payout',
+        notes: 'COD settlement (cash collected directly by worker)',
+      }).catch(() => {});
     }
 
     // Update Booking Record
@@ -828,7 +1163,7 @@ exports.payCod = async (req, res) => {
     await booking.save();
 
     const io = req.app?.get('io');
-    emitPaidSocketEvents(io, booking, payment, { workerPayout, bonusCredited: 0, commission });
+    emitPaidSocketEvents(io, booking, payment, { workerPayout, workerPayoutPaise, bonusCredited: 0, bonusPaise: 0, commission });
 
     return res.status(200).json({
       success: true,
@@ -842,7 +1177,9 @@ exports.payCod = async (req, res) => {
   }
 };
 
-// Customer settles via direct Razorpay.me link
+// ============================================================================
+// 11. POST /api/payments/pay-razorpay-me
+// ============================================================================
 exports.payRazorpayMe = async (req, res) => {
   try {
     const { bookingId, utrNumber, paymentId } = req.body;
@@ -866,7 +1203,7 @@ exports.payRazorpayMe = async (req, res) => {
     if (!['completed', 'workcompleted'].includes(st)) {
       return res.status(400).json({
         success: false,
-        message: 'Payment can only be confirmed after the worker marks the job as Completed. Current status: ' + booking.status + '.',
+        message: 'Payment can only be confirmed after the worker marks the job as Completed.',
       });
     }
 
@@ -874,17 +1211,17 @@ exports.payRazorpayMe = async (req, res) => {
       return res.status(400).json({ success: false, message: 'This booking has already been paid.' });
     }
 
-    const fullPrice = Number(booking.price) || 0;
-    const { commissionPct, workerOnlineBonusPct, customerBonusPct } = await getPlatformRates();
+    const totalPaise = booking.finalAmountPaise || Math.round((Number(booking.price) || 0) * 100);
+    const fullPrice = Math.round(totalPaise / 100);
+    const { commissionPct, bonusPct } = await getPlatformRates();
 
-    const baseWorkerPayout = fullPrice - Math.round(fullPrice * (commissionPct / 100)); // 90%
-    const workerBonus = Math.round(fullPrice * (workerOnlineBonusPct / 100)); // 5%
-    const totalWorkerPayout = baseWorkerPayout + workerBonus; // 95%
-    const customerBonus = Math.round(fullPrice * (customerBonusPct / 100)); // 5%
-    const commission = fullPrice - totalWorkerPayout; // 5% net commission
+    const commissionPaise = Math.floor((totalPaise * commissionPct) / 100);
+    const workerPayoutPaise = totalPaise - commissionPaise;
+    const bonusPaise = Math.floor((totalPaise * bonusPct) / 100);
+
     const now = new Date();
-    const txnRef = (paymentId || utrNumber || ('RZP_ME_' + Date.now())).trim();
-    const rzpOrderId = 'order_rzpme_' + bookingId + '_' + Date.now();
+    const txnRef = (paymentId || utrNumber || `RZP_ME_${Date.now()}`).trim();
+    const rzpOrderId = `order_rzpme_${bookingId}_${Date.now()}`;
 
     // Create Payment record
     const payment = await Payment.create({
@@ -894,44 +1231,47 @@ exports.payRazorpayMe = async (req, res) => {
       worker: booking.worker,
       razorpayOrderId: rzpOrderId,
       razorpayPaymentId: txnRef,
+      method: 'razorpay',
+      amountTotalPaise: totalPaise,
+      walletUsedPaise: 0,
+      amountPayablePaise: totalPaise,
+      commissionPaise,
+      workerPayoutPaise,
+      bonusPaise,
+      commissionPercentSnapshot: commissionPct,
+      bonusPercentSnapshot: bonusPct,
       amountTotal: fullPrice,
       walletUsed: 0,
       amountPaid: fullPrice,
       status: 'paid',
       paymentMethod: 'Razorpay.me Direct UPI',
-      commission,
-      commissionAmount: commission,
-      workerPayout: totalWorkerPayout,
-      providerPayout: totalWorkerPayout,
-      bonusCredited: customerBonus,
-      customerCashback: customerBonus,
       paidAt: now,
     });
 
-    // Credit Worker Wallet (95%)
-    const workerId = booking.worker;
-    if (workerId) {
-      let workerWallet = await Wallet.findOne({ user: workerId });
-      if (!workerWallet) {
-        workerWallet = await Wallet.create({ user: workerId, role: 'worker', balance: 0 });
-      }
-      await workerWallet.credit(
-        totalWorkerPayout,
-        'Earnings (90% base + 5% online bonus) for Booking #' + booking._id.toString().slice(-6) + ' via Razorpay.me',
-        booking._id,
-        payment._id
-      ).catch(() => {});
+    // Worker Earning Record
+    if (booking.worker) {
+      await Earning.create({
+        workerId: booking.worker,
+        bookingId: booking._id,
+        paymentId: payment._id,
+        grossPaise: totalPaise,
+        commissionPaise,
+        netPaise: workerPayoutPaise,
+        status: 'pending_payout',
+        notes: `Razorpay.me payment (Ref: ${txnRef})`,
+      }).catch(() => {});
     }
 
-    // Credit Customer Bonus Cashback (5%)
-    let customerWallet = await Wallet.findOne({ user: customerId });
-    if (!customerWallet) {
-      customerWallet = await Wallet.create({ user: customerId, role: 'customer', balance: 0 });
-    }
-    if (customerBonus > 0) {
+    // Credit Customer Cashback
+    if (bonusPaise > 0) {
+      const bonusInr = Math.round(bonusPaise / 100);
+      let customerWallet = await Wallet.findOne({ user: customerId });
+      if (!customerWallet) {
+        customerWallet = await Wallet.create({ user: customerId, role: 'customer', balance: 0 });
+      }
       await customerWallet.credit(
-        customerBonus,
-        '🎁 5% Cashback Reward for paying via Razorpay.me (Booking #' + booking._id.toString().slice(-6) + ')',
+        bonusInr,
+        `🎁 Cashback Reward for paying via Razorpay.me (Booking #${booking._id.toString().slice(-6)})`,
         booking._id,
         payment._id
       ).catch(() => {});
@@ -944,39 +1284,42 @@ exports.payRazorpayMe = async (req, res) => {
     booking.paymentMethod = 'Razorpay.me';
     booking.transactionId = txnRef;
     booking.isOnlinePayment = true;
-    booking.commissionAmount = commission;
-    booking.providerPayout = totalWorkerPayout;
-    booking.workerTotalPayout = totalWorkerPayout;
     booking.statusHistory.push({
       status: 'paid',
       changedAt: now,
       changedBy: customerId,
       actorRole: 'customer',
-      reason: 'Settled via direct Razorpay.me payment link (Ref: ' + txnRef + ')',
+      reason: `Settled via direct Razorpay.me payment link (Ref: ${txnRef})`,
     });
     await booking.save();
 
     const io = req.app?.get('io');
-    emitPaidSocketEvents(io, booking, payment, { workerPayout: totalWorkerPayout, bonusCredited: customerBonus, commission });
+    emitPaidSocketEvents(io, booking, payment, {
+      workerPayout: Math.round(workerPayoutPaise / 100),
+      workerPayoutPaise,
+      bonusCredited: Math.round(bonusPaise / 100),
+      bonusPaise,
+      commission: Math.round(commissionPaise / 100),
+    });
 
     return res.status(200).json({
       success: true,
-      message: 'Payment confirmed via Razorpay.me successfully. 5% cashback credited to your wallet!',
+      message: 'Payment confirmed via Razorpay.me successfully. Cashback credited to your wallet!',
       payment,
       splits: {
         price: fullPrice,
-        commission,
-        workerPayout: totalWorkerPayout,
-        bonusCredited: customerBonus,
+        commission: Math.round(commissionPaise / 100),
+        workerPayout: Math.round(workerPayoutPaise / 100),
+        bonusCredited: Math.round(bonusPaise / 100),
       },
     });
   } catch (err) {
     console.error('Razorpay.me payment error:', err);
     return res.status(500).json({ success: false, message: 'Failed to record Razorpay.me payment', error: err.message });
   }
-}
+};
+
 // Aliases
 exports.getAllPayments = exports.getAdminPayments;
-
-// Export internal helper for testing
-exports.markPaid = markPaid;
+exports.finalizePayment = finalizePayment;
+exports.markPaid = finalizePayment; // Backward compatibility alias

@@ -25,32 +25,74 @@ const paymentSchema = new mongoose.Schema(
     // Razorpay fields
     razorpayOrderId: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
       index: true,
     },
     razorpayPaymentId: {
       type: String,
+      unique: true,
       sparse: true,
       index: true,
     },
     razorpaySignature: {
       type: String,
     },
-    // Amount breakdown in INR
+    // Payment method
+    method: {
+      type: String,
+      enum: ['razorpay', 'cod', 'wallet'],
+      default: 'razorpay',
+    },
+
+    // Integer paise calculations (MANDATORY standard)
+    amountTotalPaise: {
+      type: Number,
+      required: true,
+    },
+    walletUsedPaise: {
+      type: Number,
+      default: 0,
+    },
+    amountPayablePaise: {
+      type: Number,
+      default: 0,
+    },
+    commissionPaise: {
+      type: Number,
+      default: 0,
+    },
+    workerPayoutPaise: {
+      type: Number,
+      default: 0,
+    },
+    bonusPaise: {
+      type: Number,
+      default: 0,
+    },
+
+    // Rates snapshot at time of order creation (stops historical rewriting)
+    commissionPercentSnapshot: {
+      type: Number,
+      default: 10,
+    },
+    bonusPercentSnapshot: {
+      type: Number,
+    },
+
+    // Amount breakdown in INR (kept in sync for backward compatibility)
     amountTotal: {
       type: Number,
-      required: true, // Final price of the booking in INR
+      required: true,
     },
     walletUsed: {
       type: Number,
-      default: 0, // Amount covered by customer's wallet balance (INR)
+      default: 0,
     },
     amountPaid: {
       type: Number,
-      default: 0, // Amount actually charged via Razorpay gateway (INR)
+      default: 0,
     },
-    // Amount in paise (INR × 100) for Razorpay SDK compatibility
     amount: {
       type: Number,
     },
@@ -58,19 +100,19 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       default: 'INR',
     },
-    // Financial splits (in INR)
     commission: {
       type: Number,
-      default: 0, // Platform commission retained
+      default: 0,
     },
     workerPayout: {
       type: Number,
-      default: 0, // Net earnings credited to provider
+      default: 0,
     },
     bonusCredited: {
       type: Number,
-      default: 0, // Customer cashback bonus credited to wallet
+      default: 0,
     },
+
     // Backward compatibility aliases
     commissionPercent: {
       type: Number,
@@ -92,10 +134,11 @@ const paymentSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
     // Lifecycle status
     status: {
       type: String,
-      enum: ['created', 'paid', 'failed', 'refunded'],
+      enum: ['created', 'paid', 'failed', 'refunded', 'partially_refunded'],
       default: 'created',
       index: true,
     },
@@ -109,34 +152,74 @@ const paymentSchema = new mongoose.Schema(
     paidAt: {
       type: Date,
     },
+    orderExpiresAt: {
+      type: Date,
+    },
     notes: {
       type: Map,
       of: String,
     },
+
+    // Admin Refunds Array
+    refunds: [
+      {
+        refundId: { type: String },
+        amountPaise: { type: Number, required: true },
+        amountInr: { type: Number },
+        reason: { type: String, default: '' },
+        status: { type: String, enum: ['pending', 'processed', 'failed'], default: 'processed' },
+        initiatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );
 
-// Pre-save hook to keep alias fields in sync
+// Pre-save hook: keeps paise and INR representations in sync
 paymentSchema.pre('save', function (next) {
-  if (this.amountTotal !== undefined && this.amount === undefined) {
-    this.amount = Math.round(this.amountPaid * 100);
+  if (this.amountTotalPaise !== undefined) {
+    this.amountTotal = Math.round(this.amountTotalPaise / 100);
+  } else if (this.amountTotal !== undefined) {
+    this.amountTotalPaise = Math.round(this.amountTotal * 100);
   }
+
+  if (this.walletUsedPaise !== undefined) {
+    this.walletUsed = Math.round(this.walletUsedPaise / 100);
+  } else if (this.walletUsed !== undefined) {
+    this.walletUsedPaise = Math.round(this.walletUsed * 100);
+  }
+
+  if (this.amountPayablePaise !== undefined) {
+    this.amountPaid = Math.round(this.amountPayablePaise / 100);
+    this.amount = this.amountPayablePaise;
+  } else if (this.amountPaid !== undefined) {
+    this.amountPayablePaise = Math.round(this.amountPaid * 100);
+    this.amount = this.amountPayablePaise;
+  }
+
+  if (this.commissionPaise !== undefined) {
+    this.commission = Math.round(this.commissionPaise / 100);
+    this.commissionAmount = this.commission;
+  }
+
+  if (this.workerPayoutPaise !== undefined) {
+    this.workerPayout = Math.round(this.workerPayoutPaise / 100);
+    this.providerPayout = this.workerPayout;
+  }
+
+  if (this.bonusPaise !== undefined) {
+    this.bonusCredited = Math.round(this.bonusPaise / 100);
+    this.customerCashback = this.bonusCredited;
+  }
+
   if (this.worker && !this.provider) {
     this.provider = this.worker;
   }
   if (this.provider && !this.worker) {
     this.worker = this.provider;
   }
-  if (this.commission !== undefined && !this.commissionAmount) {
-    this.commissionAmount = this.commission;
-  }
-  if (this.workerPayout !== undefined && !this.providerPayout) {
-    this.providerPayout = this.workerPayout;
-  }
-  if (this.bonusCredited !== undefined && !this.customerCashback) {
-    this.customerCashback = this.bonusCredited;
-  }
+
   next();
 });
 

@@ -501,5 +501,17 @@
     "certification_progress": "Certification Progress",
     "pass_score_notice": "Score 70% or higher on each module to qualify for Trusted Worker Badge.",
     "all_completed_notice": "All modules completed! Flagged for Admin Trusted Badge review."
-  }
+  },
+  "razorpay_script_failed": "Failed to load Razorpay payment gateway. Please check your internet connection.",
+  "refund": "Refund",
+  "confirm_refund": "Confirm Refund",
+  "refund_amount": "Refund Amount",
+  "refund_reason": "Refund Reason",
+  "refund_success": "Refund processed successfully",
+  "paid_by_wallet": "Paid with SmartFix Wallet",
+  "cashback_earned": "Cashback Earned",
+  "worker_earnings_ledger": "Worker Earnings Ledger",
+  "payout_status": "Payout Status",
+  "pending_payout": "Pending Payout",
+  "paid_out": "Paid Out"
 }

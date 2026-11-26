@@ -74,6 +74,8 @@ const AdminPanel = ({ initialTab }) => {
   });
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
   const [paymentSearchQuery, setPaymentSearchQuery] = useState('');
+  const [refundModal, setRefundModal] = useState(null);
+  const [refundLoading, setRefundLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [actionToast, setActionToast] = useState('');
   const [slaAlerts, setSlaAlerts] = useState([]);
@@ -234,6 +236,22 @@ const AdminPanel = ({ initialTab }) => {
         loadData();
       }
     } catch (err) {}
+  };
+
+  const handleExecuteRefund = async (paymentId, amountInr, reason) => {
+    setRefundLoading(true);
+    try {
+      const amountPaise = Math.round(Number(amountInr) * 100);
+      await apiService.refundPayment(paymentId, amountPaise, reason);
+      setActionToast(`✓ Refund of ₹${amountInr} processed successfully.`);
+      setTimeout(() => setActionToast(''), 3000);
+      setRefundModal(null);
+      loadData();
+    } catch (err) {
+      alert(err.message || 'Refund failed');
+    } finally {
+      setRefundLoading(false);
+    }
   };
 
   const handleResolveDispute = async (id, status, decision, notes) => {
@@ -4602,6 +4620,7 @@ const AdminPanel = ({ initialTab }) => {
                     <th style={{ padding: '12px' }}>Worker Share</th>
                     <th style={{ padding: '12px' }}>Status</th>
                     <th style={{ padding: '12px' }}>Date</th>
+                    <th style={{ padding: '12px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4675,11 +4694,101 @@ const AdminPanel = ({ initialTab }) => {
                             </span>
                           </td>
                           <td style={{ padding: '12px', color: '#64748b', fontSize: '0.8rem' }}>{dateStr}</td>
+                          <td style={{ padding: '12px' }}>
+                            {isPaid && p.status !== 'refunded' && (
+                              <button
+                                onClick={() => setRefundModal({ payment: p, amount: String(p.amountPaid || 0), reason: 'Customer requested refund' })}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #cbd5e1',
+                                  background: '#f8fafc',
+                                  color: '#dc2626',
+                                  fontWeight: '700',
+                                  fontSize: '0.75rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Refund
+                              </button>
+                            )}
+                            {p.status === 'refunded' && (
+                              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>Refunded</span>
+                            )}
+                            {p.status === 'partially_refunded' && (
+                              <button
+                                onClick={() => setRefundModal({ payment: p, amount: '', reason: 'Partial refund' })}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #fde68a',
+                                  background: '#fffbeb',
+                                  color: '#b45309',
+                                  fontWeight: '700',
+                                  fontSize: '0.75rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Partial Refund
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Refund Modal */}
+          {refundModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, padding: '20px' }}>
+              <div style={{ background: '#ffffff', borderRadius: '20px', padding: '24px', maxWidth: '440px', width: '100%', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', margin: '0 0 8px 0' }}>Process Payment Refund</h3>
+                <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 16px 0' }}>
+                  Initiate an official Razorpay gateway refund for order <strong>{refundModal.payment?.razorpayOrderId}</strong>. Worker earnings will be adjusted proportionally.
+                </p>
+
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>Refund Amount (₹)</label>
+                  <input
+                    type="number"
+                    value={refundModal.amount}
+                    onChange={(e) => setRefundModal({ ...refundModal, amount: e.target.value })}
+                    placeholder={`Max refundable: ₹${refundModal.payment?.amountPaid || 0}`}
+                    style={{ width: '100%', padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem', fontWeight: '700' }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>Refund Reason</label>
+                  <input
+                    type="text"
+                    value={refundModal.reason}
+                    onChange={(e) => setRefundModal({ ...refundModal, reason: e.target.value })}
+                    placeholder="e.g. Service dissatisfaction, duplicate payment"
+                    style={{ width: '100%', padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setRefundModal(null)}
+                    disabled={refundLoading}
+                    style={{ padding: '8px 16px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#475569', fontWeight: '700', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleExecuteRefund(refundModal.payment?._id, refundModal.amount, refundModal.reason)}
+                    disabled={refundLoading || !refundModal.amount}
+                    style={{ padding: '8px 18px', borderRadius: '10px', border: 'none', background: '#dc2626', color: '#ffffff', fontWeight: '700', cursor: 'pointer' }}
+                  >
+                    {refundLoading ? 'Processing...' : 'Confirm Refund'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

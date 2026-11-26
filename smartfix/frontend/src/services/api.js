@@ -261,6 +261,39 @@ export const apiService = {
     if (!res.ok) throw new Error(data.message || 'Failed to fetch booking payment');
     return data.payment;
   },
+
+  // Admin Refund
+  refundPayment: async (paymentId, amountPaise, reason) => {
+    const res = await fetch(`${API_BASE}/payments/${paymentId}/refund`, {
+      method: 'POST',
+      headers: getHeaders('admin'),
+      body: JSON.stringify({ amountPaise, reason }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to process refund');
+    return data;
+  },
+
+  // Worker Earnings Ledger & Admin Payout
+  getEarnings: async () => {
+    const res = await fetch(`${API_BASE}/payments/earnings`, {
+      headers: getHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch earnings');
+    return data;
+  },
+
+  markEarningPaid: async (earningId, payoutRef, notes) => {
+    const res = await fetch(`${API_BASE}/payments/earnings/${earningId}/payout`, {
+      method: 'POST',
+      headers: getHeaders('admin'),
+      body: JSON.stringify({ payoutRef, notes }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to mark earning as paid');
+    return data;
+  },
   sendEmailOtp: async (email) => {
     const res = await fetch(`${API_BASE}/auth/email/send-otp`, {
       method: 'POST',

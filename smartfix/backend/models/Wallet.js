@@ -66,6 +66,10 @@ const walletSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    reservedBalance: {
+      type: Number,
+      default: 0,
+    },
     transactions: [transactionSchema],
   },
   { timestamps: true }
@@ -108,6 +112,60 @@ walletSchema.methods.debit = function (amount, description, bookingRef, paymentR
     description,
     bookingRef,
     paymentRef,
+    createdAt: new Date(),
+  });
+
+  const opts = session ? { session } : {};
+  return this.save(opts);
+};
+
+// Method to get spendable balance (excluding active checkout reservations)
+walletSchema.methods.getSpendableBalance = function () {
+  return Math.max(0, (this.balance || 0) - (this.reservedBalance || 0));
+};
+
+// Method to reserve funds during checkout
+walletSchema.methods.reserve = function (amount, bookingRef, session = null) {
+  const num = Math.round(Number(amount) || 0);
+  if (num <= 0) return Promise.resolve(this);
+
+  const spendable = this.getSpendableBalance();
+  if (spendable < num) {
+    throw new Error(`Insufficient spendable wallet balance. Available: ₹${spendable}, Requested reservation: ₹${num}`);
+  }
+
+  this.reservedBalance = (this.reservedBalance || 0) + num;
+  const opts = session ? { session } : {};
+  return this.save(opts);
+};
+
+// Method to release reserved funds on payment failure or expiry
+walletSchema.methods.releaseReservation = function (amount, bookingRef, session = null) {
+  const num = Math.round(Number(amount) || 0);
+  if (num <= 0) return Promise.resolve(this);
+
+  this.reservedBalance = Math.max(0, (this.reservedBalance || 0) - num);
+  const opts = session ? { session } : {};
+  return this.save(opts);
+};
+
+// Method to commit reserved funds when payment succeeds
+walletSchema.methods.commitReservation = function (amount, description, bookingRef, paymentRef = null, session = null) {
+  const num = Math.round(Number(amount) || 0);
+  if (num <= 0) return Promise.resolve(this);
+
+  this.reservedBalance = Math.max(0, (this.reservedBalance || 0) - num);
+  this.balance = Math.max(0, (this.balance || 0) - num);
+  this.totalWithdrawn = (this.totalWithdrawn || 0) + num;
+
+  this.transactions.unshift({
+    type: 'debit',
+    amount: num,
+    description,
+    bookingRef,
+    paymentRef,
+    category: 'general',
+    status: 'available',
     createdAt: new Date(),
   });
 

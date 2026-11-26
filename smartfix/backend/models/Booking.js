@@ -90,6 +90,18 @@ const bookingSchema = new mongoose.Schema(
       type: Number, // stored in INR
       required: true,
     },
+    finalAmountPaise: {
+      type: Number, // Integer paise (set at job completion)
+      default: null,
+    },
+    finalAmountFlagged: {
+      type: Boolean,
+      default: false,
+    },
+    finalAmountExceededReason: {
+      type: String,
+      default: '',
+    },
     district: {
       type: String,
       trim: true,

@@ -15,6 +15,7 @@ const { seedServiceIntervals } = require('./models/ServiceInterval');
 const { initProxyCron } = require('./services/proxyCronService');
 const { initDispatchSweeper } = require('./services/dispatchService');
 const { initReviewSummaryCron } = require('./services/reviewSummaryService');
+const { initPaymentReconciliationCron } = require('./services/paymentReconciliationCron');
 const { initWhatsApp } = require('./services/whatsappService');
 
 dotenv.config();
@@ -215,6 +216,7 @@ const startServer = async () => {
     initProxyCron();
     initDispatchSweeper(io);
     initReviewSummaryCron();
+    initPaymentReconciliationCron(io);
     
     // Initialize Free WhatsApp Web Client
     // initWhatsApp(); // Disabled for Render deployment as it requires Google Chrome and ephemeral storage will clear the session

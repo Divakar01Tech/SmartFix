@@ -200,7 +200,7 @@ export default function PaymentModal({ booking, onClose, onSuccess }) {
         return;
       }
 
-      const rzpKey = orderRes.keyId || orderRes.key || 'rzp_test_placeholder';
+      const rzpKey = orderRes.keyId || orderRes.key || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_placeholder';
       const rzpOrderId = orderRes.orderId || orderRes.order?.id;
       const isPlaceholderKey = !rzpKey || rzpKey === 'rzp_test_placeholder' || rzpKey.includes('YOUR_');
 

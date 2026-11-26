@@ -5,6 +5,10 @@ const { paymentRateLimiter } = require('../middleware/rateLimiter');
 const {
   createOrder,
   verifyPayment,
+  handleWebhook,
+  refundPayment,
+  getEarnings,
+  markEarningPaid,
   payCod,
   payRazorpayMe,
   getAllPayments,
@@ -18,6 +22,16 @@ router.post('/create-order', paymentRateLimiter, protect, createOrder);
 
 // Verify payment signature after Razorpay checkout (Rate-limited, Customer authenticated)
 router.post('/verify', paymentRateLimiter, protect, verifyPayment);
+
+// Webhook fallback route
+router.post('/webhook', express.raw({ type: 'application/json' }), handleWebhook);
+
+// Admin refunds (Admin only)
+router.post('/:paymentId/refund', protect, requireAdmin, refundPayment);
+
+// Worker earnings ledger & payout tracking
+router.get('/earnings', protect, getEarnings);
+router.post('/earnings/:earningId/payout', protect, requireAdmin, markEarningPaid);
 
 // Customer settles Cash on Delivery payment directly with technician
 router.post('/pay-cod', paymentRateLimiter, protect, payCod);
@@ -38,4 +52,3 @@ router.get('/all', protect, requireAdmin, getAllPayments);
 router.get('/booking/:bookingId', protect, getPaymentByBooking);
 
 module.exports = router;
-

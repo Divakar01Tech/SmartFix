@@ -566,13 +566,32 @@ exports.updateBookingStatus = async (req, res) => {
       });
     }
 
-    // Photo Proof of Work Validation (Permissive fallback for manual completion)
+    // Photo Proof of Work Validation & Final Amount setting
     if (targetStatus === 'completed') {
       const hasAfterPhoto = booking.workProof?.afterPhotos?.length > 0 || (req.body.afterPhotoUrls && req.body.afterPhotoUrls.length > 0);
       if (!hasAfterPhoto) {
         if (!booking.workProof) booking.workProof = {};
         if (!booking.workProof.afterPhotos) booking.workProof.afterPhotos = [];
         booking.workProof.afterPhotos.push('/uploads/proofs/completed-verified.png');
+      }
+
+      // Handle finalAmountPaise set by assigned worker
+      let finalPaise = null;
+      if (req.body.finalAmountPaise) {
+        finalPaise = Math.round(Number(req.body.finalAmountPaise));
+      } else if (req.body.finalAmount) {
+        finalPaise = Math.round(Number(req.body.finalAmount) * 100);
+      }
+      if (finalPaise && finalPaise > 0) {
+        updateFields.finalAmountPaise = finalPaise;
+        updateFields.price = Math.round(finalPaise / 100);
+        const originalPaise = Math.round((Number(booking.price) || 0) * 100);
+        if (originalPaise > 0 && finalPaise > originalPaise * 1.5) {
+          updateFields.finalAmountFlagged = true;
+          updateFields.finalAmountExceededReason = `Worker set ₹${finalPaise / 100}, which exceeds expected estimate ₹${originalPaise / 100} by >50%`;
+        }
+      } else if (!booking.finalAmountPaise) {
+        updateFields.finalAmountPaise = Math.round((Number(booking.price) || 0) * 100);
       }
     }
 
